@@ -1,0 +1,278 @@
+<?php
+/**
+ * Integration tests for IP whitelist functionality.
+ */
+
+class WhitelistTest extends WP_UnitTestCase {
+
+    /**
+     * Set up before each test.
+     */
+    public function setUp(): void {
+        parent::setUp();
+        // Clear any existing options
+        delete_option( 'wldelay_options' );
+        // Clear options cache
+        wldelay_clear_options_cache();
+    }
+
+    /**
+     * Tear down after each test.
+     */
+    public function tearDown(): void {
+        delete_option( 'wldelay_options' );
+        wldelay_clear_options_cache();
+        unset( $_SERVER['REMOTE_ADDR'] );
+        unset( $_SERVER['HTTP_X_FORWARDED_FOR'] );
+        unset( $_SERVER['HTTP_CLIENT_IP'] );
+        parent::tearDown();
+    }
+
+    /**
+     * Test that whitelist is disabled by default.
+     */
+    public function test_whitelist_disabled_by_default() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.1';
+
+        $this->assertFalse( wldelay_is_ip_whitelisted() );
+    }
+
+    /**
+     * Test that whitelist check returns false when disabled.
+     */
+    public function test_whitelist_returns_false_when_disabled() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.1';
+
+        update_option( 'wldelay_options', [
+            'wldelay_whitelist_enabled' => false,
+            'wldelay_whitelist_ips' => "192.168.1.1\n10.0.0.1",
+        ] );
+
+        $this->assertFalse( wldelay_is_ip_whitelisted() );
+    }
+
+    /**
+     * Test that whitelisted IP is detected (exact match).
+     */
+    public function test_exact_ip_match_is_whitelisted() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.100';
+
+        update_option( 'wldelay_options', [
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => "192.168.1.100\n10.0.0.1",
+        ] );
+
+        $this->assertTrue( wldelay_is_ip_whitelisted() );
+    }
+
+    /**
+     * Test that non-whitelisted IP is not matched.
+     */
+    public function test_non_whitelisted_ip_not_matched() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.200';
+
+        update_option( 'wldelay_options', [
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => "192.168.1.100\n10.0.0.1",
+        ] );
+
+        $this->assertFalse( wldelay_is_ip_whitelisted() );
+    }
+
+    /**
+     * Test that CIDR range matching works.
+     */
+    public function test_cidr_range_matching() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.50';
+
+        update_option( 'wldelay_options', [
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => '192.168.1.0/24',
+        ] );
+
+        $this->assertTrue( wldelay_is_ip_whitelisted() );
+    }
+
+    /**
+     * Test that IP outside CIDR range is not matched.
+     */
+    public function test_ip_outside_cidr_not_matched() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.2.50';
+
+        update_option( 'wldelay_options', [
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => '192.168.1.0/24',
+        ] );
+
+        $this->assertFalse( wldelay_is_ip_whitelisted() );
+    }
+
+    /**
+     * Test wldelay_ip_in_range with exact IPv4 match.
+     */
+    public function test_ip_in_range_exact_ipv4() {
+        $this->assertTrue( wldelay_ip_in_range( '192.168.1.1', '192.168.1.1' ) );
+        $this->assertFalse( wldelay_ip_in_range( '192.168.1.1', '192.168.1.2' ) );
+    }
+
+    /**
+     * Test wldelay_ip_in_range with IPv4 CIDR /24.
+     */
+    public function test_ip_in_range_cidr_24() {
+        $this->assertTrue( wldelay_ip_in_range( '192.168.1.1', '192.168.1.0/24' ) );
+        $this->assertTrue( wldelay_ip_in_range( '192.168.1.255', '192.168.1.0/24' ) );
+        $this->assertFalse( wldelay_ip_in_range( '192.168.2.1', '192.168.1.0/24' ) );
+    }
+
+    /**
+     * Test wldelay_ip_in_range with IPv4 CIDR /8.
+     */
+    public function test_ip_in_range_cidr_8() {
+        $this->assertTrue( wldelay_ip_in_range( '10.0.0.1', '10.0.0.0/8' ) );
+        $this->assertTrue( wldelay_ip_in_range( '10.255.255.255', '10.0.0.0/8' ) );
+        $this->assertFalse( wldelay_ip_in_range( '11.0.0.1', '10.0.0.0/8' ) );
+    }
+
+    /**
+     * Test wldelay_ip_in_range with IPv4 CIDR /32 (single IP).
+     */
+    public function test_ip_in_range_cidr_32() {
+        $this->assertTrue( wldelay_ip_in_range( '192.168.1.100', '192.168.1.100/32' ) );
+        $this->assertFalse( wldelay_ip_in_range( '192.168.1.101', '192.168.1.100/32' ) );
+    }
+
+    /**
+     * Test whitelisted IP bypasses delay on failed login.
+     */
+    public function test_whitelisted_ip_bypasses_delay() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.100';
+
+        update_option( 'wldelay_options', [
+            'wldelay_delay' => 3, // 3 second delay normally
+            'wldelay_delay_random' => false,
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => '192.168.1.100',
+        ] );
+
+        $error = new WP_Error( 'invalid_password', 'Invalid password' );
+
+        $start = microtime( true );
+        $result = wldelay_auth_login( $error, 'wrongpassword' );
+        $elapsed = microtime( true ) - $start;
+
+        // Should return immediately without delay
+        $this->assertInstanceOf( WP_Error::class, $result );
+        $this->assertLessThan( 1.0, $elapsed, 'Whitelisted IP should bypass delay' );
+    }
+
+    /**
+     * Test non-whitelisted IP still gets delay.
+     */
+    public function test_non_whitelisted_ip_gets_delay() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.200';
+
+        update_option( 'wldelay_options', [
+            'wldelay_delay' => 1,
+            'wldelay_delay_random' => false,
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => '192.168.1.100',
+        ] );
+
+        $error = new WP_Error( 'invalid_password', 'Invalid password' );
+
+        $start = microtime( true );
+        wldelay_auth_login( $error, 'wrongpassword' );
+        $elapsed = microtime( true ) - $start;
+
+        // Should have delay applied
+        $this->assertGreaterThanOrEqual( 0.9, $elapsed, 'Non-whitelisted IP should get delay' );
+    }
+
+    /**
+     * Test whitelisted IP bypasses lockout.
+     */
+    public function test_whitelisted_ip_bypasses_lockout() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.100';
+
+        update_option( 'wldelay_options', [
+            'wldelay_lockout_enabled' => true,
+            'wldelay_lockout_threshold' => 3,
+            'wldelay_lockout_duration' => 60,
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => '192.168.1.100',
+        ] );
+
+        // Simulate being locked out
+        $transient_key = 'wldelay_lockout_' . md5( '192.168.1.100' );
+        set_transient( $transient_key, time(), 60 * MINUTE_IN_SECONDS );
+
+        $error = new WP_Error( 'invalid_password', 'Invalid password' );
+        $result = wldelay_auth_login( $error, 'wrongpassword' );
+
+        // Whitelisted IP should bypass lockout and return original error
+        $this->assertInstanceOf( WP_Error::class, $result );
+        $this->assertEquals( 'invalid_password', $result->get_error_code() );
+    }
+
+    /**
+     * Test whitelisted IP on successful login returns user immediately.
+     */
+    public function test_whitelisted_ip_successful_login() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.100';
+
+        update_option( 'wldelay_options', [
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => '192.168.1.100',
+        ] );
+
+        $user = $this->factory->user->create_and_get( [
+            'user_login' => 'testuser',
+            'user_pass' => 'testpassword',
+        ] );
+
+        $result = wldelay_auth_login( $user, 'testpassword' );
+
+        $this->assertInstanceOf( WP_User::class, $result );
+        $this->assertEquals( $user->ID, $result->ID );
+    }
+
+    /**
+     * Test empty whitelist doesn't match any IP.
+     */
+    public function test_empty_whitelist_matches_nothing() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.1';
+
+        update_option( 'wldelay_options', [
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => '',
+        ] );
+
+        $this->assertFalse( wldelay_is_ip_whitelisted() );
+    }
+
+    /**
+     * Test whitelist with multiple entries.
+     */
+    public function test_whitelist_multiple_entries() {
+        update_option( 'wldelay_options', [
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips' => "192.168.1.1\n10.0.0.0/8\n172.16.0.100",
+        ] );
+
+        // Test exact match
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.1';
+        $this->assertTrue( wldelay_is_ip_whitelisted() );
+
+        // Test CIDR match
+        $_SERVER['REMOTE_ADDR'] = '10.50.100.200';
+        $this->assertTrue( wldelay_is_ip_whitelisted() );
+
+        // Test another exact match
+        $_SERVER['REMOTE_ADDR'] = '172.16.0.100';
+        $this->assertTrue( wldelay_is_ip_whitelisted() );
+
+        // Test non-match
+        $_SERVER['REMOTE_ADDR'] = '192.168.2.1';
+        $this->assertFalse( wldelay_is_ip_whitelisted() );
+    }
+}

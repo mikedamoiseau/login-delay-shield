@@ -1,0 +1,482 @@
+# Copyright (C) 2025 Mike
+# This file is distributed under the GPL2.
+msgid ""
+msgstr ""
+"Project-Id-Version: Login Delay Shield 1.8.1\n"
+"Report-Msgid-Bugs-To: https://damoiseau.me\n"
+"POT-Creation-Date: 2026-02-14 18:38+0700\n"
+"PO-Revision-Date: 2025-02-01 00:00:00+0000\n"
+"Last-Translator: Claude Code\n"
+"Language-Team: Russian <support@damoiseau.me>\n"
+"Language: ru_RU\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Generator: Claude Code\n"
+"X-Domain: login-delay-shield\n"
+
+#: wp-login-delay.php:48 wp-login-delay.php:129
+msgid "Settings"
+msgstr "Настройки"
+
+#: wp-login-delay.php:61
+msgid "Recent Failed Login Attempts"
+msgstr "Недавние неудачные попытки входа"
+
+#: wp-login-delay.php:95
+msgid "No failed login attempts recorded."
+msgstr "Неудачных попыток входа не зафиксировано."
+
+#: wp-login-delay.php:100
+msgid "Recent failed login attempts"
+msgstr "Недавние неудачные попытки входа"
+
+#: wp-login-delay.php:102
+msgid "Time"
+msgstr "Время"
+
+#: wp-login-delay.php:103
+msgid "Username"
+msgstr "Имя пользователя"
+
+#: wp-login-delay.php:104
+msgid "IP Address"
+msgstr "IP-адрес"
+
+#: wp-login-delay.php:105
+msgid "Source"
+msgstr "Источник"
+
+#: wp-login-delay.php:113
+msgid "Login"
+msgstr "Вход"
+
+#. translators: %1$s: time ago, %2$s: exact timestamp
+#: wp-login-delay.php:117
+#, php-format
+msgid "%1$s ago"
+msgstr "%1$s назад"
+
+#: wp-login-delay.php:276
+msgid "Login Delay Shield"
+msgstr "Login Delay Shield"
+
+#: wp-login-delay.php:277
+msgid ""
+"This plugin was formerly known as \"WP Login Delay\". The name has changed, "
+"but all your settings have been preserved."
+msgstr ""
+"Этот плагин ранее был известен как \"WP Login Delay\". Название изменилось, "
+"но все ваши настройки сохранены."
+
+#. translators: %s: remaining lockout duration, e.g. "2 minutes"
+#: wp-login-delay.php:563
+#, fuzzy, php-format
+msgid "Too many failed login attempts. Please try again in %s."
+msgstr ""
+"Слишком много неудачных попыток входа. Пожалуйста, повторите попытку позже."
+
+#: wp-login-delay.php:568
+msgid "Too many failed login attempts. Please try again later."
+msgstr ""
+"Слишком много неудачных попыток входа. Пожалуйста, повторите попытку позже."
+
+#: wp-login-delay.php:859
+msgid "XML-RPC authentication is disabled on this site."
+msgstr "Аутентификация XML-RPC отключена на этом сайте."
+
+#: wp-login-delay.php:1019
+#, php-format
+msgid "Login failed. %d attempt remaining before temporary lockout."
+msgid_plural "Login failed. %d attempts remaining before temporary lockout."
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: wldelay-settings-view.php:45
+msgid "Help"
+msgstr "Справка"
+
+#: wldelay-settings-view.php:68
+msgid "Delay Settings"
+msgstr "Настройки задержки"
+
+#: wldelay-settings-view.php:80 wldelay-settings-view.php:81
+msgid "Email Notifications"
+msgstr "Уведомления по электронной почте"
+
+#: wldelay-settings-view.php:85
+msgid ""
+"Receive email alerts when multiple failed login attempts are detected from "
+"the same IP address."
+msgstr ""
+"Получайте уведомления по электронной почте при обнаружении нескольких "
+"неудачных попыток входа с одного IP-адреса."
+
+#: wldelay-settings-view.php:93 wldelay-settings-view.php:94
+#: wldelay-settings-view.php:155
+msgid "IP Lockout"
+msgstr "Блокировка IP"
+
+#: wldelay-settings-view.php:98
+#, fuzzy
+msgid ""
+"Temporarily block repeated failed login attempts by IP address or by IP + "
+"username."
+msgstr ""
+"Временно блокировать IP-адреса после слишком большого количества неудачных "
+"попыток входа."
+
+#: wldelay-settings-view.php:106 wldelay-settings-view.php:107
+#: wldelay-settings-view.php:156
+msgid "IP Whitelist"
+msgstr "Белый список IP"
+
+#: wldelay-settings-view.php:111
+msgid "Skip delay and lockout for trusted IP addresses (e.g., office, VPN)."
+msgstr ""
+"Пропустить задержку и блокировку для доверенных IP-адресов (например, офис, "
+"VPN)."
+
+#: wldelay-settings-view.php:119
+msgid "Login Log"
+msgstr "Журнал входа"
+
+#: wldelay-settings-view.php:123
+msgid "Failed login attempts are logged and displayed in the dashboard widget."
+msgstr ""
+"Неудачные попытки входа регистрируются и отображаются в виджете панели "
+"инструментов."
+
+#: wldelay-settings-view.php:131 wldelay-settings-view.php:132
+#: wldelay-settings-view.php:158
+msgid "XML-RPC Protection"
+msgstr "Защита XML-RPC"
+
+#: wldelay-settings-view.php:136
+msgid ""
+"Protect against brute-force attacks via XML-RPC (used by the WordPress "
+"mobile app and remote publishing)."
+msgstr ""
+"Защита от атак перебора через XML-RPC (используется приложением WordPress "
+"для мобильных устройств и удаленной публикацией)."
+
+#: wldelay-settings-view.php:154
+msgid "Email Alerts"
+msgstr "Уведомления по электронной почте"
+
+#: wldelay-settings-view.php:157
+msgid "Progressive Delay"
+msgstr "Прогрессивная задержка"
+
+#: wldelay-settings-view.php:171
+msgid "enabled"
+msgstr "включено"
+
+#: wldelay-settings-view.php:171
+msgid "disabled"
+msgstr "отключено"
+
+#: wldelay-settings-view.php:197
+msgid "Protection status summary"
+msgstr "Сводка статуса защиты"
+
+#: wldelay-settings-view.php:200
+msgid "Protection Features Enabled"
+msgstr "Функции защиты включены"
+
+#: wldelay-settings-view.php:218
+msgid "Performance tip:"
+msgstr "Совет по производительности:"
+
+#: wldelay-settings-view.php:219
+msgid ""
+"For high-traffic sites, consider using a persistent object cache (Redis, "
+"Memcached) to reduce database load during attacks."
+msgstr ""
+"Для сайтов с высокой посещаемостью рассмотрите возможность использования "
+"постоянного кэша объектов (Redis, Memcached) для снижения нагрузки на базу "
+"данных во время атак."
+
+#: wldelay-settings-view.php:234
+msgid "Enabled"
+msgstr "Включено"
+
+#: wldelay-settings-view.php:234
+msgid "Disabled"
+msgstr "Отключено"
+
+#. translators: 1: feature name, 2: enabled or disabled
+#: wldelay-settings-view.php:240
+#, php-format
+msgid "%1$s: %2$s"
+msgstr "%1$s: %2$s"
+
+#: wldelay-settings-view.php:451
+msgid ""
+"A fixed delay applied to every login attempt. Higher values slow down brute-"
+"force attacks but may slightly delay legitimate users."
+msgstr ""
+"Фиксированная задержка, применяемая к каждой попытке входа. Более высокие "
+"значения замедляют атаки перебора, но могут немного задержать легитимных "
+"пользователей."
+
+#: wldelay-settings-view.php:462
+msgid ""
+"Randomized delays make it harder for attackers to detect patterns or time "
+"their attempts. Recommended for better security."
+msgstr ""
+"Случайные задержки затрудняют обнаружение закономерностей или синхронизацию "
+"попыток атакующими. Рекомендуется для лучшей безопасности."
+
+#: wldelay-settings-view.php:473
+msgid ""
+"The shortest possible delay. Each login attempt will wait at least this many "
+"seconds."
+msgstr ""
+"Самая короткая возможная задержка. Каждая попытка входа будет ждать не менее "
+"этого количества секунд."
+
+#: wldelay-settings-view.php:484
+msgid ""
+"The longest possible delay. Each login attempt will wait up to this many "
+"seconds."
+msgstr ""
+"Самая длинная возможная задержка. Каждая попытка входа будет ждать до этого "
+"количества секунд."
+
+#: wldelay-settings-view.php:495
+msgid ""
+"Get notified when someone is trying to break into your site. Alerts are sent "
+"once per IP until the attack stops."
+msgstr ""
+"Получайте уведомления, когда кто-то пытается взломать ваш сайт. Уведомления "
+"отправляются один раз на IP-адрес, пока атака не прекратится."
+
+#: wldelay-settings-view.php:506
+msgid ""
+"Number of failed attempts from one IP before sending an alert. Lower values "
+"mean earlier warnings but more emails."
+msgstr ""
+"Количество неудачных попыток с одного IP-адреса перед отправкой уведомления. "
+"Более низкие значения означают более ранние предупреждения, но больше писем."
+
+#: wldelay-settings-view.php:518
+msgid ""
+"Where to send security alerts. If left blank, emails go to the WordPress "
+"admin address."
+msgstr ""
+"Куда отправлять оповещения безопасности. Если оставить пусто, письма "
+"отправляются на адрес администратора WordPress."
+
+#: wldelay-settings-view.php:519
+msgid "Leave empty to use the site admin email."
+msgstr ""
+"Оставьте пусто, чтобы использовать электронную почту администратора сайта."
+
+#: wldelay-settings-view.php:530
+msgid "minutes"
+msgstr ""
+
+#: wldelay-settings-view.php:531
+msgid ""
+"Minimum time between alert emails site-wide. Prevents inbox flooding during "
+"coordinated attacks from multiple IPs. Set to 0 to disable."
+msgstr ""
+
+#: wldelay-settings-view.php:532
+msgid "Set to 0 to send an email for every IP that hits the threshold."
+msgstr ""
+
+#: wldelay-settings-view.php:543
+msgid ""
+"Temporarily block IPs after too many failures. Effective at stopping "
+"automated attacks cold."
+msgstr ""
+"Временно блокировать IP-адреса после слишком большого количества сбоев. "
+"Эффективно для остановки автоматизированных атак."
+
+#: wldelay-settings-view.php:556
+#, fuzzy
+msgid ""
+"How many failed attempts before lockout is triggered for the selected "
+"strategy."
+msgstr ""
+"Сколько неудачных попыток перед блокировкой IP-адреса. Установите выше, если "
+"пользователи часто ошибаются при вводе пароля."
+
+#: wldelay-settings-view.php:580
+msgid "IP only"
+msgstr ""
+
+#: wldelay-settings-view.php:582
+#, fuzzy
+msgid "IP + username"
+msgstr "Имя пользователя"
+
+#: wldelay-settings-view.php:585
+msgid ""
+"Choose how failed attempts are grouped for progressive delay and lockout. "
+"\"IP + username\" is better for shared networks."
+msgstr ""
+
+#: wldelay-settings-view.php:586
+msgid ""
+"IP only = one counter per IP. IP + username = separate counters per username "
+"on the same IP."
+msgstr ""
+
+#: wldelay-settings-view.php:599
+msgid ""
+"How long to block an IP. Longer durations discourage persistent attackers "
+"but may inconvenience legitimate users who forgot their password."
+msgstr ""
+"Как долго блокировать IP-адрес. Более длительные периоды отговаривают "
+"настойчивых злоумышленников, но могут неудобно для легитимных пользователей, "
+"забывших пароль."
+
+#: wldelay-settings-view.php:600
+msgid "Maximum: 1440 minutes (24 hours)"
+msgstr "Максимум: 1440 минут (24 часа)"
+
+#: wldelay-settings-view.php:610
+msgid "Trust X-Forwarded-For and HTTP_CLIENT_IP headers for IP detection."
+msgstr ""
+"Доверять заголовкам X-Forwarded-For и HTTP_CLIENT_IP для определения IP."
+
+#: wldelay-settings-view.php:612
+msgid ""
+"Enable this only if your site is behind a reverse proxy or load balancer "
+"(e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct "
+"connection IP is used, preventing attackers from spoofing their IP address."
+msgstr ""
+"Включайте это только если ваш сайт находится за обратным прокси или "
+"балансировщиком нагрузки (например, Cloudflare, nginx proxy, AWS ELB). Когда "
+"отключено, используется только прямой IP-адрес соединения, предотвращая "
+"подмену IP-адреса злоумышленниками."
+
+#: wldelay-settings-view.php:613
+msgid ""
+"Leave disabled unless behind a trusted proxy. Enabling this on a non-proxied "
+"site allows IP spoofing."
+msgstr ""
+"Оставьте отключенным, если только вы не находитесь за доверенным прокси. "
+"Включение этого на сайте без прокси позволяет подменять IP-адреса."
+
+#: wldelay-settings-view.php:623
+msgid "Increase delay with each consecutive failed attempt from the same IP."
+msgstr ""
+"Увеличивать задержку с каждой последовательной неудачной попыткой с одного "
+"IP-адреса."
+
+#: wldelay-settings-view.php:625
+msgid ""
+"Delays grow longer with each failed attempt. First try might be 1s, second "
+"2s, third 3s, etc. Very effective against automated attacks."
+msgstr ""
+"Задержки увеличиваются с каждой неудачной попыткой. Первая попытка может "
+"быть 1 сек, вторая 2 сек, третья 3 сек и т.д. Очень эффективна против "
+"автоматизированных атак."
+
+#: wldelay-settings-view.php:638
+msgid ""
+"How much to increase the delay after each failed attempt. Higher values "
+"penalize repeat offenders more aggressively."
+msgstr ""
+"На сколько увеличивать задержку после каждой неудачной попытки. Более "
+"высокие значения более агрессивно штрафуют повторных нарушителей."
+
+#: wldelay-settings-view.php:639
+msgid "Additional seconds added per failed attempt (1-10)."
+msgstr "Дополнительные секунды добавляются за каждую неудачную попытку (1-10)."
+
+#: wldelay-settings-view.php:652
+msgid ""
+"The delay stops increasing at this value. Prevents excessively long waits "
+"that could tie up server resources."
+msgstr ""
+"Задержка прекращается увеличиваться на этом значении. Предотвращает "
+"чрезмерно длительные ожидания, которые могли бы занять ресурсы сервера."
+
+#: wldelay-settings-view.php:653
+msgid "Maximum total delay in seconds (5-60)."
+msgstr "Максимальная общая задержка в секундах (5-60)."
+
+#: wldelay-settings-view.php:664
+msgid ""
+"Bypass all protection for trusted IPs. Useful for office networks or VPNs "
+"where delays would be annoying."
+msgstr ""
+"Обойти всю защиту для доверенных IP-адресов. Полезно для офисных сетей или "
+"VPN, где задержки были бы раздражающими."
+
+#: wldelay-settings-view.php:675
+msgid ""
+"Enter trusted IP addresses. CIDR notation (e.g., 192.168.1.0/24) allows "
+"whitelisting entire networks."
+msgstr ""
+"Введите доверенные IP-адреса. Нотация CIDR (например, 192.168.1.0/24) "
+"позволяет добавлять в белый список целые сети."
+
+#: wldelay-settings-view.php:676
+msgid ""
+"One IP address or CIDR range per line (e.g., 192.168.1.1 or 10.0.0.0/8)."
+msgstr ""
+"Один IP-адрес или диапазон CIDR на строку (например, 192.168.1.1 или "
+"10.0.0.0/8)."
+
+#: wldelay-settings-view.php:689
+msgid ""
+"Old logs are automatically cleaned up to save database space. Shorter "
+"retention = smaller database."
+msgstr ""
+"Старые журналы автоматически очищаются для сохранения места в базе данных. "
+"Более короткое хранение = меньшая база данных."
+
+#: wldelay-settings-view.php:690
+msgid ""
+"Automatically delete log entries older than this many days. Set to 0 to keep "
+"logs forever."
+msgstr ""
+"Автоматически удалять записи журнала старше этого количества дней. "
+"Установите 0, чтобы вести журналы вечно."
+
+#: wldelay-settings-view.php:701
+msgid ""
+"XML-RPC is often targeted by attackers because it allows multiple login "
+"attempts in a single request. Protecting it is strongly recommended."
+msgstr ""
+"XML-RPC часто становится мишенью для атакующих, потому что позволяет "
+"несколько попыток входа в одном запросе. Его защита настоятельно "
+"рекомендуется."
+
+#: wldelay-settings-view.php:702
+msgid "Apply delay and lockout protection to XML-RPC authentication requests."
+msgstr ""
+"Применять задержку и защиту от блокировки к запросам аутентификации XML-RPC."
+
+#: wldelay-settings-view.php:713
+msgid ""
+"Completely disables XML-RPC login. Enable this if you manage your site only "
+"via the web interface and don't use Jetpack or the WP mobile app."
+msgstr ""
+"Полностью отключает вход через XML-RPC. Включите это, если вы управляете "
+"своим сайтом только через веб-интерфейс и не используете Jetpack или "
+"мобильное приложение WordPress."
+
+#: wldelay-settings-view.php:714
+msgid ""
+"Completely block XML-RPC authentication. Use this if you don't need remote "
+"publishing or the WordPress mobile app."
+msgstr ""
+"Полностью заблокировать аутентификацию XML-RPC. Используйте это, если вам не "
+"нужна удаленная публикация или мобильное приложение WordPress."
+
+#~ msgid ""
+#~ "Adds a one second or a custom time delay to the login to avoid brute-"
+#~ "force attack"
+#~ msgstr ""
+#~ "Добавляет задержку в одну секунду или пользовательское время при входе в "
+#~ "систему для предотвращения атак перебора"

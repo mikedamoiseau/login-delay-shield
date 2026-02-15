@@ -1,0 +1,475 @@
+# Copyright (C) 2025 Mike
+# This file is distributed under the GPL2.
+msgid ""
+msgstr ""
+"Project-Id-Version: Login Delay Shield 1.8.1\n"
+"Report-Msgid-Bugs-To: https://damoiseau.me\n"
+"POT-Creation-Date: 2026-02-14 18:38+0700\n"
+"PO-Revision-Date: 2025-01-01T00:00:00+00:00\n"
+"Last-Translator: Swedish Translation Team\n"
+"Language-Team: Swedish <sv@li.org>\n"
+"Language: sv_SE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Claude Code\n"
+"X-Domain: login-delay-shield\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: wp-login-delay.php:48 wp-login-delay.php:129
+msgid "Settings"
+msgstr "Inställningar"
+
+#: wp-login-delay.php:61
+msgid "Recent Failed Login Attempts"
+msgstr "Senaste misslyckade inloggningsförsök"
+
+#: wp-login-delay.php:95
+msgid "No failed login attempts recorded."
+msgstr "Inga misslyckade inloggningsförsök registrerade."
+
+#: wp-login-delay.php:100
+msgid "Recent failed login attempts"
+msgstr "Senaste misslyckade inloggningsförsök"
+
+#: wp-login-delay.php:102
+msgid "Time"
+msgstr "Tid"
+
+#: wp-login-delay.php:103
+msgid "Username"
+msgstr "Användarnamn"
+
+#: wp-login-delay.php:104
+msgid "IP Address"
+msgstr "IP-adress"
+
+#: wp-login-delay.php:105
+msgid "Source"
+msgstr "Källa"
+
+#: wp-login-delay.php:113
+msgid "Login"
+msgstr "Inloggning"
+
+#. translators: %1$s: time ago, %2$s: exact timestamp
+#: wp-login-delay.php:117
+#, php-format
+msgid "%1$s ago"
+msgstr "%1$s sedan"
+
+#: wp-login-delay.php:276
+msgid "Login Delay Shield"
+msgstr "Login Delay Shield"
+
+#: wp-login-delay.php:277
+msgid ""
+"This plugin was formerly known as \"WP Login Delay\". The name has changed, "
+"but all your settings have been preserved."
+msgstr ""
+"Denna plugin var tidigare känd som \"WP Login Delay\". Namnet har ändrats, "
+"men alla dina inställningar har bevarats."
+
+#. translators: %s: remaining lockout duration, e.g. "2 minutes"
+#: wp-login-delay.php:563
+#, fuzzy, php-format
+msgid "Too many failed login attempts. Please try again in %s."
+msgstr "För många misslyckade inloggningsförsök. Försök igen senare."
+
+#: wp-login-delay.php:568
+msgid "Too many failed login attempts. Please try again later."
+msgstr "För många misslyckade inloggningsförsök. Försök igen senare."
+
+#: wp-login-delay.php:859
+msgid "XML-RPC authentication is disabled on this site."
+msgstr "XML-RPC-autentisering är inaktiverad på denna webbplats."
+
+#: wp-login-delay.php:1019
+#, php-format
+msgid "Login failed. %d attempt remaining before temporary lockout."
+msgid_plural "Login failed. %d attempts remaining before temporary lockout."
+msgstr[0] ""
+msgstr[1] ""
+
+#: wldelay-settings-view.php:45
+msgid "Help"
+msgstr "Hjälp"
+
+#: wldelay-settings-view.php:68
+msgid "Delay Settings"
+msgstr "Fördröjningsinställningar"
+
+#: wldelay-settings-view.php:80 wldelay-settings-view.php:81
+msgid "Email Notifications"
+msgstr "E-postmeddelanden"
+
+#: wldelay-settings-view.php:85
+msgid ""
+"Receive email alerts when multiple failed login attempts are detected from "
+"the same IP address."
+msgstr ""
+"Få e-postaviseringar när flera misslyckade inloggningsförsök upptäcks från "
+"samma IP-adress."
+
+#: wldelay-settings-view.php:93 wldelay-settings-view.php:94
+#: wldelay-settings-view.php:155
+msgid "IP Lockout"
+msgstr "IP-blockering"
+
+#: wldelay-settings-view.php:98
+#, fuzzy
+msgid ""
+"Temporarily block repeated failed login attempts by IP address or by IP + "
+"username."
+msgstr ""
+"Blockera IP-adresser tillfälligt efter för många misslyckade "
+"inloggningsförsök."
+
+#: wldelay-settings-view.php:106 wldelay-settings-view.php:107
+#: wldelay-settings-view.php:156
+msgid "IP Whitelist"
+msgstr "IP-vitlista"
+
+#: wldelay-settings-view.php:111
+msgid "Skip delay and lockout for trusted IP addresses (e.g., office, VPN)."
+msgstr ""
+"Hoppa över fördröjning och blockering för betrodda IP-adresser (t.ex. "
+"kontor, VPN)."
+
+#: wldelay-settings-view.php:119
+msgid "Login Log"
+msgstr "Inloggningslogg"
+
+#: wldelay-settings-view.php:123
+msgid "Failed login attempts are logged and displayed in the dashboard widget."
+msgstr ""
+"Misslyckade inloggningsförsök loggas och visas i instrumentpanelens widget."
+
+#: wldelay-settings-view.php:131 wldelay-settings-view.php:132
+#: wldelay-settings-view.php:158
+msgid "XML-RPC Protection"
+msgstr "XML-RPC-skydd"
+
+#: wldelay-settings-view.php:136
+msgid ""
+"Protect against brute-force attacks via XML-RPC (used by the WordPress "
+"mobile app and remote publishing)."
+msgstr ""
+"Skydda mot brute-force-attacker via XML-RPC (används av WordPress mobilapp "
+"och fjärrpublicering)."
+
+#: wldelay-settings-view.php:154
+msgid "Email Alerts"
+msgstr "E-postaviseringar"
+
+#: wldelay-settings-view.php:157
+msgid "Progressive Delay"
+msgstr "Progressiv fördröjning"
+
+#: wldelay-settings-view.php:171
+msgid "enabled"
+msgstr "aktiverad"
+
+#: wldelay-settings-view.php:171
+msgid "disabled"
+msgstr "inaktiverad"
+
+#: wldelay-settings-view.php:197
+msgid "Protection status summary"
+msgstr "Sammanfattning av skyddsstatus"
+
+#: wldelay-settings-view.php:200
+msgid "Protection Features Enabled"
+msgstr "Skyddsfunktioner aktiverade"
+
+#: wldelay-settings-view.php:218
+msgid "Performance tip:"
+msgstr "Prestandatips:"
+
+#: wldelay-settings-view.php:219
+msgid ""
+"For high-traffic sites, consider using a persistent object cache (Redis, "
+"Memcached) to reduce database load during attacks."
+msgstr ""
+"För webbplatser med hög trafik bör du överväga att använda en persistent "
+"objektcache (Redis, Memcached) för att minska databasbelastningen under "
+"attacker."
+
+#: wldelay-settings-view.php:234
+msgid "Enabled"
+msgstr "Aktiverad"
+
+#: wldelay-settings-view.php:234
+msgid "Disabled"
+msgstr "Inaktiverad"
+
+#. translators: 1: feature name, 2: enabled or disabled
+#: wldelay-settings-view.php:240
+#, php-format
+msgid "%1$s: %2$s"
+msgstr "%1$s: %2$s"
+
+#: wldelay-settings-view.php:451
+msgid ""
+"A fixed delay applied to every login attempt. Higher values slow down brute-"
+"force attacks but may slightly delay legitimate users."
+msgstr ""
+"En fast fördröjning tillämpas på varje inloggningsförsök. Högre värden "
+"saktar ned brute-force-attacker men kan försena legitima användare något."
+
+#: wldelay-settings-view.php:462
+msgid ""
+"Randomized delays make it harder for attackers to detect patterns or time "
+"their attempts. Recommended for better security."
+msgstr ""
+"Slumpmässiga fördröjningar gör det svårare för angripare att upptäcka "
+"mönster eller tajma sina försök. Rekommenderas för bättre säkerhet."
+
+#: wldelay-settings-view.php:473
+msgid ""
+"The shortest possible delay. Each login attempt will wait at least this many "
+"seconds."
+msgstr ""
+"Den kortaste möjliga fördröjningen. Varje inloggningsförsök väntar minst så "
+"många sekunder."
+
+#: wldelay-settings-view.php:484
+msgid ""
+"The longest possible delay. Each login attempt will wait up to this many "
+"seconds."
+msgstr ""
+"Den längsta möjliga fördröjningen. Varje inloggningsförsök väntar upp till "
+"så många sekunder."
+
+#: wldelay-settings-view.php:495
+msgid ""
+"Get notified when someone is trying to break into your site. Alerts are sent "
+"once per IP until the attack stops."
+msgstr ""
+"Få ett meddelande när någon försöker bryta sig in på din webbplats. "
+"Aviseringar skickas en gång per IP tills attacken stoppas."
+
+#: wldelay-settings-view.php:506
+msgid ""
+"Number of failed attempts from one IP before sending an alert. Lower values "
+"mean earlier warnings but more emails."
+msgstr ""
+"Antal misslyckade försök från en IP innan en avisering skickas. Lägre värden "
+"innebär tidigare varningar men fler e-postmeddelanden."
+
+#: wldelay-settings-view.php:518
+msgid ""
+"Where to send security alerts. If left blank, emails go to the WordPress "
+"admin address."
+msgstr ""
+"Var säkerhetsaviseringar ska skickas. Om det lämnas tomt går e-"
+"postmeddelanden till WordPress administratörsadress."
+
+#: wldelay-settings-view.php:519
+msgid "Leave empty to use the site admin email."
+msgstr "Lämna tomt för att använda webbplatsens administratörs e-postadress."
+
+#: wldelay-settings-view.php:530
+msgid "minutes"
+msgstr ""
+
+#: wldelay-settings-view.php:531
+msgid ""
+"Minimum time between alert emails site-wide. Prevents inbox flooding during "
+"coordinated attacks from multiple IPs. Set to 0 to disable."
+msgstr ""
+
+#: wldelay-settings-view.php:532
+msgid "Set to 0 to send an email for every IP that hits the threshold."
+msgstr ""
+
+#: wldelay-settings-view.php:543
+msgid ""
+"Temporarily block IPs after too many failures. Effective at stopping "
+"automated attacks cold."
+msgstr ""
+"Blockera IP-adresser tillfälligt efter för många misslyckade försök. "
+"Effektivt för att stoppa automatiserade attacker helt."
+
+#: wldelay-settings-view.php:556
+#, fuzzy
+msgid ""
+"How many failed attempts before lockout is triggered for the selected "
+"strategy."
+msgstr ""
+"Hur många misslyckade försök innan IP-adressen blockeras. Sätt högre om "
+"användare ofta skriver in lösenord felaktigt."
+
+#: wldelay-settings-view.php:580
+msgid "IP only"
+msgstr ""
+
+#: wldelay-settings-view.php:582
+#, fuzzy
+msgid "IP + username"
+msgstr "Användarnamn"
+
+#: wldelay-settings-view.php:585
+msgid ""
+"Choose how failed attempts are grouped for progressive delay and lockout. "
+"\"IP + username\" is better for shared networks."
+msgstr ""
+
+#: wldelay-settings-view.php:586
+msgid ""
+"IP only = one counter per IP. IP + username = separate counters per username "
+"on the same IP."
+msgstr ""
+
+#: wldelay-settings-view.php:599
+msgid ""
+"How long to block an IP. Longer durations discourage persistent attackers "
+"but may inconvenience legitimate users who forgot their password."
+msgstr ""
+"Hur länge en IP-adress ska blockeras. Längre varaktighet avskräcker ihärdiga "
+"angripare men kan vara opraktiskt för legitima användare som glömt sitt "
+"lösenord."
+
+#: wldelay-settings-view.php:600
+msgid "Maximum: 1440 minutes (24 hours)"
+msgstr "Maximalt: 1440 minuter (24 timmar)"
+
+#: wldelay-settings-view.php:610
+msgid "Trust X-Forwarded-For and HTTP_CLIENT_IP headers for IP detection."
+msgstr ""
+"Förlita dig på X-Forwarded-For och HTTP_CLIENT_IP-headers för IP-detektering."
+
+#: wldelay-settings-view.php:612
+msgid ""
+"Enable this only if your site is behind a reverse proxy or load balancer "
+"(e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct "
+"connection IP is used, preventing attackers from spoofing their IP address."
+msgstr ""
+"Aktivera detta endast om din webbplats finns bakom en omvänd proxy eller "
+"belastningsutjämnare (t.ex. Cloudflare, nginx-proxy, AWS ELB). När det är "
+"inaktiverat används endast IP-adressen för direktanslutning, vilket "
+"förhindrar angripare från att förfalska sin IP-adress."
+
+#: wldelay-settings-view.php:613
+msgid ""
+"Leave disabled unless behind a trusted proxy. Enabling this on a non-proxied "
+"site allows IP spoofing."
+msgstr ""
+"Lämna inaktiverad om den inte är bakom en betrodd proxy. Om du aktiverar "
+"detta på en icke-proxistad webbplats tillåts IP-förfalskning."
+
+#: wldelay-settings-view.php:623
+msgid "Increase delay with each consecutive failed attempt from the same IP."
+msgstr ""
+"Öka fördröjningen med varje på varandra följande misslyckat försök från "
+"samma IP."
+
+#: wldelay-settings-view.php:625
+msgid ""
+"Delays grow longer with each failed attempt. First try might be 1s, second "
+"2s, third 3s, etc. Very effective against automated attacks."
+msgstr ""
+"Fördröjningarna växer längre med varje misslyckat försök. Första försök kan "
+"vara 1s, andra 2s, tredje 3s, osv. Mycket effektivt mot automatiserade "
+"attacker."
+
+#: wldelay-settings-view.php:638
+msgid ""
+"How much to increase the delay after each failed attempt. Higher values "
+"penalize repeat offenders more aggressively."
+msgstr ""
+"Hur mycket fördröjningen ska ökas efter varje misslyckat försök. Högre "
+"värden penaliserar återkommande gärningsmän mer aggressivt."
+
+#: wldelay-settings-view.php:639
+msgid "Additional seconds added per failed attempt (1-10)."
+msgstr "Ytterligare sekunder tillagda per misslyckat försök (1-10)."
+
+#: wldelay-settings-view.php:652
+msgid ""
+"The delay stops increasing at this value. Prevents excessively long waits "
+"that could tie up server resources."
+msgstr ""
+"Fördröjningen slutar öka vid detta värde. Förhindrar excessivt långa "
+"väntestunder som kan binda upp serverresurser."
+
+#: wldelay-settings-view.php:653
+msgid "Maximum total delay in seconds (5-60)."
+msgstr "Maximal total fördröjning i sekunder (5-60)."
+
+#: wldelay-settings-view.php:664
+msgid ""
+"Bypass all protection for trusted IPs. Useful for office networks or VPNs "
+"where delays would be annoying."
+msgstr ""
+"Hoppa över allt skydd för betrodda IP-adresser. Användbart för kontornätverk "
+"eller VPN:er där fördröjningar skulle vara irriterande."
+
+#: wldelay-settings-view.php:675
+msgid ""
+"Enter trusted IP addresses. CIDR notation (e.g., 192.168.1.0/24) allows "
+"whitelisting entire networks."
+msgstr ""
+"Ange betrodda IP-adresser. CIDR-notation (t.ex. 192.168.1.0/24) tillåter "
+"vitlista av hela nätverk."
+
+#: wldelay-settings-view.php:676
+msgid ""
+"One IP address or CIDR range per line (e.g., 192.168.1.1 or 10.0.0.0/8)."
+msgstr ""
+"En IP-adress eller CIDR-intervall per rad (t.ex. 192.168.1.1 eller "
+"10.0.0.0/8)."
+
+#: wldelay-settings-view.php:689
+msgid ""
+"Old logs are automatically cleaned up to save database space. Shorter "
+"retention = smaller database."
+msgstr ""
+"Gamla loggar rensas automatiskt för att spara databasutrymme. Kortare "
+"lagring = mindre databas."
+
+#: wldelay-settings-view.php:690
+msgid ""
+"Automatically delete log entries older than this many days. Set to 0 to keep "
+"logs forever."
+msgstr ""
+"Ta automatiskt bort loggposter äldre än så många dagar. Sätt till 0 för att "
+"behålla loggar för alltid."
+
+#: wldelay-settings-view.php:701
+msgid ""
+"XML-RPC is often targeted by attackers because it allows multiple login "
+"attempts in a single request. Protecting it is strongly recommended."
+msgstr ""
+"XML-RPC är ofta målet för angripare eftersom det tillåter flera "
+"inloggningsförsök i en enda begäran. Att skydda det rekommenderas starkt."
+
+#: wldelay-settings-view.php:702
+msgid "Apply delay and lockout protection to XML-RPC authentication requests."
+msgstr ""
+"Tillämpa fördröjnings- och blockeringsskydd på XML-RPC-"
+"autentiseringsbegäranden."
+
+#: wldelay-settings-view.php:713
+msgid ""
+"Completely disables XML-RPC login. Enable this if you manage your site only "
+"via the web interface and don't use Jetpack or the WP mobile app."
+msgstr ""
+"Inaktiverar helt XML-RPC-inloggning. Aktivera detta om du hanterar din "
+"webbplats endast via webbgränssnittet och inte använder Jetpack eller WP "
+"mobilapp."
+
+#: wldelay-settings-view.php:714
+msgid ""
+"Completely block XML-RPC authentication. Use this if you don't need remote "
+"publishing or the WordPress mobile app."
+msgstr ""
+"Blockera helt XML-RPC-autentisering. Använd detta om du inte behöver "
+"fjärrpublicering eller WordPress mobilapp."
+
+#~ msgid ""
+#~ "Adds a one second or a custom time delay to the login to avoid brute-"
+#~ "force attack"
+#~ msgstr ""
+#~ "Lägger till en sekunds eller anpassad tidsfördröjning vid inloggning för "
+#~ "att undvika brute-force-attacker"
