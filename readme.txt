@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 5.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.1.0
-Stable tag: 2.1.0
+Version: 2.1.1
+Stable tag: 2.1.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -137,6 +137,18 @@ The plugin automatically uses your site's language setting. Want to help transla
 
 == Changelog ==
 
+= 2.1.1 =
+Patch release focused on lockout recovery tooling.
+
+**New Features:**
+* Added an admin recovery action: **Unlock Current IP** button in settings (nonce + capability protected).
+* Added WP-CLI recovery commands:
+  * `wp login-delay-shield unlock-ip <ip>`
+  * `wp login-delay-shield flush-lockouts`
+
+**Improvements:**
+* Added integration tests covering lockout recovery helpers and unlock URL generation.
+
 = 2.1.0 =
 Minor release focused on smarter throttling and lockout behavior.
 
@@ -212,6 +224,9 @@ Major release with comprehensive security features and modern admin interface.
 * First version of the plugin
 
 == Upgrade Notice ==
+
+= 2.1.1 =
+Adds emergency lockout recovery tools: admin **Unlock Current IP** action and WP-CLI commands to unlock a specific IP or flush all lockouts.
 
 = 2.1.0 =
 Adds username-aware throttling/lockout (`IP + username`), login feedback messages (remaining attempts + lockout countdown), and improves failed-attempt tracking for progressive delay mode.
