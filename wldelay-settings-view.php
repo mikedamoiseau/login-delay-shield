@@ -97,6 +97,14 @@ class LDS_Settings_View {
                         <div id="wldelay-lockout-body" class="wldelay-card-body">
                             <p class="description"><?php esc_html_e( 'Temporarily block repeated failed login attempts by IP address or by IP + username.', 'login-delay-shield' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_lockout_section_id' ); ?>
+                            <p>
+                                <a class="button button-secondary" href="<?php echo esc_url( wldelay_get_unlock_current_ip_url() ); ?>">
+                                    <?php esc_html_e( 'Unlock Current IP', 'login-delay-shield' ); ?>
+                                </a>
+                            </p>
+                            <p class="description" id="wldelay_unlock_current_ip_desc">
+                                <?php esc_html_e( 'Emergency recovery: remove lockout for your current IP address.', 'login-delay-shield' ); ?>
+                            </p>
                         </div>
                     </div>
 

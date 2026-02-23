@@ -82,6 +82,218 @@ function wldelay_enqueue_admin_styles( $hook ) {
 }
 add_action( 'admin_enqueue_scripts', 'wldelay_enqueue_admin_styles' );
 
+/**
+ * Build the unlock-current-IP admin action URL.
+ *
+ * @return string URL to admin-post endpoint with nonce.
+ */
+function wldelay_get_unlock_current_ip_url() {
+    $url = add_query_arg(
+        array(
+            'action' => 'wldelay_unlock_current_ip',
+        ),
+        admin_url( 'admin-post.php' )
+    );
+
+    return wp_nonce_url( $url, 'wldelay_unlock_current_ip' );
+}
+
+/**
+ * Remove lockout transient(s) for a specific IP.
+ *
+ * In IP+username strategy mode, this also clears the lockout key for the given
+ * username (if provided), while keeping backward compatibility with IP-only mode.
+ *
+ * @param string $ip IP address.
+ * @param string $username Optional username.
+ * @return int Number of lockout keys removed.
+ */
+function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
+    if ( empty( $ip ) ) {
+        return 0;
+    }
+
+    $deleted = 0;
+
+    $ip_only_key = wldelay_get_lockout_transient_key( $ip, '' );
+    if ( delete_transient( $ip_only_key ) ) {
+        $deleted++;
+    }
+
+    if ( ! empty( $username ) ) {
+        $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
+        $pair_key = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
+        if ( $pair_key !== $ip_only_key && delete_transient( $pair_key ) ) {
+            $deleted++;
+        }
+    }
+
+    return $deleted;
+}
+
+/**
+ * Flush all lockout transients.
+ *
+ * @return int Number of lockout transients removed.
+ */
+function wldelay_flush_lockout_transients() {
+    global $wpdb;
+
+    $option_name_like = $wpdb->esc_like( '_transient_wldelay_lockout_' ) . '%';
+
+    $option_names = $wpdb->get_col(
+        $wpdb->prepare(
+            "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+            $option_name_like
+        )
+    );
+
+    $deleted = 0;
+    foreach ( $option_names as $option_name ) {
+        $transient_name = str_replace( '_transient_', '', $option_name );
+        if ( delete_transient( $transient_name ) ) {
+            $deleted++;
+        }
+    }
+
+    return $deleted;
+}
+
+/**
+ * Handle admin action to unlock the current IP.
+ */
+function wldelay_handle_unlock_current_ip() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+    }
+
+    check_admin_referer( 'wldelay_unlock_current_ip' );
+
+    $ip = wldelay_get_client_ip();
+    $username = '';
+
+    if ( function_exists( 'wp_get_current_user' ) ) {
+        $current_user = wp_get_current_user();
+        if ( $current_user instanceof WP_User ) {
+            $username = $current_user->user_login;
+        }
+    }
+
+    $deleted = wldelay_delete_lockout_for_ip( $ip, $username );
+
+    $redirect_url = add_query_arg(
+        array(
+            'page' => 'login-delay-shield-admin',
+            'wldelay_unlock_ip' => $deleted > 0 ? 'success' : 'none',
+        ),
+        admin_url( 'options-general.php' )
+    );
+
+    wp_safe_redirect( $redirect_url );
+    exit;
+}
+add_action( 'admin_post_wldelay_unlock_current_ip', 'wldelay_handle_unlock_current_ip' );
+
+/**
+ * Render admin notice after unlock-current-IP action.
+ */
+function wldelay_render_unlock_notice() {
+    if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'login-delay-shield-admin' ) {
+        return;
+    }
+
+    if ( ! isset( $_GET['wldelay_unlock_ip'] ) ) {
+        return;
+    }
+
+    $status = sanitize_text_field( wp_unslash( $_GET['wldelay_unlock_ip'] ) );
+    $class = ( $status === 'success' ) ? 'notice-success' : 'notice-warning';
+    $message = ( $status === 'success' )
+        ? __( 'Current IP lockout removed.', 'login-delay-shield' )
+        : __( 'No active lockout was found for your current IP.', 'login-delay-shield' );
+
+    echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
+}
+add_action( 'admin_notices', 'wldelay_render_unlock_notice' );
+
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+    /**
+     * WP-CLI commands for Login Delay Shield.
+     */
+    class WLDelay_CLI_Command {
+        /**
+         * Unlock a specific IP.
+         *
+         * ## OPTIONS
+         *
+         * <ip>
+         * : IP address to unlock.
+         *
+         * ## EXAMPLES
+         *
+         *     wp login-delay-shield unlock-ip 203.0.113.10
+         *
+         * @when after_wp_load
+         */
+        public function unlock_ip( $args ) {
+            list( $ip ) = $args;
+
+            if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+                WP_CLI::error( __( 'Invalid IP address provided.', 'login-delay-shield' ) );
+            }
+
+            $deleted = wldelay_delete_lockout_for_ip( $ip );
+
+            if ( $deleted > 0 ) {
+                WP_CLI::success(
+                    sprintf(
+                        /* translators: %1$s: IP address, %2$d: number of removed lockout keys */
+                        __( 'Removed lockout for %1$s (%2$d key).', 'login-delay-shield' ),
+                        $ip,
+                        $deleted
+                    )
+                );
+                return;
+            }
+
+            WP_CLI::warning(
+                sprintf(
+                    /* translators: %s: IP address */
+                    __( 'No active lockout found for %s.', 'login-delay-shield' ),
+                    $ip
+                )
+            );
+        }
+
+        /**
+         * Flush all lockouts.
+         *
+         * ## EXAMPLES
+         *
+         *     wp login-delay-shield flush-lockouts
+         *
+         * @when after_wp_load
+         */
+        public function flush_lockouts() {
+            $deleted = wldelay_flush_lockout_transients();
+
+            WP_CLI::success(
+                sprintf(
+                    /* translators: %d: number of removed lockout entries */
+                    __( 'Removed %d lockout entr(y/ies).', 'login-delay-shield' ),
+                    $deleted
+                )
+            );
+        }
+    }
+
+    WP_CLI::add_command( 'login-delay-shield', 'WLDelay_CLI_Command' );
+}
+
 function wldelay_dashboard_widget_content() {
     $cache_key = 'wldelay_dashboard_attempts';
     $attempts  = get_transient( $cache_key );
