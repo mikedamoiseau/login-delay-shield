@@ -99,14 +99,70 @@ function wldelay_get_unlock_current_ip_url() {
 }
 
 /**
- * Remove lockout transient(s) for a specific IP.
+ * Get registry option name for transient keys managed by this plugin.
  *
- * In IP+username strategy mode, this also clears the lockout key for the given
+ * @return string
+ */
+function wldelay_get_transient_registry_option_name() {
+    return 'wldelay_transient_registry';
+}
+
+/**
+ * Track a transient key in the plugin registry.
+ *
+ * @param string $transient_name Transient key name (without WordPress prefix).
+ */
+function wldelay_register_transient_key( $transient_name ) {
+    if ( empty( $transient_name ) ) {
+        return;
+    }
+
+    $option_name = wldelay_get_transient_registry_option_name();
+    $registry = get_option( $option_name, array() );
+
+    if ( ! is_array( $registry ) ) {
+        $registry = array();
+    }
+
+    if ( ! in_array( $transient_name, $registry, true ) ) {
+        $registry[] = $transient_name;
+        update_option( $option_name, $registry, false );
+    }
+}
+
+/**
+ * Remove a transient key from the plugin registry.
+ *
+ * @param string $transient_name Transient key name (without WordPress prefix).
+ */
+function wldelay_unregister_transient_key( $transient_name ) {
+    if ( empty( $transient_name ) ) {
+        return;
+    }
+
+    $option_name = wldelay_get_transient_registry_option_name();
+    $registry = get_option( $option_name, array() );
+
+    if ( ! is_array( $registry ) || empty( $registry ) ) {
+        return;
+    }
+
+    $registry = array_values( array_filter( $registry, function( $key ) use ( $transient_name ) {
+        return $key !== $transient_name;
+    } ) );
+
+    update_option( $option_name, $registry, false );
+}
+
+/**
+ * Remove lockout and failure transients for a specific IP.
+ *
+ * In IP+username strategy mode, this also clears tuple keys for the given
  * username (if provided), while keeping backward compatibility with IP-only mode.
  *
  * @param string $ip IP address.
  * @param string $username Optional username.
- * @return int Number of lockout keys removed.
+ * @return int Number of transients removed.
  */
 function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     if ( empty( $ip ) ) {
@@ -115,46 +171,81 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
 
     $deleted = 0;
 
-    $ip_only_key = wldelay_get_lockout_transient_key( $ip, '' );
-    if ( delete_transient( $ip_only_key ) ) {
+    $lockout_ip_key = wldelay_get_lockout_transient_key( $ip, '' );
+    $fails_ip_key   = wldelay_get_failure_transient_key( $ip, '' );
+
+    if ( delete_transient( $lockout_ip_key ) ) {
         $deleted++;
     }
+    wldelay_unregister_transient_key( $lockout_ip_key );
+
+    if ( delete_transient( $fails_ip_key ) ) {
+        $deleted++;
+    }
+    wldelay_unregister_transient_key( $fails_ip_key );
 
     if ( ! empty( $username ) ) {
         $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
-        $pair_key = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
-        if ( $pair_key !== $ip_only_key && delete_transient( $pair_key ) ) {
+
+        $lockout_pair_key = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
+        if ( $lockout_pair_key !== $lockout_ip_key && delete_transient( $lockout_pair_key ) ) {
             $deleted++;
         }
+        wldelay_unregister_transient_key( $lockout_pair_key );
+
+        $fails_pair_key = wldelay_get_failure_transient_key( $ip, $username, $pair_options );
+        if ( $fails_pair_key !== $fails_ip_key && delete_transient( $fails_pair_key ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_key( $fails_pair_key );
     }
 
     return $deleted;
 }
 
 /**
- * Flush all lockout transients.
+ * Flush all lockout and failure transients managed by this plugin.
  *
- * @return int Number of lockout transients removed.
+ * @return int Number of transients removed.
  */
 function wldelay_flush_lockout_transients() {
     global $wpdb;
 
-    $option_name_like = $wpdb->esc_like( '_transient_wldelay_lockout_' ) . '%';
+    $deleted = 0;
+
+    $registry = get_option( wldelay_get_transient_registry_option_name(), array() );
+    if ( is_array( $registry ) ) {
+        foreach ( $registry as $transient_name ) {
+            if ( strpos( $transient_name, 'wldelay_lockout_' ) !== 0 && strpos( $transient_name, 'wldelay_fails_' ) !== 0 ) {
+                continue;
+            }
+
+            if ( delete_transient( $transient_name ) ) {
+                $deleted++;
+            }
+        }
+    }
+
+    // Fallback cleanup for DB-backed transients not present in the registry.
+    $option_name_like_lockouts = $wpdb->esc_like( '_transient_wldelay_lockout_' ) . '%';
+    $option_name_like_fails    = $wpdb->esc_like( '_transient_wldelay_fails_' ) . '%';
 
     $option_names = $wpdb->get_col(
         $wpdb->prepare(
-            "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
-            $option_name_like
+            "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+            $option_name_like_lockouts,
+            $option_name_like_fails
         )
     );
 
-    $deleted = 0;
     foreach ( $option_names as $option_name ) {
         $transient_name = str_replace( '_transient_', '', $option_name );
         if ( delete_transient( $transient_name ) ) {
             $deleted++;
         }
     }
+
+    update_option( wldelay_get_transient_registry_option_name(), array(), false );
 
     return $deleted;
 }
@@ -251,8 +342,13 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
             if ( $deleted > 0 ) {
                 WP_CLI::success(
                     sprintf(
-                        /* translators: %1$s: IP address, %2$d: number of removed lockout keys */
-                        __( 'Removed lockout for %1$s (%2$d key).', 'login-delay-shield' ),
+                        /* translators: %1$s: IP address, %2$d: number of removed entries */
+                        _n(
+                            'Removed lockout/failure data for %1$s (%2$d entry).',
+                            'Removed lockout/failure data for %1$s (%2$d entries).',
+                            $deleted,
+                            'login-delay-shield'
+                        ),
                         $ip,
                         $deleted
                     )
@@ -283,8 +379,13 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 
             WP_CLI::success(
                 sprintf(
-                    /* translators: %d: number of removed lockout entries */
-                    __( 'Removed %d lockout entr(y/ies).', 'login-delay-shield' ),
+                    /* translators: %d: number of removed lockout/failure entries */
+                    _n(
+                        'Removed %d lockout/failure entry.',
+                        'Removed %d lockout/failure entries.',
+                        $deleted,
+                        'login-delay-shield'
+                    ),
                     $deleted
                 )
             );
@@ -955,6 +1056,7 @@ function wldelay_lock_ip( $ip, $username = '' ) {
     $lockout_duration = wldelay_get_lockout_duration_seconds( $options );
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
+    wldelay_register_transient_key( $transient_key );
 }
 
 /**
@@ -1117,6 +1219,7 @@ function wldelay_track_failed_attempt( $username ) {
 
     $failed_attempts++;
     set_transient( $transient_key, $failed_attempts, HOUR_IN_SECONDS );
+    wldelay_register_transient_key( $transient_key );
 
     // Check email notification threshold
     if ( $email_enabled ) {

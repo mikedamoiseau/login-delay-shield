@@ -9,6 +9,7 @@ class RecoveryToolsTest extends WP_UnitTestCase {
         parent::setUp();
 
         delete_option( 'wldelay_options' );
+        delete_option( wldelay_get_transient_registry_option_name() );
         wldelay_clear_options_cache();
 
         $_SERVER['REMOTE_ADDR'] = '192.168.50.10';
@@ -18,53 +19,78 @@ class RecoveryToolsTest extends WP_UnitTestCase {
         unset( $_SERVER['REMOTE_ADDR'] );
 
         delete_option( 'wldelay_options' );
+        delete_option( wldelay_get_transient_registry_option_name() );
         wldelay_clear_options_cache();
 
         parent::tearDown();
     }
 
-    public function test_delete_lockout_for_ip_removes_ip_only_key() {
+    public function test_delete_lockout_for_ip_removes_lockout_and_failure_keys() {
         $ip = '192.168.50.10';
 
-        wldelay_lock_ip( $ip );
-        $this->assertTrue( wldelay_is_ip_locked( $ip ) );
+        $lockout_key = wldelay_get_lockout_transient_key( $ip );
+        $fails_key = wldelay_get_failure_transient_key( $ip );
+
+        set_transient( $lockout_key, time(), 10 * MINUTE_IN_SECONDS );
+        set_transient( $fails_key, 5, HOUR_IN_SECONDS );
+
+        wldelay_register_transient_key( $lockout_key );
+        wldelay_register_transient_key( $fails_key );
 
         $deleted = wldelay_delete_lockout_for_ip( $ip );
 
-        $this->assertSame( 1, $deleted );
-        $this->assertFalse( wldelay_is_ip_locked( $ip ) );
+        $this->assertSame( 2, $deleted );
+        $this->assertFalse( get_transient( $lockout_key ) );
+        $this->assertFalse( get_transient( $fails_key ) );
     }
 
-    public function test_delete_lockout_for_ip_removes_ip_username_key_when_username_provided() {
+    public function test_delete_lockout_for_ip_removes_ip_username_keys_when_username_provided() {
         $ip = '192.168.50.20';
         $username = 'admin';
         $pair_options = [ 'wldelay_lockout_attempt_strategy' => 'ip_username' ];
-        $key = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
 
-        set_transient( $key, time(), 10 * MINUTE_IN_SECONDS );
-        $this->assertNotFalse( get_transient( $key ) );
+        $lockout_key = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
+        $fails_key = wldelay_get_failure_transient_key( $ip, $username, $pair_options );
+
+        set_transient( $lockout_key, time(), 10 * MINUTE_IN_SECONDS );
+        set_transient( $fails_key, 3, HOUR_IN_SECONDS );
+
+        wldelay_register_transient_key( $lockout_key );
+        wldelay_register_transient_key( $fails_key );
 
         $deleted = wldelay_delete_lockout_for_ip( $ip, $username );
 
-        $this->assertSame( 1, $deleted );
-        $this->assertFalse( get_transient( $key ) );
+        $this->assertSame( 2, $deleted );
+        $this->assertFalse( get_transient( $lockout_key ) );
+        $this->assertFalse( get_transient( $fails_key ) );
     }
 
-    public function test_flush_lockout_transients_removes_all_lockouts() {
+    public function test_flush_lockout_transients_removes_lockouts_and_failure_counters() {
         $ip_one = '192.168.50.30';
         $ip_two = '192.168.50.31';
 
-        wldelay_lock_ip( $ip_one );
-        wldelay_lock_ip( $ip_two );
+        $lockout_one = wldelay_get_lockout_transient_key( $ip_one );
+        $lockout_two = wldelay_get_lockout_transient_key( $ip_two );
+        $fails_one = wldelay_get_failure_transient_key( $ip_one );
+        $fails_two = wldelay_get_failure_transient_key( $ip_two );
 
-        $this->assertTrue( wldelay_is_ip_locked( $ip_one ) );
-        $this->assertTrue( wldelay_is_ip_locked( $ip_two ) );
+        set_transient( $lockout_one, time(), 10 * MINUTE_IN_SECONDS );
+        set_transient( $lockout_two, time(), 10 * MINUTE_IN_SECONDS );
+        set_transient( $fails_one, 2, HOUR_IN_SECONDS );
+        set_transient( $fails_two, 4, HOUR_IN_SECONDS );
+
+        wldelay_register_transient_key( $lockout_one );
+        wldelay_register_transient_key( $lockout_two );
+        wldelay_register_transient_key( $fails_one );
+        wldelay_register_transient_key( $fails_two );
 
         $deleted = wldelay_flush_lockout_transients();
 
-        $this->assertGreaterThanOrEqual( 2, $deleted );
-        $this->assertFalse( wldelay_is_ip_locked( $ip_one ) );
-        $this->assertFalse( wldelay_is_ip_locked( $ip_two ) );
+        $this->assertGreaterThanOrEqual( 4, $deleted );
+        $this->assertFalse( get_transient( $lockout_one ) );
+        $this->assertFalse( get_transient( $lockout_two ) );
+        $this->assertFalse( get_transient( $fails_one ) );
+        $this->assertFalse( get_transient( $fails_two ) );
     }
 
     public function test_unlock_current_ip_url_contains_expected_action_and_nonce() {
