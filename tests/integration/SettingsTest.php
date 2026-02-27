@@ -71,6 +71,8 @@ class SettingsTest extends WP_UnitTestCase {
             'wldelay_email_enabled' => true,
             'wldelay_email_threshold' => 10,
             'wldelay_email_address' => 'test@example.com',
+            'wldelay_rest_enabled' => true,
+            'wldelay_application_password_enabled' => true,
         ];
 
         $result = $this->settings->sanitize( $input );
@@ -82,6 +84,8 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertTrue( $result['wldelay_email_enabled'] );
         $this->assertEquals( 10, $result['wldelay_email_threshold'] );
         $this->assertEquals( 'test@example.com', $result['wldelay_email_address'] );
+        $this->assertTrue( $result['wldelay_rest_enabled'] );
+        $this->assertTrue( $result['wldelay_application_password_enabled'] );
     }
 
     /**
@@ -216,5 +220,9 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertArrayHasKey( 'wldelay_email_enabled', $wp_settings_fields[ $page ]['wldelay_email_section_id'] );
         $this->assertArrayHasKey( 'wldelay_email_threshold', $wp_settings_fields[ $page ]['wldelay_email_section_id'] );
         $this->assertArrayHasKey( 'wldelay_email_address', $wp_settings_fields[ $page ]['wldelay_email_section_id'] );
+
+        // Check auth protection section fields
+        $this->assertArrayHasKey( 'wldelay_rest_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
+        $this->assertArrayHasKey( 'wldelay_application_password_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
     }
 }

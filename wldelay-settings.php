@@ -313,6 +313,22 @@ class LDS_Settings {
             'wldelay_xmlrpc_section_id'
         );
 
+        add_settings_field(
+            'wldelay_rest_enabled',
+            'Enable REST API protection',
+            array( $this->view, 'rest_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_xmlrpc_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_application_password_enabled',
+            'Enable application password protection',
+            array( $this->view, 'application_password_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_xmlrpc_section_id'
+        );
+
     }
 
     /**
@@ -414,6 +430,8 @@ class LDS_Settings {
         // XMLRPC Protection settings
         $new_input['wldelay_xmlrpc_enabled'] = ! empty( $input['wldelay_xmlrpc_enabled'] );
         $new_input['wldelay_xmlrpc_block'] = ! empty( $input['wldelay_xmlrpc_block'] );
+        $new_input['wldelay_rest_enabled'] = ! empty( $input['wldelay_rest_enabled'] );
+        $new_input['wldelay_application_password_enabled'] = ! empty( $input['wldelay_application_password_enabled'] );
 
         return $new_input;
     }

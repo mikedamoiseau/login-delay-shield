@@ -17,6 +17,8 @@ class XmlRpcTest extends LDS_Unit_Test_Case {
 
         // Clear $_SERVER
         unset( $_SERVER['REQUEST_URI'] );
+        unset( $_SERVER['PHP_AUTH_USER'] );
+        unset( $_SERVER['PHP_AUTH_PW'] );
     }
 
     /**
@@ -75,6 +77,17 @@ class XmlRpcTest extends LDS_Unit_Test_Case {
     }
 
     /**
+     * Test wldelay_get_login_source returns 'rest' for REST requests.
+     */
+    public function test_get_login_source_returns_rest() {
+        $_SERVER['REQUEST_URI'] = '/wp-json/wp/v2/posts';
+
+        $source = $this->get_login_source();
+
+        $this->assertEquals( 'rest', $source );
+    }
+
+    /**
      * Test wldelay_get_login_source returns 'wp-login' for regular requests.
      */
     public function test_get_login_source_returns_wp_login() {
@@ -105,11 +118,56 @@ class XmlRpcTest extends LDS_Unit_Test_Case {
     }
 
     /**
+     * Helper to replicate wldelay_is_rest_request() logic.
+     *
+     * @return bool True if this is a REST request.
+     */
+    private function is_rest_request(): bool {
+        if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+            return true;
+        }
+
+        if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( $_SERVER['REQUEST_URI'], '/wp-json/' ) !== false ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Helper to replicate wldelay_get_login_source() logic.
      *
-     * @return string 'xmlrpc' or 'wp-login'
+     * @return string Source key.
      */
     private function get_login_source(): string {
-        return $this->is_xmlrpc_request() ? 'xmlrpc' : 'wp-login';
+        if ( $this->is_xmlrpc_request() ) {
+            return 'xmlrpc';
+        }
+
+        if ( $this->is_rest_request() ) {
+            return 'rest';
+        }
+
+        return 'wp-login';
+    }
+
+    /**
+     * Test application-password attempt detection.
+     */
+    public function test_is_application_password_attempt_detection() {
+        $this->assertFalse( $this->is_application_password_attempt() );
+
+        $_SERVER['PHP_AUTH_USER'] = 'api-user';
+        $this->assertFalse( $this->is_application_password_attempt() );
+
+        $_SERVER['PHP_AUTH_PW'] = 'app-pass';
+        $this->assertTrue( $this->is_application_password_attempt() );
+    }
+
+    /**
+     * Helper to replicate application-password detection.
+     */
+    private function is_application_password_attempt(): bool {
+        return isset( $_SERVER['PHP_AUTH_USER'] ) && isset( $_SERVER['PHP_AUTH_PW'] );
     }
 }

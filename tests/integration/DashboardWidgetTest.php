@@ -83,6 +83,34 @@ class DashboardWidgetTest extends WP_UnitTestCase {
     }
 
     /**
+     * Test that widget displays REST source correctly.
+     */
+    public function test_widget_displays_rest_source() {
+        wldelay_create_log_table();
+        wldelay_log_failed_attempt( '10.0.0.51', 'rest_attacker', 'rest' );
+
+        ob_start();
+        wldelay_dashboard_widget_content();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString( 'REST API', $output );
+    }
+
+    /**
+     * Test that widget displays application-password source correctly.
+     */
+    public function test_widget_displays_application_password_source() {
+        wldelay_create_log_table();
+        wldelay_log_failed_attempt( '10.0.0.52', 'app_attacker', 'application-password' );
+
+        ob_start();
+        wldelay_dashboard_widget_content();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString( 'Application Password', $output );
+    }
+
+    /**
      * Test that widget limits displayed attempts.
      */
     public function test_widget_limits_displayed_attempts() {

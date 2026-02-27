@@ -191,11 +191,19 @@ class DatabaseUpgradeTest extends WP_UnitTestCase {
         // Log with xmlrpc source
         wldelay_log_failed_attempt( '192.168.1.2', 'user2', 'xmlrpc' );
 
+        // Log with rest source
+        wldelay_log_failed_attempt( '192.168.1.3', 'user3', 'rest' );
+
+        // Log with application-password source
+        wldelay_log_failed_attempt( '192.168.1.4', 'user4', 'application-password' );
+
         $results = $wpdb->get_results( "SELECT * FROM $table_name ORDER BY id" );
 
-        $this->assertCount( 2, $results );
+        $this->assertCount( 4, $results );
         $this->assertEquals( 'wp-login', $results[0]->source );
         $this->assertEquals( 'xmlrpc', $results[1]->source );
+        $this->assertEquals( 'rest', $results[2]->source );
+        $this->assertEquals( 'application-password', $results[3]->source );
     }
 
     /**

@@ -223,6 +223,9 @@ class XmlRpcBlockingTest extends WP_UnitTestCase {
         $_SERVER['REQUEST_URI'] = '/xmlrpc.php';
         $this->assertEquals( 'xmlrpc', wldelay_get_login_source() );
 
+        $_SERVER['REQUEST_URI'] = '/wp-json/wp/v2/posts';
+        $this->assertEquals( 'rest', wldelay_get_login_source() );
+
         $_SERVER['REQUEST_URI'] = '/wp-login.php';
         $this->assertEquals( 'wp-login', wldelay_get_login_source() );
 

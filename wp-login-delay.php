@@ -423,7 +423,7 @@ function wldelay_dashboard_widget_content() {
         $time_ago = human_time_diff( strtotime( $attempt->attempted_at ), time() );
         $source = isset( $attempt->source ) ? $attempt->source : 'wp-login';
         $source_class = 'wldelay-source-' . sanitize_html_class( $source );
-        $source_label = ( $source === 'xmlrpc' ) ? 'XML-RPC' : __( 'Login', 'login-delay-shield' );
+        $source_label = wldelay_get_login_source_label( $source );
 
         echo '<tr>';
         /* translators: %1$s: time ago, %2$s: exact timestamp */
@@ -901,12 +901,79 @@ function wldelay_is_xmlrpc_request() {
 }
 
 /**
- * Get the source of the login attempt
+ * Check if the current request is a REST API request.
  *
- * @return string 'xmlrpc' or 'wp-login'
+ * @return bool True if this is a REST request.
+ */
+function wldelay_is_rest_request() {
+    if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+        return true;
+    }
+
+    if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( $_SERVER['REQUEST_URI'], '/wp-json/' ) !== false ) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Get username from PHP auth headers.
+ *
+ * @return string Normalized username or empty string.
+ */
+function wldelay_get_php_auth_username() {
+    if ( isset( $_SERVER['PHP_AUTH_USER'] ) ) {
+        return wldelay_normalize_username( wp_unslash( $_SERVER['PHP_AUTH_USER'] ) );
+    }
+
+    return '';
+}
+
+/**
+ * Detect whether current request is attempting application-password auth.
+ *
+ * @return bool True when PHP auth headers are present.
+ */
+function wldelay_is_application_password_attempt() {
+    return isset( $_SERVER['PHP_AUTH_USER'] ) && isset( $_SERVER['PHP_AUTH_PW'] );
+}
+
+/**
+ * Get the source of the login attempt.
+ *
+ * @return string Source key: xmlrpc, rest, or wp-login.
  */
 function wldelay_get_login_source() {
-    return wldelay_is_xmlrpc_request() ? 'xmlrpc' : 'wp-login';
+    if ( wldelay_is_xmlrpc_request() ) {
+        return 'xmlrpc';
+    }
+
+    if ( wldelay_is_rest_request() ) {
+        return 'rest';
+    }
+
+    return 'wp-login';
+}
+
+/**
+ * Get display label for a login source value.
+ *
+ * @param string $source Source key.
+ * @return string Human-readable label.
+ */
+function wldelay_get_login_source_label( $source ) {
+    switch ( $source ) {
+        case 'xmlrpc':
+            return 'XML-RPC';
+        case 'rest':
+            return __( 'REST API', 'login-delay-shield' );
+        case 'application-password':
+            return __( 'Application Password', 'login-delay-shield' );
+        case 'wp-login':
+        default:
+            return __( 'Login', 'login-delay-shield' );
+    }
 }
 
 /**
@@ -1186,6 +1253,136 @@ function wldelay_block_xmlrpc_auth( $user, $username, $password ) {
 }
 // Run late (priority 99) to intercept after WordPress authentication
 add_filter( 'authenticate', 'wldelay_block_xmlrpc_auth', 99, 3 );
+
+/**
+ * Handle REST authentication failures and lockout checks.
+ *
+ * @param null|WP_Error|WP_User $errors Existing REST auth result.
+ * @return null|WP_Error|WP_User
+ */
+function wldelay_handle_rest_authentication( $errors ) {
+    $options = wldelay_get_options();
+    if ( empty( $options['wldelay_rest_enabled'] ) ) {
+        return $errors;
+    }
+
+    if ( ! wldelay_is_rest_request() ) {
+        return $errors;
+    }
+
+    if ( wldelay_is_ip_whitelisted() ) {
+        return $errors;
+    }
+
+    // Let application-password protection own those attempts only when WordPress can actually process them.
+    $app_passwords_available = function_exists( 'wp_is_application_passwords_available' )
+        ? wp_is_application_passwords_available()
+        : true;
+
+    if ( ! empty( $options['wldelay_application_password_enabled'] ) && $app_passwords_available && wldelay_is_application_password_attempt() ) {
+        return $errors;
+    }
+
+    $username = wldelay_get_php_auth_username();
+    $ip       = wldelay_get_client_ip();
+
+    if ( ! empty( $options['wldelay_lockout_enabled'] ) && wldelay_is_ip_locked( null, $username ) ) {
+        return new WP_Error(
+            'wldelay_ip_locked',
+            wldelay_get_lockout_error_message( null, $username ),
+            array( 'status' => 403 )
+        );
+    }
+
+    if ( ! is_wp_error( $errors ) || empty( $ip ) ) {
+        return $errors;
+    }
+
+    $failure_count = wldelay_get_failure_count( null, $username );
+    $delay         = wldelay_get_delay_value( $failure_count );
+    if ( empty( $delay ) ) {
+        $delay = LDS_Settings::_DEFAULT_DELAY_IN_SECONDS;
+    }
+
+    $failed_attempts = wldelay_track_failed_attempt( $username );
+    wldelay_log_failed_attempt( $ip, $username, 'rest' );
+    sleep( $delay );
+
+    if ( ! empty( $options['wldelay_lockout_enabled'] ) && $failed_attempts > 0 && wldelay_is_ip_locked( null, $username ) ) {
+        return new WP_Error(
+            'wldelay_ip_locked',
+            wldelay_get_lockout_error_message( null, $username ),
+            array( 'status' => 403 )
+        );
+    }
+
+    return $errors;
+}
+add_filter( 'rest_authentication_errors', 'wldelay_handle_rest_authentication', 20 );
+
+/**
+ * Handle application-password authentication failures and lockout checks.
+ *
+ * @param null|WP_User|WP_Error $user Existing auth result.
+ * @param string $username Username.
+ * @param string $password Password.
+ * @return null|WP_User|WP_Error
+ */
+function wldelay_handle_application_password_auth( $user, $username, $password ) {
+    $options = wldelay_get_options();
+    if ( empty( $options['wldelay_application_password_enabled'] ) ) {
+        return $user;
+    }
+
+    if ( ! wldelay_is_application_password_attempt() ) {
+        return $user;
+    }
+
+    if ( wldelay_is_ip_whitelisted() ) {
+        return $user;
+    }
+
+    $username = wldelay_normalize_username( $username );
+    if ( empty( $username ) ) {
+        $username = wldelay_get_php_auth_username();
+    }
+
+    $ip = wldelay_get_client_ip();
+    if ( empty( $ip ) ) {
+        return $user;
+    }
+
+    if ( ! empty( $options['wldelay_lockout_enabled'] ) && wldelay_is_ip_locked( null, $username ) ) {
+        return new WP_Error(
+            'wldelay_ip_locked',
+            wldelay_get_lockout_error_message( null, $username )
+        );
+    }
+
+    if ( ! is_wp_error( $user ) ) {
+        return $user;
+    }
+
+    $failure_count = wldelay_get_failure_count( null, $username );
+    $delay         = wldelay_get_delay_value( $failure_count );
+    if ( empty( $delay ) ) {
+        $delay = LDS_Settings::_DEFAULT_DELAY_IN_SECONDS;
+    }
+
+    $failed_attempts = wldelay_track_failed_attempt( $username );
+    wldelay_log_failed_attempt( $ip, $username, 'application-password' );
+    sleep( $delay );
+
+    if ( ! empty( $options['wldelay_lockout_enabled'] ) && $failed_attempts > 0 && wldelay_is_ip_locked( null, $username ) ) {
+        return new WP_Error(
+            'wldelay_ip_locked',
+            wldelay_get_lockout_error_message( null, $username )
+        );
+    }
+
+    return $user;
+}
+add_filter( 'authenticate', 'wldelay_handle_application_password_auth', 25, 3 );
 
 /**
  * Track a failed login attempt for counters, notifications, and lockout.
