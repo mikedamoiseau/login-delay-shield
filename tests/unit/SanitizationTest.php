@@ -155,19 +155,27 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $input = [
             'wldelay_delay_random' => '1',
             'wldelay_email_enabled' => 'yes',
+            'wldelay_rest_enabled' => '1',
+            'wldelay_application_password_enabled' => '1',
         ];
         $result = $this->settings->sanitize( $input );
         $this->assertTrue( $result['wldelay_delay_random'] );
         $this->assertTrue( $result['wldelay_email_enabled'] );
+        $this->assertTrue( $result['wldelay_rest_enabled'] );
+        $this->assertTrue( $result['wldelay_application_password_enabled'] );
 
         // Test falsy values
         $input = [
             'wldelay_delay_random' => '',
             'wldelay_email_enabled' => null,
+            'wldelay_rest_enabled' => '',
+            'wldelay_application_password_enabled' => null,
         ];
         $result = $this->settings->sanitize( $input );
         $this->assertFalse( $result['wldelay_delay_random'] );
         $this->assertFalse( $result['wldelay_email_enabled'] );
+        $this->assertFalse( $result['wldelay_rest_enabled'] );
+        $this->assertFalse( $result['wldelay_application_password_enabled'] );
     }
 
     /**
@@ -182,6 +190,8 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $this->assertEquals( LDS_Settings::_DEFAULT_RANDOM_MAX, $result['wldelay_delay_random_max'] );
         $this->assertEquals( LDS_Settings::_DEFAULT_EMAIL_THRESHOLD, $result['wldelay_email_threshold'] );
         $this->assertEquals( LDS_Settings::_DEFAULT_EMAIL_COOLDOWN, $result['wldelay_email_cooldown'] );
+        $this->assertFalse( $result['wldelay_rest_enabled'] );
+        $this->assertFalse( $result['wldelay_application_password_enabled'] );
     }
 
     /**

@@ -164,6 +164,8 @@ class LDS_Settings_View {
             'wldelay_whitelist_enabled' => __( 'IP Whitelist', 'login-delay-shield' ),
             'wldelay_progressive_enabled' => __( 'Progressive Delay', 'login-delay-shield' ),
             'wldelay_xmlrpc_enabled' => __( 'XML-RPC Protection', 'login-delay-shield' ),
+            'wldelay_rest_enabled' => __( 'REST API Protection', 'login-delay-shield' ),
+            'wldelay_application_password_enabled' => __( 'Application Password Protection', 'login-delay-shield' ),
         );
 
         $enabled_count = 0;
@@ -377,6 +379,16 @@ class LDS_Settings_View {
                 }
                 toggleXmlrpc();
                 $( '#wldelay_xmlrpc_enabled' ).on( 'change', toggleXmlrpc );
+
+                // REST protection toggle
+                $( '#wldelay_rest_enabled' ).on( 'change', function() {
+                    updateSummary( 'wldelay_rest_enabled', $(this).prop( 'checked' ) );
+                });
+
+                // Application password protection toggle
+                $( '#wldelay_application_password_enabled' ).on( 'change', function() {
+                    updateSummary( 'wldelay_application_password_enabled', $(this).prop( 'checked' ) );
+                });
 
                 // Collapsible sections with keyboard support
                 function toggleCard( $header ) {
@@ -720,5 +732,29 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Completely disables XML-RPC login. Enable this if you manage your site only via the web interface and don\'t use Jetpack or the WP mobile app.', 'login-delay-shield' ) );
         echo '<p id="wldelay_xmlrpc_block_desc" class="description">' . esc_html__( 'Completely block XML-RPC authentication. Use this if you don\'t need remote publishing or the WordPress mobile app.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * REST protection callback.
+     */
+    public function rest_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_rest_enabled" name="wldelay_options[wldelay_rest_enabled]" value="1" %s aria-describedby="wldelay_rest_enabled_desc" />',
+            ! empty( $this->options['wldelay_rest_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'Apply delay and lockout checks to failed REST API authentication requests.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_rest_enabled_desc" class="description">' . esc_html__( 'Protect failed REST authentication attempts with the same delay/lockout behavior.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Application password protection callback.
+     */
+    public function application_password_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_application_password_enabled" name="wldelay_options[wldelay_application_password_enabled]" value="1" %s aria-describedby="wldelay_application_password_enabled_desc" />',
+            ! empty( $this->options['wldelay_application_password_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'Apply delay and lockout checks to application-password authentication attempts.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_application_password_enabled_desc" class="description">' . esc_html__( 'Protect failed application-password attempts and log them separately.', 'login-delay-shield' ) . '</p>';
     }
 }

@@ -23,6 +23,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 - **Email notifications** — Receive alerts when failed login thresholds are reached
 - **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity
 - **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
+- **REST/API auth protection (optional)** — Apply delay/lockout checks to REST and application-password authentication paths
 - **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 - **Recovery tools** — Admin unlock action and WP-CLI commands to flush lockouts
 - **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support

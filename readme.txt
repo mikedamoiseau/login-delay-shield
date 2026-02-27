@@ -145,9 +145,11 @@ Patch release focused on lockout recovery tooling.
 * Added WP-CLI recovery commands:
   * `wp login-delay-shield unlock-ip <ip>`
   * `wp login-delay-shield flush-lockouts`
+* Added optional protection toggles for REST API and application-password authentication paths.
 
 **Improvements:**
 * Added integration tests covering lockout recovery helpers and unlock URL generation.
+* Failed-attempt logs now include dedicated source values for REST (`rest`) and application-password (`application-password`) auth failures.
 
 = 2.1.0 =
 Minor release focused on smarter throttling and lockout behavior.
