@@ -1274,8 +1274,12 @@ function wldelay_handle_rest_authentication( $errors ) {
         return $errors;
     }
 
-    // Let application-password protection own those attempts when enabled.
-    if ( ! empty( $options['wldelay_application_password_enabled'] ) && wldelay_is_application_password_attempt() ) {
+    // Let application-password protection own those attempts only when WordPress can actually process them.
+    $app_passwords_available = function_exists( 'wp_is_application_passwords_available' )
+        ? wp_is_application_passwords_available()
+        : true;
+
+    if ( ! empty( $options['wldelay_application_password_enabled'] ) && $app_passwords_available && wldelay_is_application_password_attempt() ) {
         return $errors;
     }
 
