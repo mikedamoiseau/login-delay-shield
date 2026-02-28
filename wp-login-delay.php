@@ -99,6 +99,22 @@ function wldelay_get_unlock_current_ip_url() {
 }
 
 /**
+ * Build the export-login-log admin action URL.
+ *
+ * @return string URL to admin-post endpoint with nonce.
+ */
+function wldelay_get_export_login_log_url() {
+    $url = add_query_arg(
+        array(
+            'action' => 'wldelay_export_login_log',
+        ),
+        admin_url( 'admin-post.php' )
+    );
+
+    return wp_nonce_url( $url, 'wldelay_export_login_log' );
+}
+
+/**
  * Get registry option name for transient keys managed by this plugin.
  *
  * @return string
@@ -284,6 +300,65 @@ function wldelay_handle_unlock_current_ip() {
     exit;
 }
 add_action( 'admin_post_wldelay_unlock_current_ip', 'wldelay_handle_unlock_current_ip' );
+
+/**
+ * Mitigate CSV formula injection for values opened in spreadsheet tools.
+ *
+ * @param string $value
+ * @return string
+ */
+function wldelay_csv_sanitize_cell( $value ) {
+    $value = (string) $value;
+    if ( $value !== '' && preg_match( '/^[ \\t]*[=+\\-@]/', $value ) ) {
+        return "'" . $value;
+    }
+    return $value;
+}
+
+/**
+ * Handle admin action to export login log as CSV.
+ */
+function wldelay_handle_export_login_log() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+    }
+
+    check_admin_referer( 'wldelay_export_login_log' );
+
+    global $wpdb;
+    $table_name = wldelay_get_log_table_name();
+
+    $attempts = $wpdb->get_results( "SELECT source, ip_address, username, attempted_at FROM $table_name ORDER BY attempted_at DESC" );
+
+    nocache_headers();
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="login-delay-shield-login-log-' . gmdate( 'Y-m-d' ) . '.csv"' );
+
+    $out = fopen( 'php://output', 'w' );
+    if ( $out ) {
+        fputcsv( $out, array( 'source', 'ip', 'username', 'timestamp' ) );
+
+        foreach ( $attempts as $attempt ) {
+            fputcsv(
+                $out,
+                array(
+                    wldelay_csv_sanitize_cell( $attempt->source ),
+                    wldelay_csv_sanitize_cell( $attempt->ip_address ),
+                    wldelay_csv_sanitize_cell( $attempt->username ),
+                    wldelay_csv_sanitize_cell( $attempt->attempted_at ),
+                )
+            );
+        }
+
+        fclose( $out );
+    }
+
+    $should_exit = apply_filters( 'wldelay_export_login_log_should_exit', true );
+    if ( $should_exit ) {
+        exit;
+    }
+}
+add_action( 'admin_post_wldelay_export_login_log', 'wldelay_handle_export_login_log' );
 
 /**
  * Render admin notice after unlock-current-IP action.
