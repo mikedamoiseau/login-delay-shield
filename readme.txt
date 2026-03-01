@@ -138,7 +138,18 @@ The plugin automatically uses your site's language setting. Want to help transla
 == Changelog ==
 
 = 2.1.2 =
-Patch release.
+Feature and bugfix release.
+
+**New Features:**
+* CSV export for the failed login log — download attempts as a CSV file directly from the dashboard widget.
+* Optional REST API and application-password authentication protection toggles.
+
+**Bug Fixes:**
+* Fixed REST protection staying active even when application passwords are unavailable.
+* Lockout flush recovery now correctly clears failure counters alongside lockout transients.
+
+**Improvements:**
+* Stabilized integration test suite and improved CSV export test reliability.
 
 = 2.1.1 =
 Patch release focused on lockout recovery tooling.
@@ -231,7 +242,7 @@ Major release with comprehensive security features and modern admin interface.
 == Upgrade Notice ==
 
 = 2.1.2 =
-Patch release.
+Adds CSV export for the failed login log, REST API and application-password auth protection, and fixes lockout recovery clearing failure counters.
 
 = 2.1.1 =
 Adds emergency lockout recovery tools: admin **Unlock Current IP** action and WP-CLI commands to unlock a specific IP or flush all lockouts.
