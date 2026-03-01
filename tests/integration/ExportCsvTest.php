@@ -228,14 +228,14 @@ class ExportCsvTest extends WP_UnitTestCase {
         );
 
         $query = wp_parse_url( $url, PHP_URL_QUERY );
-        parse_str( $query, $args );
+        parse_str( html_entity_decode( (string) $query, ENT_QUOTES, 'UTF-8' ), $args );
 
         $this->assertSame( 'wldelay_export_login_log', $args['action'] );
-        $this->assertArrayNotHasKey( 'wldelay_log_source', $args );
+        $this->assertSame( 'xmlrpc', $args['wldelay_log_source'] );
         $this->assertArrayNotHasKey( 'wldelay_log_ip', $args );
         $this->assertSame( 'alice', $args['wldelay_log_username'] );
         $this->assertArrayNotHasKey( 'wldelay_log_from', $args );
-        $this->assertArrayNotHasKey( 'wldelay_log_to', $args );
+        $this->assertSame( '2025-01-01', $args['wldelay_log_to'] );
     }
 
     public function test_login_log_filters_swap_reversed_date_range() {
