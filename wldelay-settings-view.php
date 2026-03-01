@@ -130,6 +130,14 @@ class LDS_Settings_View {
                         <div id="wldelay-log-body" class="wldelay-card-body">
                             <p class="description"><?php esc_html_e( 'Failed login attempts are logged and displayed in the dashboard widget.', 'login-delay-shield' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_log_section_id' ); ?>
+                            <p>
+                                <a class="button button-secondary" href="<?php echo esc_url( wldelay_get_export_login_log_url() ); ?>">
+                                    <?php esc_html_e( 'Export CSV', 'login-delay-shield' ); ?>
+                                </a>
+                            </p>
+                            <p class="description" id="wldelay_export_csv_desc">
+                                <?php esc_html_e( 'Download a CSV of recorded failed login attempts (source, IP, username, timestamp).', 'login-delay-shield' ); ?>
+                            </p>
                         </div>
                     </div>
 
