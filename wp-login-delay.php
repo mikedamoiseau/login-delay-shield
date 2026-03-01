@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.1.1' );
+define( 'WLDELAY_VERSION', '2.1.2' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
@@ -9,7 +9,7 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC protection, and email alerts.
-Version: 2.1.1
+Version: 2.1.2
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2

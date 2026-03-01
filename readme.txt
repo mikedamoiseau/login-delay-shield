@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 5.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.1.1
-Stable tag: 2.1.1
+Version: 2.1.2
+Stable tag: 2.1.2
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -137,6 +137,9 @@ The plugin automatically uses your site's language setting. Want to help transla
 
 == Changelog ==
 
+= 2.1.2 =
+Patch release.
+
 = 2.1.1 =
 Patch release focused on lockout recovery tooling.
 
@@ -226,6 +229,9 @@ Major release with comprehensive security features and modern admin interface.
 * First version of the plugin
 
 == Upgrade Notice ==
+
+= 2.1.2 =
+Patch release.
 
 = 2.1.1 =
 Adds emergency lockout recovery tools: admin **Unlock Current IP** action and WP-CLI commands to unlock a specific IP or flush all lockouts.
