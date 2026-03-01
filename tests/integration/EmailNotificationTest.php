@@ -277,6 +277,11 @@ class EmailNotificationTest extends WP_UnitTestCase {
      * Test client IP detection from HTTP_CLIENT_IP.
      */
     public function test_client_ip_from_http_client_ip() {
+        update_option( 'wldelay_options', array(
+            'wldelay_trust_proxy_headers' => true,
+        ) );
+        wldelay_clear_options_cache();
+
         $_SERVER['HTTP_CLIENT_IP'] = '172.16.0.1';
         $_SERVER['REMOTE_ADDR'] = '10.0.0.1';
 
@@ -289,6 +294,11 @@ class EmailNotificationTest extends WP_UnitTestCase {
      * Test client IP detection from X-Forwarded-For.
      */
     public function test_client_ip_from_x_forwarded_for() {
+        update_option( 'wldelay_options', array(
+            'wldelay_trust_proxy_headers' => true,
+        ) );
+        wldelay_clear_options_cache();
+
         unset( $_SERVER['HTTP_CLIENT_IP'] );
         $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.50, 70.41.3.18, 150.172.238.178';
         $_SERVER['REMOTE_ADDR'] = '10.0.0.1';

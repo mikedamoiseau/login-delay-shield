@@ -17,6 +17,9 @@ class RestApplicationPasswordProtectionTest extends WP_UnitTestCase {
 
         delete_option( 'wldelay_options' );
         wldelay_clear_options_cache();
+
+        // Keep app-password behavior deterministic in tests.
+        add_filter( 'wp_is_application_passwords_available', '__return_true' );
     }
 
     public function tearDown(): void {
@@ -24,6 +27,8 @@ class RestApplicationPasswordProtectionTest extends WP_UnitTestCase {
         unset( $_SERVER['REQUEST_URI'] );
         unset( $_SERVER['PHP_AUTH_USER'] );
         unset( $_SERVER['PHP_AUTH_PW'] );
+
+        remove_all_filters( 'wp_is_application_passwords_available' );
 
         delete_option( 'wldelay_options' );
         wldelay_clear_options_cache();
