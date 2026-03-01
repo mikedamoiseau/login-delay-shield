@@ -330,9 +330,13 @@ function wldelay_handle_export_login_log() {
 
     $attempts = $wpdb->get_results( "SELECT source, ip_address, username, attempted_at FROM $table_name ORDER BY attempted_at DESC" );
 
-    nocache_headers();
-    header( 'Content-Type: text/csv; charset=utf-8' );
-    header( 'Content-Disposition: attachment; filename="login-delay-shield-login-log-' . gmdate( 'Y-m-d' ) . '.csv"' );
+    // In CLI/test runtime, headers may already be sent by bootstrap output.
+    // Avoid PHP warnings while still streaming CSV content for test assertions.
+    if ( ! headers_sent() ) {
+        nocache_headers();
+        header( 'Content-Type: text/csv; charset=utf-8' );
+        header( 'Content-Disposition: attachment; filename="login-delay-shield-login-log-' . gmdate( 'Y-m-d' ) . '.csv"' );
+    }
 
     $out = fopen( 'php://output', 'w' );
     if ( $out ) {
