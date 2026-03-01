@@ -166,6 +166,90 @@ class ExportCsvTest extends WP_UnitTestCase {
         $this->assertSame( "'" . $payload, $row[2] );
     }
 
+    public function test_export_csv_applies_source_and_date_filters() {
+        global $wpdb;
+        $table_name = wldelay_get_log_table_name();
+
+        $wpdb->insert( $table_name, array(
+            'ip_address'   => '192.168.1.14',
+            'username'     => 'alice',
+            'attempted_at' => '2025-01-02 09:00:00',
+            'source'       => 'wp-login',
+        ) );
+        $wpdb->insert( $table_name, array(
+            'ip_address'   => '192.168.1.15',
+            'username'     => 'alice',
+            'attempted_at' => '2025-01-03 10:00:00',
+            'source'       => 'xmlrpc',
+        ) );
+        $wpdb->insert( $table_name, array(
+            'ip_address'   => '192.168.1.16',
+            'username'     => 'bob',
+            'attempted_at' => '2025-01-03 11:00:00',
+            'source'       => 'xmlrpc',
+        ) );
+
+        $admin_id = $this->factory->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $admin_id );
+
+        $nonce = wp_create_nonce( 'wldelay_export_login_log' );
+        $_GET['_wpnonce']             = $nonce;
+        $_REQUEST['_wpnonce']         = $nonce;
+        $_GET['wldelay_log_source']   = 'xmlrpc';
+        $_GET['wldelay_log_username'] = 'alice';
+        $_GET['wldelay_log_from']     = '2025-01-03';
+        $_GET['wldelay_log_to']       = '2025-01-03';
+
+        add_filter( 'wldelay_export_login_log_should_exit', '__return_false' );
+
+        ob_start();
+        do_action( 'admin_post_wldelay_export_login_log' );
+        $csv = ob_get_clean();
+
+        $lines = preg_split( "/\\r\\n|\\n|\\r/", trim( $csv ) );
+        $this->assertCount( 2, $lines, 'Expected header plus one filtered row' );
+
+        $row = str_getcsv( $lines[1] );
+        $this->assertSame( 'xmlrpc', $row[0] );
+        $this->assertSame( '192.168.1.15', $row[1] );
+        $this->assertSame( 'alice', $row[2] );
+        $this->assertSame( '2025-01-03 10:00:00', $row[3] );
+    }
+
+    public function test_login_log_filters_are_sanitized_for_export_url() {
+        $url = wldelay_get_export_login_log_url(
+            array(
+                'source'   => 'XMLRPC<script>',
+                'ip'       => 'not-an-ip',
+                'username' => 'alice',
+                'from'     => '2025-01-33',
+                'to'       => '2025-01-01',
+            )
+        );
+
+        $query = wp_parse_url( $url, PHP_URL_QUERY );
+        parse_str( $query, $args );
+
+        $this->assertSame( 'wldelay_export_login_log', $args['action'] );
+        $this->assertArrayNotHasKey( 'wldelay_log_source', $args );
+        $this->assertArrayNotHasKey( 'wldelay_log_ip', $args );
+        $this->assertSame( 'alice', $args['wldelay_log_username'] );
+        $this->assertArrayNotHasKey( 'wldelay_log_from', $args );
+        $this->assertArrayNotHasKey( 'wldelay_log_to', $args );
+    }
+
+    public function test_login_log_filters_swap_reversed_date_range() {
+        $filters = wldelay_sanitize_login_log_filters(
+            array(
+                'wldelay_log_from' => '2025-02-10',
+                'wldelay_log_to'   => '2025-02-01',
+            )
+        );
+
+        $this->assertSame( '2025-02-01', $filters['from'] );
+        $this->assertSame( '2025-02-10', $filters['to'] );
+    }
+
     public function test_export_csv_requires_manage_options() {
         $user_id = $this->factory->user->create( array( 'role' => 'subscriber' ) );
         wp_set_current_user( $user_id );
