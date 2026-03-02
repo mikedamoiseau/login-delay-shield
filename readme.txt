@@ -142,6 +142,8 @@ Feature and bugfix release.
 
 **New Features:**
 * CSV export for the failed login log — download attempts as a CSV file directly from the dashboard widget.
+* Telemetry log filters — filter failed login attempts by source, IP, username, and date range.
+* Filtered CSV export — export only the subset of log entries matching the active filters.
 * Optional REST API and application-password authentication protection toggles.
 
 **Bug Fixes:**
@@ -149,6 +151,10 @@ Feature and bugfix release.
 * Lockout flush recovery now correctly clears failure counters alongside lockout transients.
 
 **Improvements:**
+* CSV export now streams results in batches to prevent memory exhaustion on large log tables.
+* Added database index on the `source` column for faster filtered queries.
+* Hardened query builder to always use `$wpdb->prepare()` for defense-in-depth.
+* Restricted request parameter reading to expected `wldelay_log_*` keys only.
 * Stabilized integration test suite and improved CSV export test reliability.
 
 = 2.1.1 =
@@ -242,7 +248,7 @@ Major release with comprehensive security features and modern admin interface.
 == Upgrade Notice ==
 
 = 2.1.2 =
-Adds CSV export for the failed login log, REST API and application-password auth protection, and fixes lockout recovery clearing failure counters.
+Adds telemetry log filters, filtered CSV export, batched streaming for large exports, REST API and application-password auth protection, and fixes lockout recovery clearing failure counters.
 
 = 2.1.1 =
 Adds emergency lockout recovery tools: admin **Unlock Current IP** action and WP-CLI commands to unlock a specific IP or flush all lockouts.
