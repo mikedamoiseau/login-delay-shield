@@ -333,11 +333,28 @@ function wldelay_csv_sanitize_cell( $value ) {
 }
 
 /**
+ * Validate a Y-m-d date string.
+ *
+ * @param string $value Date string to validate.
+ * @return bool True if the value is a valid Y-m-d date.
+ */
+function wldelay_is_valid_date( $value ) {
+    if ( $value === '' || ! preg_match( '/^\\d{4}-\\d{2}-\\d{2}$/', $value ) ) {
+        return false;
+    }
+    $dt = DateTimeImmutable::createFromFormat( 'Y-m-d', $value );
+    if ( ! $dt ) {
+        return false;
+    }
+    return $dt->format( 'Y-m-d' ) === $value;
+}
+
+/**
  * Sanitize login-log filter input (admin UI + CSV export).
  *
- * Accepts either raw request keys (wldelay_log_*) or already-normalized keys.
+ * Accepts either raw request keys (wldelay_log_*) or short keys (source, ip, etc.).
  *
- * @param array $input
+ * @param array $input Raw filter input from $_GET or short-key array.
  * @return array{source:string,ip:string,username:string,from:string,to:string}
  */
 function wldelay_sanitize_login_log_filters( $input ) {
@@ -345,75 +362,47 @@ function wldelay_sanitize_login_log_filters( $input ) {
         $input = array();
     }
 
-    $source   = '';
-    $ip       = '';
-    $username = '';
-    $from     = '';
-    $to       = '';
+    $key_map = array(
+        'source'   => 'wldelay_log_source',
+        'ip'       => 'wldelay_log_ip',
+        'username' => 'wldelay_log_username',
+        'from'     => 'wldelay_log_from',
+        'to'       => 'wldelay_log_to',
+    );
 
-    if ( isset( $input['wldelay_log_source'] ) ) {
-        $source = $input['wldelay_log_source'];
-    } elseif ( isset( $input['source'] ) ) {
-        $source = $input['source'];
+    $raw = array();
+    foreach ( $key_map as $short => $long ) {
+        if ( isset( $input[ $long ] ) ) {
+            $raw[ $short ] = $input[ $long ];
+        } elseif ( isset( $input[ $short ] ) ) {
+            $raw[ $short ] = $input[ $short ];
+        } else {
+            $raw[ $short ] = '';
+        }
     }
 
-    if ( isset( $input['wldelay_log_ip'] ) ) {
-        $ip = $input['wldelay_log_ip'];
-    } elseif ( isset( $input['ip'] ) ) {
-        $ip = $input['ip'];
-    }
-
-    if ( isset( $input['wldelay_log_username'] ) ) {
-        $username = $input['wldelay_log_username'];
-    } elseif ( isset( $input['username'] ) ) {
-        $username = $input['username'];
-    }
-
-    if ( isset( $input['wldelay_log_from'] ) ) {
-        $from = $input['wldelay_log_from'];
-    } elseif ( isset( $input['from'] ) ) {
-        $from = $input['from'];
-    }
-
-    if ( isset( $input['wldelay_log_to'] ) ) {
-        $to = $input['wldelay_log_to'];
-    } elseif ( isset( $input['to'] ) ) {
-        $to = $input['to'];
-    }
-
-    $source = strtolower( trim( sanitize_text_field( (string) $source ) ) );
+    $source = strtolower( trim( sanitize_text_field( (string) $raw['source'] ) ) );
     if ( $source !== '' && ! preg_match( '/^[a-z0-9-]{1,20}$/', $source ) ) {
         $source = '';
     }
 
-    $ip = trim( sanitize_text_field( (string) $ip ) );
+    $ip = trim( sanitize_text_field( (string) $raw['ip'] ) );
     if ( $ip !== '' && ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
         $ip = '';
     }
 
-    $username = trim( sanitize_text_field( (string) $username ) );
+    $username = trim( sanitize_text_field( (string) $raw['username'] ) );
     if ( strlen( $username ) > 60 ) {
         $username = substr( $username, 0, 60 );
     }
 
-    $from = trim( sanitize_text_field( (string) $from ) );
-    $to   = trim( sanitize_text_field( (string) $to ) );
+    $from = trim( sanitize_text_field( (string) $raw['from'] ) );
+    $to   = trim( sanitize_text_field( (string) $raw['to'] ) );
 
-    $is_valid_date = function( $value ) {
-        if ( $value === '' || ! preg_match( '/^\\d{4}-\\d{2}-\\d{2}$/', $value ) ) {
-            return false;
-        }
-        $dt = DateTimeImmutable::createFromFormat( 'Y-m-d', $value );
-        if ( ! $dt ) {
-            return false;
-        }
-        return $dt->format( 'Y-m-d' ) === $value;
-    };
-
-    if ( ! $is_valid_date( $from ) ) {
+    if ( ! wldelay_is_valid_date( $from ) ) {
         $from = '';
     }
-    if ( ! $is_valid_date( $to ) ) {
+    if ( ! wldelay_is_valid_date( $to ) ) {
         $to = '';
     }
 
@@ -435,20 +424,35 @@ function wldelay_sanitize_login_log_filters( $input ) {
 /**
  * Get sanitized login-log filters from the current request.
  *
+ * Only reads expected wldelay_log_* keys from $_GET to avoid collisions
+ * with unrelated query parameters.
+ *
  * @return array{source:string,ip:string,username:string,from:string,to:string}
  */
 function wldelay_get_login_log_filters_from_request() {
-    return wldelay_sanitize_login_log_filters( wp_unslash( $_GET ) );
+    $expected_keys = array(
+        'wldelay_log_source',
+        'wldelay_log_ip',
+        'wldelay_log_username',
+        'wldelay_log_from',
+        'wldelay_log_to',
+    );
+
+    return wldelay_sanitize_login_log_filters(
+        wp_unslash( array_intersect_key( $_GET, array_flip( $expected_keys ) ) )
+    );
 }
 
 /**
  * Query failed login attempts with optional filters.
  *
+ * Filters are always sanitized internally — callers may pass raw request data.
+ *
  * @param array $args {
- *     @type array $filters Filters array (raw or normalized).
- *     @type int|null $limit Limit rows; null for no limit.
- *     @type int $offset Offset rows.
- *     @type string $fields SQL fields to select.
+ *     @type array  $filters Raw or sanitized filter values (sanitized internally).
+ *     @type int    $limit   Maximum rows to return. Default 20.
+ *     @type int    $offset  Offset for pagination. Default 0.
+ *     @type string $fields  SQL fields to select (must match allowlist).
  * }
  * @return array Array of result objects.
  */
@@ -503,32 +507,31 @@ function wldelay_get_login_log_attempts( $args = array() ) {
         $params[] = $filters['to'] . ' 23:59:59';
     }
 
+    // $fields and $table_name are safe to interpolate: $fields is validated against
+    // a strict allowlist above, and $table_name is derived from $wpdb->prefix (not
+    // user input). $wpdb->prepare() cannot parameterize SQL identifiers.
     $sql = "SELECT $fields FROM $table_name WHERE " . implode( ' AND ', $where ) . ' ORDER BY attempted_at DESC';
 
-    if ( $args['limit'] !== null ) {
-        $limit = absint( $args['limit'] );
-        if ( $limit < 1 ) {
-            $limit = 1;
-        }
-        $sql     .= ' LIMIT %d';
-        $params[] = $limit;
+    $limit = absint( $args['limit'] );
+    if ( $limit < 1 ) {
+        $limit = 1;
+    }
+    $sql     .= ' LIMIT %d';
+    $params[] = $limit;
 
-        $offset = absint( $args['offset'] );
-        if ( $offset > 0 ) {
-            $sql     .= ' OFFSET %d';
-            $params[] = $offset;
-        }
+    $offset = absint( $args['offset'] );
+    if ( $offset > 0 ) {
+        $sql     .= ' OFFSET %d';
+        $params[] = $offset;
     }
 
-    if ( ! empty( $params ) ) {
-        return $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
-    }
-
-    return $wpdb->get_results( $sql );
+    return $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
 }
 
 /**
  * Handle admin action to export login log as CSV.
+ *
+ * Streams results in batches to avoid loading the entire log table into memory.
  */
 function wldelay_handle_export_login_log() {
     if ( ! current_user_can( 'manage_options' ) ) {
@@ -537,17 +540,7 @@ function wldelay_handle_export_login_log() {
 
     check_admin_referer( 'wldelay_export_login_log' );
 
-    global $wpdb;
-    $table_name = wldelay_get_log_table_name();
-
-    $filters  = wldelay_sanitize_login_log_filters( wp_unslash( $_GET ) );
-    $attempts = wldelay_get_login_log_attempts(
-        array(
-            'filters' => $filters,
-            'limit'   => null,
-            'fields'  => 'source, ip_address, username, attempted_at',
-        )
-    );
+    $batch_size = 1000;
 
     // In CLI/test runtime, headers may already be sent by bootstrap output.
     // Avoid PHP warnings while still streaming CSV content for test assertions.
@@ -561,17 +554,32 @@ function wldelay_handle_export_login_log() {
     if ( $out ) {
         fputcsv( $out, array( 'source', 'ip', 'username', 'timestamp' ) );
 
-        foreach ( $attempts as $attempt ) {
-            fputcsv(
-                $out,
+        $offset = 0;
+
+        do {
+            $attempts = wldelay_get_login_log_attempts(
                 array(
-                    wldelay_csv_sanitize_cell( $attempt->source ),
-                    wldelay_csv_sanitize_cell( $attempt->ip_address ),
-                    wldelay_csv_sanitize_cell( $attempt->username ),
-                    wldelay_csv_sanitize_cell( $attempt->attempted_at ),
+                    'filters' => wp_unslash( $_GET ),
+                    'limit'   => $batch_size,
+                    'offset'  => $offset,
+                    'fields'  => 'source, ip_address, username, attempted_at',
                 )
             );
-        }
+
+            foreach ( $attempts as $attempt ) {
+                fputcsv(
+                    $out,
+                    array(
+                        wldelay_csv_sanitize_cell( $attempt->source ),
+                        wldelay_csv_sanitize_cell( $attempt->ip_address ),
+                        wldelay_csv_sanitize_cell( $attempt->username ),
+                        wldelay_csv_sanitize_cell( $attempt->attempted_at ),
+                    )
+                );
+            }
+
+            $offset += $batch_size;
+        } while ( count( $attempts ) === $batch_size );
 
         fclose( $out );
     }
@@ -769,7 +777,8 @@ function wldelay_create_log_table() {
         source varchar(20) NOT NULL DEFAULT 'wp-login',
         PRIMARY KEY  (id),
         KEY attempted_at (attempted_at),
-        KEY ip_address (ip_address)
+        KEY ip_address (ip_address),
+        KEY source (source)
     ) $charset_collate;";
 
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
