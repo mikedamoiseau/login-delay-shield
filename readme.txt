@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 5.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.1.2
-Stable tag: 2.1.2
+Version: 2.1.3
+Stable tag: 2.1.3
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -137,13 +137,24 @@ The plugin automatically uses your site's language setting. Want to help transla
 
 == Changelog ==
 
+= 2.1.3 =
+Adds telemetry log filters and hardens the CSV export.
+
+**New Features:**
+* Telemetry log filters — filter failed login attempts by source, IP, username, and date range.
+* Filtered CSV export — export only the subset of log entries matching the active filters.
+
+**Improvements:**
+* CSV export now streams results in batches to prevent memory exhaustion on large log tables.
+* Added database index on the `source` column for faster filtered queries.
+* Hardened query builder to always use `$wpdb->prepare()` for defense-in-depth.
+* Restricted request parameter reading to expected `wldelay_log_*` keys only.
+
 = 2.1.2 =
 Feature and bugfix release.
 
 **New Features:**
 * CSV export for the failed login log — download attempts as a CSV file directly from the dashboard widget.
-* Telemetry log filters — filter failed login attempts by source, IP, username, and date range.
-* Filtered CSV export — export only the subset of log entries matching the active filters.
 * Optional REST API and application-password authentication protection toggles.
 
 **Bug Fixes:**
@@ -151,10 +162,6 @@ Feature and bugfix release.
 * Lockout flush recovery now correctly clears failure counters alongside lockout transients.
 
 **Improvements:**
-* CSV export now streams results in batches to prevent memory exhaustion on large log tables.
-* Added database index on the `source` column for faster filtered queries.
-* Hardened query builder to always use `$wpdb->prepare()` for defense-in-depth.
-* Restricted request parameter reading to expected `wldelay_log_*` keys only.
 * Stabilized integration test suite and improved CSV export test reliability.
 
 = 2.1.1 =
@@ -247,8 +254,11 @@ Major release with comprehensive security features and modern admin interface.
 
 == Upgrade Notice ==
 
+= 2.1.3 =
+Adds telemetry log filters, filtered CSV export, and batched streaming for large exports.
+
 = 2.1.2 =
-Adds telemetry log filters, filtered CSV export, batched streaming for large exports, REST API and application-password auth protection, and fixes lockout recovery clearing failure counters.
+Adds CSV export for the failed login log, REST API and application-password auth protection, and fixes lockout recovery clearing failure counters.
 
 = 2.1.1 =
 Adds emergency lockout recovery tools: admin **Unlock Current IP** action and WP-CLI commands to unlock a specific IP or flush all lockouts.
