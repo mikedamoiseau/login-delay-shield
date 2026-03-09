@@ -230,7 +230,7 @@ class LDS_Settings_View {
         if ( ! empty( $status['enabled'] ) ) {
             $provider_label = (string) $status['provider_label'];
             ?>
-            <div class="wldelay-cache-tip" role="note">
+            <div class="wldelay-health-notice" role="note">
                 <span class="dashicons dashicons-shield" aria-hidden="true"></span>
                 <span>
                     <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
@@ -248,7 +248,7 @@ class LDS_Settings_View {
         }
 
         ?>
-        <div class="wldelay-cache-tip" role="note">
+        <div class="wldelay-health-notice" role="note">
             <span class="dashicons dashicons-warning" aria-hidden="true"></span>
             <span>
                 <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>

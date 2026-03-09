@@ -228,8 +228,9 @@
     color: #a7aaad;
 }
 
-/* Cache Tip */
-.wldelay-cache-tip {
+/* Admin Notices (cache tip, health notice) */
+.wldelay-cache-tip,
+.wldelay-health-notice {
     background: #f0f6fc;
     border: 1px solid #c3c4c7;
     border-radius: 4px;
@@ -242,7 +243,8 @@
     color: #50575e;
 }
 
-.wldelay-cache-tip .dashicons {
+.wldelay-cache-tip .dashicons,
+.wldelay-health-notice .dashicons {
     color: #72aee6;
     font-size: 18px;
     width: 18px;
@@ -251,7 +253,8 @@
     margin-top: 1px;
 }
 
-.wldelay-cache-tip strong {
+.wldelay-cache-tip strong,
+.wldelay-health-notice strong {
     color: #1d2327;
 }
 

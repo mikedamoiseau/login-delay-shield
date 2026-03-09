@@ -479,7 +479,7 @@ function wldelay_get_login_log_attempts( $args = array() ) {
 
     $table_name = wldelay_get_log_table_name();
 
-    $where  = array( '1=1' );
+    $where  = array();
     $params = array();
 
     if ( $filters['source'] !== '' ) {
@@ -510,7 +510,8 @@ function wldelay_get_login_log_attempts( $args = array() ) {
     // $fields and $table_name are safe to interpolate: $fields is validated against
     // a strict allowlist above, and $table_name is derived from $wpdb->prefix (not
     // user input). $wpdb->prepare() cannot parameterize SQL identifiers.
-    $sql = "SELECT $fields FROM $table_name WHERE " . implode( ' AND ', $where ) . ' ORDER BY attempted_at DESC';
+    $where_clause = ! empty( $where ) ? ' WHERE ' . implode( ' AND ', $where ) : '';
+    $sql = "SELECT $fields FROM $table_name{$where_clause} ORDER BY attempted_at DESC";
 
     $limit = absint( $args['limit'] );
     if ( $limit < 1 ) {
@@ -559,7 +560,7 @@ function wldelay_handle_export_login_log() {
         do {
             $attempts = wldelay_get_login_log_attempts(
                 array(
-                    'filters' => wp_unslash( $_GET ),
+                    'filters' => wldelay_get_login_log_filters_from_request(),
                     'limit'   => $batch_size,
                     'offset'  => $offset,
                     'fields'  => 'source, ip_address, username, attempted_at',
@@ -1312,7 +1313,23 @@ function wldelay_detect_2fa_provider( $active_plugins ) {
         'mini-orange' => array(
             'miniorange-2-factor-authentication/miniorange_2_factor_settings.php',
         ),
+        'google-authenticator' => array(
+            'google-authenticator/google-authenticator.php',
+        ),
+        'wordfence' => array(
+            'wordfence/wordfence.php',
+        ),
     );
+
+    /**
+     * Filter the list of known 2FA plugin providers.
+     *
+     * Each key is a provider slug and each value is an array of plugin basenames
+     * (e.g. 'my-2fa/my-2fa.php') that map to that provider.
+     *
+     * @param array<string,array<int,string>> $providers Provider map.
+     */
+    $providers = apply_filters( 'wldelay_2fa_providers', $providers );
 
     foreach ( $providers as $provider => $candidates ) {
         foreach ( $candidates as $plugin_file ) {
@@ -1364,6 +1381,10 @@ function wldelay_get_2fa_provider_label( $provider ) {
             return __( 'WP 2FA', 'login-delay-shield' );
         case 'mini-orange':
             return __( 'miniOrange 2-Factor Authentication', 'login-delay-shield' );
+        case 'google-authenticator':
+            return __( 'Google Authenticator', 'login-delay-shield' );
+        case 'wordfence':
+            return __( 'Wordfence', 'login-delay-shield' );
         default:
             return '';
     }
