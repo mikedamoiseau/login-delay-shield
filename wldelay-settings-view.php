@@ -57,6 +57,7 @@ class LDS_Settings_View {
             <h1>Login Delay Shield Settings</h1>
 
             <?php echo $this->render_summary_box(); ?>
+            <?php $this->render_2fa_health_notice(); ?>
             <?php $this->render_object_cache_notice(); ?>
 
             <form method="post" action="options.php">
@@ -221,7 +222,44 @@ class LDS_Settings_View {
     }
 
     /**
-     * Render object cache notice if no persistent cache is detected
+     * Render a lightweight 2FA plugin detection notice.
+     */
+    private function render_2fa_health_notice() {
+        $status = wldelay_get_2fa_health_status();
+
+        if ( ! empty( $status['enabled'] ) ) {
+            $provider_label = (string) $status['provider_label'];
+            ?>
+            <div class="wldelay-health-notice" role="note">
+                <span class="dashicons dashicons-shield" aria-hidden="true"></span>
+                <span>
+                    <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
+                    <?php
+                    printf(
+                        /* translators: %s: detected plugin with 2FA capability */
+                        esc_html__( 'Detected installed plugin with 2FA capability: %s. Verify 2FA is configured for your administrator accounts.', 'login-delay-shield' ),
+                        esc_html( $provider_label )
+                    );
+                    ?>
+                </span>
+            </div>
+            <?php
+            return;
+        }
+
+        ?>
+        <div class="wldelay-health-notice" role="note">
+            <span class="dashicons dashicons-warning" aria-hidden="true"></span>
+            <span>
+                <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
+                <?php esc_html_e( 'No detected common 2FA plugin. If you use a custom or must-use solution, verify administrator 2FA coverage manually.', 'login-delay-shield' ); ?>
+            </span>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render object cache notice if no persistent cache is detected.
      */
     private function render_object_cache_notice() {
         // Only show notice if no external object cache is in use

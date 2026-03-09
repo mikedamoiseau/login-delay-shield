@@ -479,7 +479,7 @@ function wldelay_get_login_log_attempts( $args = array() ) {
 
     $table_name = wldelay_get_log_table_name();
 
-    $where  = array( '1=1' );
+    $where  = array();
     $params = array();
 
     if ( $filters['source'] !== '' ) {
@@ -510,7 +510,8 @@ function wldelay_get_login_log_attempts( $args = array() ) {
     // $fields and $table_name are safe to interpolate: $fields is validated against
     // a strict allowlist above, and $table_name is derived from $wpdb->prefix (not
     // user input). $wpdb->prepare() cannot parameterize SQL identifiers.
-    $sql = "SELECT $fields FROM $table_name WHERE " . implode( ' AND ', $where ) . ' ORDER BY attempted_at DESC';
+    $where_clause = ! empty( $where ) ? ' WHERE ' . implode( ' AND ', $where ) : '';
+    $sql = "SELECT $fields FROM $table_name{$where_clause} ORDER BY attempted_at DESC";
 
     $limit = absint( $args['limit'] );
     if ( $limit < 1 ) {
@@ -559,7 +560,7 @@ function wldelay_handle_export_login_log() {
         do {
             $attempts = wldelay_get_login_log_attempts(
                 array(
-                    'filters' => wp_unslash( $_GET ),
+                    'filters' => wldelay_get_login_log_filters_from_request(),
                     'limit'   => $batch_size,
                     'offset'  => $offset,
                     'fields'  => 'source, ip_address, username, attempted_at',
@@ -1280,6 +1281,114 @@ function wldelay_get_login_source_label( $source ) {
         case 'wp-login':
         default:
             return __( 'Login', 'login-delay-shield' );
+    }
+}
+
+
+/**
+ * Detect known 2FA plugin provider from active plugin list.
+ *
+ * @param array<int,string> $active_plugins Active plugin basenames.
+ * @return string Provider key or empty string when not detected.
+ */
+function wldelay_detect_2fa_provider( $active_plugins ) {
+    if ( ! is_array( $active_plugins ) ) {
+        return '';
+    }
+
+    $active = array();
+    foreach ( $active_plugins as $plugin_file ) {
+        if ( is_scalar( $plugin_file ) ) {
+            $active[] = strtolower( (string) $plugin_file );
+        }
+    }
+
+    $providers = array(
+        'two-factor' => array(
+            'two-factor/two-factor.php',
+        ),
+        'wp-2fa' => array(
+            'wp-2fa/wp-2fa.php',
+        ),
+        'mini-orange' => array(
+            'miniorange-2-factor-authentication/miniorange_2_factor_settings.php',
+        ),
+        'google-authenticator' => array(
+            'google-authenticator/google-authenticator.php',
+        ),
+    );
+
+    /**
+     * Filter the list of known 2FA plugin providers.
+     *
+     * Each key is a provider slug and each value is an array of plugin basenames
+     * (e.g. 'my-2fa/my-2fa.php') that map to that provider.
+     *
+     * @param array<string,array<int,string>> $providers Provider map.
+     */
+    $providers = apply_filters( 'wldelay_2fa_providers', $providers );
+
+    if ( ! is_array( $providers ) ) {
+        return '';
+    }
+
+    foreach ( $providers as $provider => $candidates ) {
+        if ( ! is_string( $provider ) || ! is_array( $candidates ) ) {
+            continue;
+        }
+        foreach ( $candidates as $plugin_file ) {
+            if ( is_string( $plugin_file ) && in_array( strtolower( $plugin_file ), $active, true ) ) {
+                return $provider;
+            }
+        }
+    }
+
+    return '';
+}
+
+/**
+ * Build lightweight 2FA health status for admin UI.
+ *
+ * @param array<int,string>|null $active_plugins Optional active plugin basenames override (for tests).
+ * @return array{enabled:bool,provider:string}
+ */
+function wldelay_get_2fa_health_status( $active_plugins = null ) {
+    if ( ! is_array( $active_plugins ) ) {
+        $active_plugins = (array) get_option( 'active_plugins', array() );
+
+        if ( is_multisite() ) {
+            $sitewide = (array) get_site_option( 'active_sitewide_plugins', array() );
+            $active_plugins = array_merge( $active_plugins, array_keys( $sitewide ) );
+        }
+    }
+
+    $provider = wldelay_detect_2fa_provider( $active_plugins );
+
+    return array(
+        'enabled'         => $provider !== '',
+        'provider'        => $provider,
+        'provider_label'  => wldelay_get_2fa_provider_label( $provider ),
+    );
+}
+
+/**
+ * Get a human-readable label for a detected 2FA provider key.
+ *
+ * @param string $provider Provider key.
+ * @return string Label for admin UI.
+ */
+function wldelay_get_2fa_provider_label( $provider ) {
+    switch ( $provider ) {
+        case 'two-factor':
+            return __( 'Two-Factor', 'login-delay-shield' );
+        case 'wp-2fa':
+            return __( 'WP 2FA', 'login-delay-shield' );
+        case 'mini-orange':
+            return __( 'miniOrange 2-Factor Authentication', 'login-delay-shield' );
+        case 'google-authenticator':
+            return __( 'Google Authenticator', 'login-delay-shield' );
+        default:
+            return '';
     }
 }
 
