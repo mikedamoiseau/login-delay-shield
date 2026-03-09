@@ -1283,6 +1283,71 @@ function wldelay_get_login_source_label( $source ) {
     }
 }
 
+
+/**
+ * Detect known 2FA plugin provider from active plugin list.
+ *
+ * @param array<int,string> $active_plugins Active plugin basenames.
+ * @return string Provider key or empty string when not detected.
+ */
+function wldelay_detect_2fa_provider( $active_plugins ) {
+    $active = array_map( 'strtolower', array_map( 'strval', $active_plugins ) );
+
+    $providers = array(
+        'two-factor' => array(
+            'two-factor/two-factor.php',
+        ),
+        'wp-2fa' => array(
+            'wp-2fa/wp-2fa.php',
+        ),
+        'miniOrange' => array(
+            'miniorange-2-factor-authentication/miniorange_2_factor_settings.php',
+        ),
+        'wordfence' => array(
+            'wordfence/wordfence.php',
+        ),
+        'solid-security' => array(
+            'better-wp-security/better-wp-security.php',
+            'ithemes-security-pro/ithemes-security-pro.php',
+            'solid-security-pro/solid-security-pro.php',
+        ),
+    );
+
+    foreach ( $providers as $provider => $candidates ) {
+        foreach ( $candidates as $plugin_file ) {
+            if ( in_array( strtolower( $plugin_file ), $active, true ) ) {
+                return $provider;
+            }
+        }
+    }
+
+    return '';
+}
+
+/**
+ * Build lightweight 2FA health status for admin UI.
+ *
+ * @param array<int,string>|null $active_plugins Optional active plugin basenames override (for tests).
+ * @return array{enabled:bool,provider:string}
+ */
+function wldelay_get_2fa_health_status( $active_plugins = null ) {
+    if ( ! is_array( $active_plugins ) ) {
+        $active_plugins = (array) get_option( 'active_plugins', array() );
+
+        if ( is_multisite() ) {
+            $sitewide = (array) get_site_option( 'active_sitewide_plugins', array() );
+            $active_plugins = array_merge( $active_plugins, array_keys( $sitewide ) );
+        }
+    }
+
+    $provider = wldelay_detect_2fa_provider( $active_plugins );
+
+    return array(
+        'enabled'  => $provider !== '',
+        'provider' => $provider,
+    );
+}
+
 /**
  * Check if an IP address is within a CIDR range
  *

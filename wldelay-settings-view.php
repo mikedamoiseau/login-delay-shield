@@ -57,6 +57,7 @@ class LDS_Settings_View {
             <h1>Login Delay Shield Settings</h1>
 
             <?php echo $this->render_summary_box(); ?>
+            <?php $this->render_2fa_health_notice(); ?>
             <?php $this->render_object_cache_notice(); ?>
 
             <form method="post" action="options.php">
@@ -223,6 +224,44 @@ class LDS_Settings_View {
     /**
      * Render object cache notice if no persistent cache is detected
      */
+
+    /**
+     * Render a lightweight 2FA health notice.
+     */
+    private function render_2fa_health_notice() {
+        $status = wldelay_get_2fa_health_status();
+
+        if ( ! empty( $status['enabled'] ) ) {
+            $provider = (string) $status['provider'];
+            ?>
+            <div class="wldelay-cache-tip" role="status">
+                <span class="dashicons dashicons-shield" aria-hidden="true"></span>
+                <span>
+                    <strong><?php esc_html_e( '2FA check:', 'login-delay-shield' ); ?></strong>
+                    <?php
+                    printf(
+                        /* translators: %s: detected 2FA plugin/provider key */
+                        esc_html__( 'detected active 2FA provider: %s.', 'login-delay-shield' ),
+                        esc_html( $provider )
+                    );
+                    ?>
+                </span>
+            </div>
+            <?php
+            return;
+        }
+
+        ?>
+        <div class="wldelay-cache-tip" role="note">
+            <span class="dashicons dashicons-warning" aria-hidden="true"></span>
+            <span>
+                <strong><?php esc_html_e( '2FA check:', 'login-delay-shield' ); ?></strong>
+                <?php esc_html_e( 'no common 2FA plugin was detected. Consider enabling 2FA for admin accounts.', 'login-delay-shield' ); ?>
+            </span>
+        </div>
+        <?php
+    }
+
     private function render_object_cache_notice() {
         // Only show notice if no external object cache is in use
         if ( wp_using_ext_object_cache() ) {
