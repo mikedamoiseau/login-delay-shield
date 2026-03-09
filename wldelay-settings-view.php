@@ -222,27 +222,23 @@ class LDS_Settings_View {
     }
 
     /**
-     * Render object cache notice if no persistent cache is detected
-     */
-
-    /**
-     * Render a lightweight 2FA health notice.
+     * Render a lightweight 2FA plugin detection notice.
      */
     private function render_2fa_health_notice() {
         $status = wldelay_get_2fa_health_status();
 
         if ( ! empty( $status['enabled'] ) ) {
-            $provider = (string) $status['provider'];
+            $provider_label = (string) $status['provider_label'];
             ?>
-            <div class="wldelay-cache-tip" role="status">
+            <div class="wldelay-cache-tip" role="note">
                 <span class="dashicons dashicons-shield" aria-hidden="true"></span>
                 <span>
-                    <strong><?php esc_html_e( '2FA check:', 'login-delay-shield' ); ?></strong>
+                    <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
                     <?php
                     printf(
-                        /* translators: %s: detected 2FA plugin/provider key */
-                        esc_html__( 'detected active 2FA provider: %s.', 'login-delay-shield' ),
-                        esc_html( $provider )
+                        /* translators: %s: detected plugin with 2FA capability */
+                        esc_html__( 'Detected installed plugin with 2FA capability: %s. Verify 2FA is configured for your administrator accounts.', 'login-delay-shield' ),
+                        esc_html( $provider_label )
                     );
                     ?>
                 </span>
@@ -255,13 +251,16 @@ class LDS_Settings_View {
         <div class="wldelay-cache-tip" role="note">
             <span class="dashicons dashicons-warning" aria-hidden="true"></span>
             <span>
-                <strong><?php esc_html_e( '2FA check:', 'login-delay-shield' ); ?></strong>
-                <?php esc_html_e( 'no common 2FA plugin was detected. Consider enabling 2FA for admin accounts.', 'login-delay-shield' ); ?>
+                <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
+                <?php esc_html_e( 'No detected common 2FA plugin. If you use a custom or must-use solution, verify administrator 2FA coverage manually.', 'login-delay-shield' ); ?>
             </span>
         </div>
         <?php
     }
 
+    /**
+     * Render object cache notice if no persistent cache is detected.
+     */
     private function render_object_cache_notice() {
         // Only show notice if no external object cache is in use
         if ( wp_using_ext_object_cache() ) {

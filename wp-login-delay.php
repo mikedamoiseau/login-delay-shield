@@ -1291,7 +1291,16 @@ function wldelay_get_login_source_label( $source ) {
  * @return string Provider key or empty string when not detected.
  */
 function wldelay_detect_2fa_provider( $active_plugins ) {
-    $active = array_map( 'strtolower', array_map( 'strval', $active_plugins ) );
+    if ( ! is_array( $active_plugins ) ) {
+        return '';
+    }
+
+    $active = array();
+    foreach ( $active_plugins as $plugin_file ) {
+        if ( is_scalar( $plugin_file ) ) {
+            $active[] = strtolower( (string) $plugin_file );
+        }
+    }
 
     $providers = array(
         'two-factor' => array(
@@ -1300,16 +1309,8 @@ function wldelay_detect_2fa_provider( $active_plugins ) {
         'wp-2fa' => array(
             'wp-2fa/wp-2fa.php',
         ),
-        'miniOrange' => array(
+        'mini-orange' => array(
             'miniorange-2-factor-authentication/miniorange_2_factor_settings.php',
-        ),
-        'wordfence' => array(
-            'wordfence/wordfence.php',
-        ),
-        'solid-security' => array(
-            'better-wp-security/better-wp-security.php',
-            'ithemes-security-pro/ithemes-security-pro.php',
-            'solid-security-pro/solid-security-pro.php',
         ),
     );
 
@@ -1343,9 +1344,29 @@ function wldelay_get_2fa_health_status( $active_plugins = null ) {
     $provider = wldelay_detect_2fa_provider( $active_plugins );
 
     return array(
-        'enabled'  => $provider !== '',
-        'provider' => $provider,
+        'enabled'         => $provider !== '',
+        'provider'        => $provider,
+        'provider_label'  => wldelay_get_2fa_provider_label( $provider ),
     );
+}
+
+/**
+ * Get a human-readable label for a detected 2FA provider key.
+ *
+ * @param string $provider Provider key.
+ * @return string Label for admin UI.
+ */
+function wldelay_get_2fa_provider_label( $provider ) {
+    switch ( $provider ) {
+        case 'two-factor':
+            return __( 'Two-Factor', 'login-delay-shield' );
+        case 'wp-2fa':
+            return __( 'WP 2FA', 'login-delay-shield' );
+        case 'mini-orange':
+            return __( 'miniOrange 2-Factor Authentication', 'login-delay-shield' );
+        default:
+            return '';
+    }
 }
 
 /**
