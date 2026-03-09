@@ -20,7 +20,6 @@ class TwoFactorHealthTest extends WP_UnitTestCase {
             array( 'wp-2fa/wp-2fa.php', 'wp-2fa' ),
             array( 'miniorange-2-factor-authentication/miniorange_2_factor_settings.php', 'mini-orange' ),
             array( 'google-authenticator/google-authenticator.php', 'google-authenticator' ),
-            array( 'wordfence/wordfence.php', 'wordfence' ),
         );
     }
 

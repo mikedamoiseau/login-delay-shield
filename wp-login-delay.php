@@ -1316,9 +1316,6 @@ function wldelay_detect_2fa_provider( $active_plugins ) {
         'google-authenticator' => array(
             'google-authenticator/google-authenticator.php',
         ),
-        'wordfence' => array(
-            'wordfence/wordfence.php',
-        ),
     );
 
     /**
@@ -1331,9 +1328,16 @@ function wldelay_detect_2fa_provider( $active_plugins ) {
      */
     $providers = apply_filters( 'wldelay_2fa_providers', $providers );
 
+    if ( ! is_array( $providers ) ) {
+        return '';
+    }
+
     foreach ( $providers as $provider => $candidates ) {
+        if ( ! is_string( $provider ) || ! is_array( $candidates ) ) {
+            continue;
+        }
         foreach ( $candidates as $plugin_file ) {
-            if ( in_array( strtolower( $plugin_file ), $active, true ) ) {
+            if ( is_string( $plugin_file ) && in_array( strtolower( $plugin_file ), $active, true ) ) {
                 return $provider;
             }
         }
@@ -1383,8 +1387,6 @@ function wldelay_get_2fa_provider_label( $provider ) {
             return __( 'miniOrange 2-Factor Authentication', 'login-delay-shield' );
         case 'google-authenticator':
             return __( 'Google Authenticator', 'login-delay-shield' );
-        case 'wordfence':
-            return __( 'Wordfence', 'login-delay-shield' );
         default:
             return '';
     }
