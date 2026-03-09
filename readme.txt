@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 5.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.1.3
-Stable tag: 2.1.3
+Version: 2.1.4
+Stable tag: 2.1.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -137,6 +137,19 @@ The plugin automatically uses your site's language setting. Want to help transla
 
 == Changelog ==
 
+= 2.1.4 =
+Adds 2FA health check notice and code quality improvements.
+
+**New Features:**
+* 2FA health check notice on the settings page — detects common 2FA plugins (Two-Factor, WP 2FA, miniOrange, Google Authenticator) and reminds administrators to verify coverage.
+* Extensible `wldelay_2fa_providers` filter hook for adding custom 2FA provider detection.
+
+**Improvements:**
+* CSV export now uses the dedicated request filter reader for consistency and safer parameter handling.
+* Renamed 2FA notice CSS class to `wldelay-health-notice` for clearer semantics.
+* Removed `1=1` WHERE sentinel from query builder in favour of conditional clause construction.
+* Hardened `wldelay_2fa_providers` filter callback with type validation to guard against malformed return values.
+
 = 2.1.3 =
 Adds telemetry log filters and hardens the CSV export.
 
@@ -253,6 +266,9 @@ Major release with comprehensive security features and modern admin interface.
 * First version of the plugin
 
 == Upgrade Notice ==
+
+= 2.1.4 =
+Adds 2FA health check notice on the settings page and extensible provider detection via filter hook.
 
 = 2.1.3 =
 Adds telemetry log filters, filtered CSV export, and batched streaming for large exports.
