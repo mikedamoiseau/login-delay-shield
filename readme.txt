@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 5.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.1.4
-Stable tag: 2.1.4
+Version: 2.1.5
+Stable tag: 2.1.5
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -137,6 +137,13 @@ The plugin automatically uses your site's language setting. Want to help transla
 
 == Changelog ==
 
+= 2.1.5 =
+Patch release focused on safer defaults for migrated/legacy installs.
+
+**Improvements:**
+* Hardened REST and application-password protection toggles when related option keys are missing.
+* Preserves behavior for sites with explicitly saved toggle values while avoiding unintended strict defaults on legacy option states.
+
 = 2.1.4 =
 Adds 2FA health check notice and code quality improvements.
 
@@ -266,6 +273,9 @@ Major release with comprehensive security features and modern admin interface.
 * First version of the plugin
 
 == Upgrade Notice ==
+
+= 2.1.5 =
+Hardens default handling for missing REST/application-password option keys on migrated or legacy installs.
 
 = 2.1.4 =
 Adds 2FA health check notice on the settings page and extensible provider detection via filter hook.
