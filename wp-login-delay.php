@@ -940,7 +940,21 @@ add_action( 'plugins_loaded', 'wldelay_track_version' );
 
 function wldelay_get_options() {
     if ( ! isset( $GLOBALS['wldelay_options_cache'] ) ) {
-        $GLOBALS['wldelay_options_cache'] = get_option( WLDELAY_OPTION_NAME );
+        $options = get_option( WLDELAY_OPTION_NAME );
+        if ( ! is_array( $options ) ) {
+            $options = array();
+        }
+
+        // Security feature defaults must stay opt-in.
+        if ( ! array_key_exists( 'wldelay_rest_enabled', $options ) ) {
+            $options['wldelay_rest_enabled'] = false;
+        }
+
+        if ( ! array_key_exists( 'wldelay_application_password_enabled', $options ) ) {
+            $options['wldelay_application_password_enabled'] = false;
+        }
+
+        $GLOBALS['wldelay_options_cache'] = $options;
     }
 
     return $GLOBALS['wldelay_options_cache'];

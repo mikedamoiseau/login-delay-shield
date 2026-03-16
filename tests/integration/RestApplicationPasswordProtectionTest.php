@@ -44,6 +44,20 @@ class RestApplicationPasswordProtectionTest extends WP_UnitTestCase {
         $this->assertNotFalse( has_filter( 'authenticate', 'wldelay_handle_application_password_auth' ) );
     }
 
+    public function test_rest_protection_defaults_to_disabled_when_flag_missing() {
+        update_option( 'wldelay_options', array(
+            'wldelay_delay' => 0,
+        ) );
+        wldelay_clear_options_cache();
+        $_SERVER['REQUEST_URI'] = '/wp-json/wp/v2/posts';
+
+        $incoming = new WP_Error( 'rest_invalid', 'Invalid credentials' );
+        $result = wldelay_handle_rest_authentication( $incoming );
+
+        $this->assertSame( $incoming, $result );
+        $this->assertCount( 0, wldelay_get_recent_failed_attempts( 10 ) );
+    }
+
     public function test_rest_protection_disabled_passthrough() {
         update_option( 'wldelay_options', array(
             'wldelay_rest_enabled' => false,
@@ -114,6 +128,21 @@ class RestApplicationPasswordProtectionTest extends WP_UnitTestCase {
 
         $incoming = new WP_Error( 'rest_invalid', 'Invalid credentials' );
         $result = wldelay_handle_rest_authentication( $incoming );
+
+        $this->assertSame( $incoming, $result );
+        $this->assertCount( 0, wldelay_get_recent_failed_attempts( 10 ) );
+    }
+
+    public function test_application_password_protection_defaults_to_disabled_when_flag_missing() {
+        update_option( 'wldelay_options', array(
+            'wldelay_delay' => 0,
+        ) );
+        wldelay_clear_options_cache();
+        $_SERVER['PHP_AUTH_USER'] = 'api-user';
+        $_SERVER['PHP_AUTH_PW'] = 'app-pass';
+
+        $incoming = new WP_Error( 'invalid_application_password', 'Bad app password' );
+        $result = wldelay_handle_application_password_auth( $incoming, 'api-user', 'app-pass' );
 
         $this->assertSame( $incoming, $result );
         $this->assertCount( 0, wldelay_get_recent_failed_attempts( 10 ) );
