@@ -43,6 +43,79 @@
     color: #856404;
 }
 
+.wldelay-widget-trends {
+    margin: 0 0 16px;
+    padding: 12px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    background: #f6f7f7;
+}
+
+.wldelay-widget-trends-title {
+    margin: 0 0 8px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.wldelay-widget-trends-summary {
+    margin: 0 0 12px;
+    color: #50575e;
+}
+
+.wldelay-widget-trends-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+.wldelay-trend-card {
+    min-width: 0;
+}
+
+.wldelay-trend-card h4 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #50575e;
+}
+
+.wldelay-trend-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.wldelay-trend-list-ordered {
+    list-style-type: decimal;
+    list-style-position: inside;
+}
+
+.wldelay-trend-list li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 3px 0;
+    border-top: 1px solid #e2e4e7;
+}
+
+.wldelay-trend-list li:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.wldelay-trend-list li span {
+    min-width: 0;
+    color: #1d2327;
+    overflow-wrap: anywhere;
+}
+
+.wldelay-trend-list li strong {
+    flex-shrink: 0;
+}
+
 /* ==========================================================================
    Settings Page Styles
    ========================================================================== */

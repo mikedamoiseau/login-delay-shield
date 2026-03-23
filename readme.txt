@@ -27,7 +27,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **Login feedback** — Shows remaining attempts before lockout and a lockout countdown when blocked
 * **IP whitelist** — Bypass all security measures for trusted IPs (supports CIDR notation)
 * **Email notifications** — Receive alerts when failed login thresholds are reached
-* **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity
+* **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity and 7-day trends
 * **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 * **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 * **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support
@@ -80,7 +80,7 @@ When enabled, the plugin tracks failed login attempts per IP address. Once the t
 
 = Where can I see failed login attempts? =
 
-A dashboard widget shows the 10 most recent failed login attempts, including the time, username attempted, IP address, and whether it came from wp-login or XML-RPC.
+A dashboard widget shows the 10 most recent failed login attempts, including the time, username attempted, IP address, and source. It also includes a lightweight 7-day trends panel with daily totals, top sources, and top IPs.
 
 = Is the admin interface accessible? =
 
@@ -136,6 +136,15 @@ The plugin automatically uses your site's language setting. Want to help transla
 4. Dashboard widget showing recent failed login attempts.
 
 == Changelog ==
+
+= Unreleased =
+Adds a lightweight observability panel to the failed-login dashboard widget.
+
+**New Features:**
+* Dashboard telemetry trends for failed login logs over the last 7 days, including daily totals, top sources, and top IPs.
+
+**Improvements:**
+* Dashboard widget cache now stores both recent attempts and the trends snapshot, while staying backward-compatible with the previous cache shape.
 
 = 2.1.5 =
 Patch release focused on safer defaults for migrated/legacy installs.

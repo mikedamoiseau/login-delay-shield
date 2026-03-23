@@ -21,7 +21,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 - **Login feedback** — Shows remaining attempts before lockout and a lockout countdown when blocked
 - **IP whitelist** — Bypass all security measures for trusted IPs (supports CIDR notation)
 - **Email notifications** — Receive alerts when failed login thresholds are reached
-- **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity
+- **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity and 7-day trends
 - **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 - **REST/API auth protection (optional)** — Apply delay/lockout checks to REST and application-password authentication paths
 - **Log retention** — Automatic cleanup of old log entries (configurable retention period)
@@ -88,6 +88,11 @@ English, Arabic, Chinese (Simplified), Czech, Dutch, French, German, Indonesian,
 4. Dashboard widget showing recent failed login attempts
 
 ## Changelog
+
+### Unreleased
+
+- Added a lightweight 7-day failed-login telemetry panel to the dashboard widget with daily totals, top sources, and top IPs.
+- Updated the widget cache to snapshot both recent attempts and trend data while remaining compatible with the previous cache format.
 
 See [readme.txt](readme.txt) for the full changelog.
 

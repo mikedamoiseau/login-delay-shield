@@ -64,6 +64,10 @@ class DashboardWidgetTest extends WP_UnitTestCase {
         $this->assertStringContainsString( '192.168.1.100', $output );
         $this->assertStringContainsString( 'attacker', $output );
         $this->assertStringContainsString( 'Login', $output ); // Source badge
+        $this->assertStringContainsString( 'Failed login trends: last 7 days', $output );
+        $this->assertStringContainsString( 'Daily activity', $output );
+        $this->assertStringContainsString( 'Top sources', $output );
+        $this->assertStringContainsString( 'Top IPs', $output );
     }
 
     /**
@@ -217,6 +221,81 @@ class DashboardWidgetTest extends WP_UnitTestCase {
         $attempts = wldelay_get_recent_failed_attempts( 5 );
 
         $this->assertCount( 5, $attempts );
+    }
+
+    /**
+     * Test failed login trend aggregation for recent data.
+     */
+    public function test_get_failed_login_trends_aggregates_recent_data() {
+        global $wpdb;
+
+        wldelay_create_log_table();
+        $table_name = wldelay_get_log_table_name();
+
+        $wpdb->insert(
+            $table_name,
+            array(
+                'ip_address'   => '203.0.113.10',
+                'username'     => 'first-user',
+                'attempted_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - HOUR_IN_SECONDS ),
+                'source'       => 'wp-login',
+            )
+        );
+        $wpdb->insert(
+            $table_name,
+            array(
+                'ip_address'   => '203.0.113.10',
+                'username'     => 'second-user',
+                'attempted_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - ( 2 * HOUR_IN_SECONDS ) ),
+                'source'       => 'xmlrpc',
+            )
+        );
+        $wpdb->insert(
+            $table_name,
+            array(
+                'ip_address'   => '198.51.100.8',
+                'username'     => 'third-user',
+                'attempted_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - DAY_IN_SECONDS ),
+                'source'       => 'wp-login',
+            )
+        );
+        $wpdb->insert(
+            $table_name,
+            array(
+                'ip_address'   => '192.0.2.99',
+                'username'     => 'old-user',
+                'attempted_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - ( 10 * DAY_IN_SECONDS ) ),
+                'source'       => 'rest',
+            )
+        );
+
+        $trends = wldelay_get_failed_login_trends( 7 );
+
+        $this->assertSame( 7, $trends['window_days'] );
+        $this->assertSame( 3, $trends['total_attempts'] );
+        $this->assertCount( 7, $trends['daily_counts'] );
+        $this->assertSame( 2, $trends['peak_day']['count'] );
+        $this->assertSame( '203.0.113.10', $trends['top_ips'][0]['ip_address'] );
+        $this->assertSame( 2, $trends['top_ips'][0]['count'] );
+        $this->assertSame( 'wp-login', $trends['source_counts'][0]['source'] );
+        $this->assertSame( 2, $trends['source_counts'][0]['count'] );
+    }
+
+    /**
+     * Test widget can refresh stale cached data from the previous cache shape.
+     */
+    public function test_widget_refreshes_legacy_attempts_cache_shape() {
+        wldelay_create_log_table();
+        wldelay_log_failed_attempt( '192.168.1.210', 'cached-user', 'wp-login' );
+
+        set_transient( 'wldelay_dashboard_attempts', wldelay_get_recent_failed_attempts( 10 ), 2 * MINUTE_IN_SECONDS );
+
+        ob_start();
+        wldelay_dashboard_widget_content();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString( 'Failed login trends: last 7 days', $output );
+        $this->assertStringContainsString( 'cached-user', $output );
     }
 
     /**

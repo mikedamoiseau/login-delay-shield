@@ -704,17 +704,30 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 
 function wldelay_dashboard_widget_content() {
     $cache_key = 'wldelay_dashboard_attempts';
-    $attempts  = get_transient( $cache_key );
+    $dashboard_data = get_transient( $cache_key );
 
-    if ( false === $attempts ) {
-        $attempts = wldelay_get_recent_failed_attempts( 10 );
-        set_transient( $cache_key, $attempts, 2 * MINUTE_IN_SECONDS );
+    if (
+        false === $dashboard_data ||
+        ! is_array( $dashboard_data ) ||
+        ! isset( $dashboard_data['attempts'] ) ||
+        ! isset( $dashboard_data['trends'] )
+    ) {
+        $dashboard_data = array(
+            'attempts' => wldelay_get_recent_failed_attempts( 10 ),
+            'trends'   => wldelay_get_failed_login_trends( 7 ),
+        );
+        set_transient( $cache_key, $dashboard_data, 2 * MINUTE_IN_SECONDS );
     }
+
+    $attempts = $dashboard_data['attempts'];
+    $trends   = $dashboard_data['trends'];
 
     if ( empty( $attempts ) ) {
         echo '<p>' . esc_html__( 'No failed login attempts recorded.', 'login-delay-shield' ) . '</p>';
         return;
     }
+
+    wldelay_render_dashboard_trends( $trends );
 
     echo '<table class="widefat striped">';
     echo '<caption class="screen-reader-text">' . esc_html__( 'Recent failed login attempts', 'login-delay-shield' ) . '</caption>';
@@ -748,6 +761,215 @@ function wldelay_dashboard_widget_content() {
     echo '<p class="wldelay-widget-footer" style="margin-top: 10px; text-align: right;">';
     echo '<a href="' . esc_url( $settings_url ) . '">' . esc_html__( 'Settings', 'login-delay-shield' ) . '</a>';
     echo '</p>';
+}
+
+/**
+ * Get lightweight failed-login trends for the dashboard widget.
+ *
+ * Queries are scoped to a recent date window and keep grouped results small.
+ *
+ * @param int $days Number of days to include.
+ * @return array{
+ *     window_days:int,
+ *     total_attempts:int,
+ *     peak_day:array{date:string,count:int},
+ *     daily_counts:array<int,array{date:string,count:int}>,
+ *     source_counts:array<int,array{source:string,count:int}>,
+ *     top_ips:array<int,array{ip_address:string,count:int}>
+ * }
+ */
+function wldelay_get_failed_login_trends( $days = 7 ) {
+    global $wpdb;
+
+    $days = absint( $days );
+    if ( $days < 1 ) {
+        $days = 1;
+    }
+
+    $table_name = wldelay_get_log_table_name();
+    $cutoff     = gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - ( $days * DAY_IN_SECONDS ) );
+
+    $daily_rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT DATE(attempted_at) AS attempted_date, COUNT(*) AS failures
+            FROM $table_name
+            WHERE attempted_at >= %s
+            GROUP BY DATE(attempted_at)
+            ORDER BY attempted_date ASC",
+            $cutoff
+        )
+    );
+
+    $counts_by_date = array();
+    foreach ( $daily_rows as $row ) {
+        $counts_by_date[ $row->attempted_date ] = (int) $row->failures;
+    }
+
+    $daily_counts    = array();
+    $total_attempts  = 0;
+    $peak_day        = array(
+        'date'  => '',
+        'count' => 0,
+    );
+    $current_time_ts = current_time( 'timestamp' );
+
+    for ( $offset = $days - 1; $offset >= 0; $offset-- ) {
+        $date_key = gmdate( 'Y-m-d', $current_time_ts - ( $offset * DAY_IN_SECONDS ) );
+        $count    = isset( $counts_by_date[ $date_key ] ) ? (int) $counts_by_date[ $date_key ] : 0;
+
+        $daily_counts[] = array(
+            'date'  => $date_key,
+            'count' => $count,
+        );
+
+        $total_attempts += $count;
+
+        if ( $count >= $peak_day['count'] ) {
+            $peak_day = array(
+                'date'  => $date_key,
+                'count' => $count,
+            );
+        }
+    }
+
+    $source_rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT source, COUNT(*) AS failures
+            FROM $table_name
+            WHERE attempted_at >= %s
+            GROUP BY source
+            ORDER BY failures DESC, source ASC
+            LIMIT 3",
+            $cutoff
+        )
+    );
+
+    $source_counts = array();
+    foreach ( $source_rows as $row ) {
+        $source_counts[] = array(
+            'source' => (string) $row->source,
+            'count'  => (int) $row->failures,
+        );
+    }
+
+    $ip_rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT ip_address, COUNT(*) AS failures
+            FROM $table_name
+            WHERE attempted_at >= %s
+            GROUP BY ip_address
+            ORDER BY failures DESC, ip_address ASC
+            LIMIT 3",
+            $cutoff
+        )
+    );
+
+    $top_ips = array();
+    foreach ( $ip_rows as $row ) {
+        $top_ips[] = array(
+            'ip_address' => (string) $row->ip_address,
+            'count'      => (int) $row->failures,
+        );
+    }
+
+    return array(
+        'window_days'    => $days,
+        'total_attempts' => $total_attempts,
+        'peak_day'       => $peak_day,
+        'daily_counts'   => $daily_counts,
+        'source_counts'  => $source_counts,
+        'top_ips'        => $top_ips,
+    );
+}
+
+/**
+ * Render the dashboard trends panel.
+ *
+ * @param array $trends Trend data from wldelay_get_failed_login_trends().
+ */
+function wldelay_render_dashboard_trends( $trends ) {
+    $window_days = isset( $trends['window_days'] ) ? (int) $trends['window_days'] : 7;
+    $total       = isset( $trends['total_attempts'] ) ? (int) $trends['total_attempts'] : 0;
+    $peak_day    = isset( $trends['peak_day'] ) && is_array( $trends['peak_day'] ) ? $trends['peak_day'] : array();
+    $daily_counts = isset( $trends['daily_counts'] ) && is_array( $trends['daily_counts'] ) ? $trends['daily_counts'] : array();
+    $source_counts = isset( $trends['source_counts'] ) && is_array( $trends['source_counts'] ) ? $trends['source_counts'] : array();
+    $top_ips = isset( $trends['top_ips'] ) && is_array( $trends['top_ips'] ) ? $trends['top_ips'] : array();
+
+    echo '<div class="wldelay-widget-trends" aria-labelledby="wldelay-widget-trends-title">';
+    echo '<h3 id="wldelay-widget-trends-title" class="wldelay-widget-trends-title">';
+    printf(
+        /* translators: %d: number of days in the dashboard trends window */
+        esc_html__( 'Failed login trends: last %d days', 'login-delay-shield' ),
+        esc_html( $window_days )
+    );
+    echo '</h3>';
+
+    echo '<p class="wldelay-widget-trends-summary">';
+    printf(
+        /* translators: %s: number of failed login attempts */
+        esc_html__( '%s failed attempts recorded in the selected window.', 'login-delay-shield' ),
+        '<strong>' . esc_html( number_format_i18n( $total ) ) . '</strong>'
+    );
+
+    if ( ! empty( $peak_day['date'] ) && ! empty( $peak_day['count'] ) ) {
+        $peak_label = date_i18n(
+            _x( 'M j', 'date format for failed login trend labels', 'login-delay-shield' ),
+            strtotime( $peak_day['date'] . ' 00:00:00' )
+        );
+
+        echo ' ';
+        printf(
+            /* translators: 1: date label, 2: number of failed attempts */
+            esc_html__( 'Busiest day: %1$s (%2$s).', 'login-delay-shield' ),
+            esc_html( $peak_label ),
+            esc_html( number_format_i18n( (int) $peak_day['count'] ) )
+        );
+    }
+    echo '</p>';
+
+    echo '<div class="wldelay-widget-trends-grid">';
+
+    echo '<section class="wldelay-trend-card" aria-labelledby="wldelay-trend-daily-title">';
+    echo '<h4 id="wldelay-trend-daily-title">' . esc_html__( 'Daily activity', 'login-delay-shield' ) . '</h4>';
+    echo '<ul class="wldelay-trend-list">';
+    foreach ( $daily_counts as $day ) {
+        $day_label = date_i18n(
+            _x( 'M j', 'date format for failed login trend labels', 'login-delay-shield' ),
+            strtotime( $day['date'] . ' 00:00:00' )
+        );
+        echo '<li><span>' . esc_html( $day_label ) . '</span><strong>' . esc_html( number_format_i18n( (int) $day['count'] ) ) . '</strong></li>';
+    }
+    echo '</ul>';
+    echo '</section>';
+
+    echo '<section class="wldelay-trend-card" aria-labelledby="wldelay-trend-sources-title">';
+    echo '<h4 id="wldelay-trend-sources-title">' . esc_html__( 'Top sources', 'login-delay-shield' ) . '</h4>';
+    echo '<ul class="wldelay-trend-list">';
+    if ( empty( $source_counts ) ) {
+        echo '<li><span>' . esc_html__( 'No recent data', 'login-delay-shield' ) . '</span><strong>0</strong></li>';
+    } else {
+        foreach ( $source_counts as $source_count ) {
+            echo '<li><span>' . esc_html( wldelay_get_login_source_label( $source_count['source'] ) ) . '</span><strong>' . esc_html( number_format_i18n( (int) $source_count['count'] ) ) . '</strong></li>';
+        }
+    }
+    echo '</ul>';
+    echo '</section>';
+
+    echo '<section class="wldelay-trend-card" aria-labelledby="wldelay-trend-ips-title">';
+    echo '<h4 id="wldelay-trend-ips-title">' . esc_html__( 'Top IPs', 'login-delay-shield' ) . '</h4>';
+    echo '<ol class="wldelay-trend-list wldelay-trend-list-ordered">';
+    if ( empty( $top_ips ) ) {
+        echo '<li><span>' . esc_html__( 'No recent data', 'login-delay-shield' ) . '</span><strong>0</strong></li>';
+    } else {
+        foreach ( $top_ips as $ip_count ) {
+            echo '<li><span>' . esc_html( $ip_count['ip_address'] ) . '</span><strong>' . esc_html( number_format_i18n( (int) $ip_count['count'] ) ) . '</strong></li>';
+        }
+    }
+    echo '</ol>';
+    echo '</section>';
+
+    echo '</div>';
+    echo '</div>';
 }
 
 /**
