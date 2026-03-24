@@ -89,8 +89,10 @@ English, Arabic, Chinese (Simplified), Czech, Dutch, French, German, Indonesian,
 
 ## Changelog
 
-### Unreleased
+### 2.1.6
 
+- Added a lightweight 7-day failed-login trends panel to the dashboard widget.
+- Updated the widget cache to snapshot both recent attempts and trend data while remaining compatible with the previous cache format.
 - Updated the WordPress.org listing metadata, including a more accurate minimum PHP version and refreshed tags.
 - Extracted admin inline JavaScript into a dedicated file for easier maintenance.
 - Standardized settings checkbox rendering and added a small username unslashing hardening improvement.

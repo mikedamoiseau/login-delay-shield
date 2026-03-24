@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,authentication
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.1.5
-Stable tag: 2.1.5
+Version: 2.1.6
+Stable tag: 2.1.6
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -137,14 +137,18 @@ The plugin automatically uses your site's language setting. Want to help transla
 
 == Changelog ==
 
-= Unreleased =
-Prepares the next minor release with documentation and admin UI polish.
+= 2.1.6 =
+Small release focused on dashboard observability, admin polish, and release metadata improvements.
+
+**New Features:**
+* Added a lightweight failed-login trends panel to the dashboard widget with 7-day activity, top sources, and top IPs.
 
 **Improvements:**
+* Updated the dashboard widget cache to store both recent attempts and trend snapshots while remaining backward-compatible with the previous cache format.
 * Updated the WordPress.org listing metadata, including a more accurate minimum PHP version and refreshed tags.
 * Extracted admin inline JavaScript into a dedicated file for easier maintenance.
-* Standardized settings checkbox rendering and added a small input unslashing hardening improvement for username normalization.
-
+* Standardized settings checkbox rendering for a more consistent admin UI.
+* Added input unslashing before username normalization for safer WordPress-style request handling.
 
 = 2.1.5 =
 Patch release focused on safer defaults for migrated/legacy installs.
