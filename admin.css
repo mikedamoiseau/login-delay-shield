@@ -421,12 +421,146 @@
 }
 
 /* ==========================================================================
+   Trend Analytics Panel
+   ========================================================================== */
+
+/* Period selector */
+.wldelay-trends-period-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+}
+
+.wldelay-trends-period-selector label {
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+.wldelay-period-btn.wldelay-period-active {
+    background: #2271b1;
+    color: #fff;
+    border-color: #2271b1;
+}
+
+/* Trends grid layout */
+.wldelay-trends-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+}
+
+.wldelay-trends-grid h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wldelay-trends-empty {
+    color: #646970;
+    font-style: italic;
+}
+
+/* Bar chart - CSS only */
+.wldelay-bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 160px;
+    padding: 0 0 24px;
+    position: relative;
+}
+
+.wldelay-bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.wldelay-bar-count {
+    font-size: 10px;
+    color: #646970;
+    margin-bottom: 2px;
+    line-height: 1;
+}
+
+.wldelay-bar {
+    width: 100%;
+    max-width: 32px;
+    background: #2271b1;
+    border-radius: 2px 2px 0 0;
+    min-height: 2px;
+    transition: height 0.3s ease;
+}
+
+.wldelay-bar-label {
+    font-size: 10px;
+    color: #646970;
+    margin-top: 4px;
+    white-space: nowrap;
+    position: absolute;
+    bottom: 0;
+    transform: rotate(-45deg);
+    transform-origin: top left;
+}
+
+/* Accessible data table fallback */
+.wldelay-chart-data-table {
+    margin-top: 12px;
+}
+
+.wldelay-chart-data-table summary {
+    cursor: pointer;
+    color: #2271b1;
+    font-size: 12px;
+}
+
+.wldelay-chart-data-table summary:hover {
+    color: #135e96;
+}
+
+.wldelay-chart-data-table .widefat {
+    margin-top: 8px;
+}
+
+/* Trend tables */
+.wldelay-trends-list-wrap .widefat {
+    border: 1px solid #c3c4c7;
+}
+
+.wldelay-trends-list-wrap .widefat th,
+.wldelay-trends-list-wrap .widefat td {
+    padding: 8px 12px;
+}
+
+.wldelay-trends-list-wrap .widefat code {
+    background: none;
+    padding: 0;
+    font-size: 13px;
+}
+
+/* ==========================================================================
    Responsive Styles
    ========================================================================== */
 
 @media (max-width: 782px) {
     .wldelay-card .form-table th {
         width: auto;
+    }
+}
+
+@media (min-width: 782px) {
+    .wldelay-trends-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .wldelay-trends-chart-wrap {
+        grid-column: 1 / -1;
     }
 }
 

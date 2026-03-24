@@ -6,10 +6,22 @@
 class XmlRpcBlockingTest extends WP_UnitTestCase {
 
     /**
+     * Set up before each test.
+     */
+    public function setUp(): void {
+        parent::setUp();
+        delete_option( 'wldelay_options' );
+        wldelay_clear_options_cache();
+        unset( $_SERVER['REQUEST_URI'], $_SERVER['REMOTE_ADDR'] );
+    }
+
+    /**
      * Clean up after each test.
      */
     public function tearDown(): void {
+        unset( $_SERVER['REQUEST_URI'], $_SERVER['REMOTE_ADDR'] );
         delete_option( 'wldelay_options' );
+        wldelay_clear_options_cache();
         parent::tearDown();
     }
 
@@ -92,26 +104,16 @@ class XmlRpcBlockingTest extends WP_UnitTestCase {
     /**
      * Test that whitelisted IPs bypass XMLRPC blocking.
      *
-     * Note: This test may fail due to static caching in wldelay_get_options().
-     * The whitelist check uses cached options which may not reflect the
-     * update_option() call within the same test run.
-     *
      * @group whitelist
      */
     public function test_whitelisted_ip_bypasses_xmlrpc_block() {
-        // Skip if options are cached from a previous test
-        // This is a known limitation of the static cache in wldelay_get_options()
-        $this->markTestSkipped(
-            'This test is skipped due to static options caching in wldelay_get_options(). ' .
-            'The whitelist functionality is tested in WhitelistTest with isolated conditions.'
-        );
-
         update_option( 'wldelay_options', [
-            'wldelay_xmlrpc_enabled' => true,
-            'wldelay_xmlrpc_block' => true,
+            'wldelay_xmlrpc_enabled'    => true,
+            'wldelay_xmlrpc_block'      => true,
             'wldelay_whitelist_enabled' => true,
-            'wldelay_whitelist_ips' => '192.168.1.50',
+            'wldelay_whitelist_ips'     => '192.168.1.50',
         ] );
+        wldelay_clear_options_cache();
 
         $user = $this->factory->user->create_and_get();
 
@@ -122,9 +124,6 @@ class XmlRpcBlockingTest extends WP_UnitTestCase {
         $result = wldelay_block_xmlrpc_auth( $user, $user->user_login, 'password' );
 
         $this->assertInstanceOf( WP_User::class, $result );
-
-        unset( $_SERVER['REQUEST_URI'] );
-        unset( $_SERVER['REMOTE_ADDR'] );
     }
 
     /**

@@ -338,6 +338,48 @@ class EmailNotificationTest extends WP_UnitTestCase {
     }
 
     /**
+     * Test that simultaneous failures from multiple distinct IPs are suppressed after the first alert.
+     *
+     * Documents intentional behavior: when multiple IPs each hit the failure threshold within the
+     * email cooldown window, only the first IP triggers an alert. Subsequent IPs are silently
+     * suppressed until the cooldown expires. This is by design — the cooldown is site-wide.
+     */
+    public function test_multi_ip_simultaneous_threshold_only_first_triggers_alert() {
+        update_option( 'wldelay_options', [
+            'wldelay_email_enabled'   => true,
+            'wldelay_email_threshold' => 1,
+            'wldelay_email_cooldown'  => 5,
+            'wldelay_lockout_enabled' => false,
+        ] );
+        wldelay_clear_options_cache();
+
+        // IP 1 hits threshold — email should fire
+        $_SERVER['REMOTE_ADDR'] = '10.0.1.1';
+        delete_transient( 'wldelay_fails_' . md5( '10.0.1.1' ) );
+        wldelay_track_failed_attempt( 'attacker1' );
+        $this->assertCount( 1, $this->sent_emails, 'First IP reaching threshold should trigger an alert' );
+
+        // IP 2 hits its own threshold within cooldown window — suppressed
+        $_SERVER['REMOTE_ADDR'] = '10.0.1.2';
+        delete_transient( 'wldelay_fails_' . md5( '10.0.1.2' ) );
+        wldelay_track_failed_attempt( 'attacker2' );
+        $this->assertCount( 1, $this->sent_emails, 'Second IP should be suppressed by site-wide cooldown' );
+
+        // IP 3 also suppressed — all subsequent IPs silenced during cooldown
+        $_SERVER['REMOTE_ADDR'] = '10.0.1.3';
+        delete_transient( 'wldelay_fails_' . md5( '10.0.1.3' ) );
+        wldelay_track_failed_attempt( 'attacker3' );
+        $this->assertCount( 1, $this->sent_emails, 'Third IP also suppressed during cooldown' );
+
+        // After cooldown expires, the next IP at threshold fires again
+        delete_transient( 'wldelay_email_cooldown' );
+        $_SERVER['REMOTE_ADDR'] = '10.0.1.4';
+        delete_transient( 'wldelay_fails_' . md5( '10.0.1.4' ) );
+        wldelay_track_failed_attempt( 'attacker4' );
+        $this->assertCount( 2, $this->sent_emails, 'After cooldown expires, next IP at threshold triggers a new alert' );
+    }
+
+    /**
      * Test that email cooldown of 0 disables rate limiting.
      */
     public function test_email_cooldown_zero_disables_rate_limiting() {

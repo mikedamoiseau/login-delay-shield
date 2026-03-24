@@ -1,12 +1,12 @@
 === Login Delay Shield ===
 Contributors: michael.damoiseau
 Donate link: http://damoiseau.me/
-Tags: security,login,brute-force,lockout,authentication
+Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,password-protection
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.1.6
-Stable tag: 2.1.6
+Version: 2.2.0
+Stable tag: 2.2.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -29,6 +29,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **Email notifications** — Receive alerts when failed login thresholds are reached
 * **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity and 7-day trends
 * **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
+* **Custom login URL** — Move the login page to a custom URL to reduce automated bot traffic targeting `/wp-login.php`
 * **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 * **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support
 * **Multilingual** — Translated into 18 languages including French, German, Spanish, Japanese, Chinese, Arabic, and more
@@ -135,7 +136,27 @@ The plugin automatically uses your site's language setting. Want to help transla
 3. IP whitelist and XML-RPC protection settings.
 4. Dashboard widget showing recent failed login attempts.
 
+== Contribute ==
+
+Found a bug or want to suggest an improvement? Open a thread in the [support forum](https://wordpress.org/support/plugin/login-delay-shield/) on WordPress.org.
+
+Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
+
 == Changelog ==
+
+= 2.2.0 =
+Adds Custom Login URL — the last major unimplemented roadmap feature.
+
+**New Features:**
+* Custom Login URL — optionally move the WordPress login page to a configurable slug (e.g., `/my-login`). When enabled, direct access to `wp-login.php` is blocked and all auth flows (login, logout, lost password, password reset) are routed through the custom slug.
+* Emergency recovery bypass — define `WLDELAY_DISABLE_CUSTOM_LOGIN` in `wp-config.php` to restore access to `wp-login.php` without disabling the plugin.
+* WP-CLI, cron, and REST API contexts are automatically excluded from custom login routing.
+* All WordPress URL generation functions (`wp_login_url`, `logout_url`, `lostpassword_url`) and password-reset emails are transparently updated to use the custom slug.
+
+**Improvements:**
+* New settings card for Custom Login URL in the admin UI, following existing WCAG 2.1 AA accessibility patterns.
+* Custom Login URL feature appears in the protection status summary box.
+* Rewrite rules are automatically flushed when the slug or enabled state changes.
 
 = 2.1.6 =
 Small release focused on dashboard observability, admin polish, and release metadata improvements.
@@ -286,6 +307,9 @@ Major release with comprehensive security features and modern admin interface.
 * First version of the plugin
 
 == Upgrade Notice ==
+
+= 2.2.0 =
+Adds Custom Login URL feature: move the login page to a custom URL and block direct access to `wp-login.php`. Disabled by default — no behavior change on upgrade.
 
 = 2.1.5 =
 Hardens default handling for missing REST/application-password option keys on migrated or legacy installs.

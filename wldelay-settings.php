@@ -329,6 +329,30 @@ class LDS_Settings {
             'wldelay_xmlrpc_section_id'
         );
 
+        // Custom Login URL section
+        add_settings_section(
+            'wldelay_custom_login_section_id',
+            'Custom Login URL',
+            array( $this->view, 'print_custom_login_section_info' ),
+            'login-delay-shield-admin'
+        );
+
+        add_settings_field(
+            'wldelay_custom_login_enabled',
+            'Enable custom login URL',
+            array( $this->view, 'custom_login_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_custom_login_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_custom_login_slug',
+            'Custom login slug',
+            array( $this->view, 'custom_login_slug_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_custom_login_section_id'
+        );
+
     }
 
     /**
@@ -433,7 +457,48 @@ class LDS_Settings {
         $new_input['wldelay_rest_enabled'] = ! empty( $input['wldelay_rest_enabled'] );
         $new_input['wldelay_application_password_enabled'] = ! empty( $input['wldelay_application_password_enabled'] );
 
+        // Custom Login URL settings
+        $new_input['wldelay_custom_login_enabled'] = ! empty( $input['wldelay_custom_login_enabled'] );
+        $raw_slug = isset( $input['wldelay_custom_login_slug'] ) ? (string) $input['wldelay_custom_login_slug'] : '';
+        $new_input['wldelay_custom_login_slug'] = $this->sanitize_login_slug( $raw_slug );
+
         return $new_input;
+    }
+
+    /**
+     * Sanitize a custom login slug.
+     *
+     * Produces a lowercase alphanumeric + hyphen slug. Rejects reserved slugs.
+     *
+     * @param string $slug Raw slug input.
+     * @return string Sanitized slug, or 'my-login' if empty/invalid/reserved.
+     */
+    public function sanitize_login_slug( $slug ) {
+        // Lowercase and strip anything that isn't a-z, 0-9, or hyphen.
+        $slug = strtolower( (string) $slug );
+        $slug = preg_replace( '/[^a-z0-9-]/', '', $slug );
+        $slug = trim( $slug, '-' );
+
+        if ( empty( $slug ) ) {
+            return 'my-login';
+        }
+
+        // Block slugs that would conflict with WordPress core paths.
+        // Note: entries are compared AFTER sanitization (lowercase, a-z0-9- only),
+        // so entries like 'wp-login.php' are excluded — they cannot match.
+        $reserved = array(
+            'wp-admin',
+            'wp-login',
+            'admin',
+            'login',
+            'wp-cron',
+        );
+
+        if ( in_array( $slug, $reserved, true ) ) {
+            return 'my-login';
+        }
+
+        return $slug;
     }
 
     /**
