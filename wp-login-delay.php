@@ -65,10 +65,34 @@ function wldelay_add_dashboard_widget() {
 add_action( 'wp_dashboard_setup', 'wldelay_add_dashboard_widget' );
 
 /**
- * Enqueue admin styles
+ * Enqueue admin assets.
+ *
+ * Loads JavaScript across admin pages for dismissible notices and settings-page
+ * interactions, while limiting styles to the dashboard and plugin settings page.
+ *
+ * @param string $hook Current admin page hook.
  */
-function wldelay_enqueue_admin_styles( $hook ) {
-    // Only load on dashboard and our settings page
+function wldelay_enqueue_admin_assets( $hook ) {
+    wp_enqueue_script(
+        'wldelay-admin-script',
+        plugin_dir_url( WLDELAY_PLUGIN_FILE ) . 'admin.js',
+        array( 'jquery' ),
+        WLDELAY_VERSION,
+        true
+    );
+
+    wp_localize_script(
+        'wldelay-admin-script',
+        'wldelayAdmin',
+        array(
+            'ajaxUrl'            => admin_url( 'admin-ajax.php' ),
+            'dismissNoticeNonce' => wp_create_nonce( 'wldelay_dismiss_notice' ),
+            'badgeEnabled'       => __( 'Enabled', 'login-delay-shield' ),
+            'badgeDisabled'      => __( 'Disabled', 'login-delay-shield' ),
+        )
+    );
+
+    // Only load styles on dashboard and our settings page.
     if ( $hook !== 'index.php' && $hook !== 'settings_page_login-delay-shield-admin' ) {
         return;
     }
@@ -80,7 +104,7 @@ function wldelay_enqueue_admin_styles( $hook ) {
         WLDELAY_VERSION
     );
 }
-add_action( 'admin_enqueue_scripts', 'wldelay_enqueue_admin_styles' );
+add_action( 'admin_enqueue_scripts', 'wldelay_enqueue_admin_assets' );
 
 /**
  * Build the unlock-current-IP admin action URL.
@@ -1120,16 +1144,6 @@ function wldelay_show_upgrade_notice() {
             <?php esc_html_e( 'This plugin was formerly known as "WP Login Delay". The name has changed, but all your settings have been preserved.', 'login-delay-shield' ); ?>
         </p>
     </div>
-    <script>
-        jQuery(document).ready(function($) {
-            $(document).on('click', '.wldelay-name-change-notice .notice-dismiss', function() {
-                $.post(ajaxurl, {
-                    action: 'wldelay_dismiss_name_change_notice',
-                    _wpnonce: '<?php echo wp_create_nonce( 'wldelay_dismiss_notice' ); ?>'
-                });
-            });
-        });
-    </script>
     <?php
 }
 add_action( 'admin_notices', 'wldelay_show_upgrade_notice' );
@@ -1294,7 +1308,7 @@ function wldelay_normalize_username( $username ) {
         return '';
     }
 
-    return strtolower( sanitize_user( $username, true ) );
+    return strtolower( sanitize_user( wp_unslash( $username ), true ) );
 }
 
 /**

@@ -63,7 +63,7 @@ class LDS_Settings_View {
             <form method="post" action="options.php">
                 <?php settings_fields( 'wldelay_option_group' ); ?>
 
-                <div class="wldelay-card" data-section="delay">
+                <div class="wldelay-card">
                     <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-delay-body">
                         <span class="dashicons dashicons-clock" aria-hidden="true"></span>
                         <?php esc_html_e( 'Delay Settings', 'login-delay-shield' ); ?>
@@ -75,7 +75,7 @@ class LDS_Settings_View {
                 </div>
 
                 <div class="wldelay-grid">
-                    <div class="wldelay-card" data-section="email">
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-email-body">
                             <span class="dashicons dashicons-email-alt" aria-hidden="true"></span>
                             <?php esc_html_e( 'Email Notifications', 'login-delay-shield' ); ?>
@@ -88,7 +88,7 @@ class LDS_Settings_View {
                         </div>
                     </div>
 
-                    <div class="wldelay-card" data-section="lockout">
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-lockout-body">
                             <span class="dashicons dashicons-lock" aria-hidden="true"></span>
                             <?php esc_html_e( 'IP Lockout', 'login-delay-shield' ); ?>
@@ -109,7 +109,7 @@ class LDS_Settings_View {
                         </div>
                     </div>
 
-                    <div class="wldelay-card" data-section="whitelist">
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-whitelist-body">
                             <span class="dashicons dashicons-shield-alt" aria-hidden="true"></span>
                             <?php esc_html_e( 'IP Whitelist', 'login-delay-shield' ); ?>
@@ -122,7 +122,7 @@ class LDS_Settings_View {
                         </div>
                     </div>
 
-                    <div class="wldelay-card" data-section="log">
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-log-body">
                             <span class="dashicons dashicons-list-view" aria-hidden="true"></span>
                             <?php esc_html_e( 'Login Log', 'login-delay-shield' ); ?>
@@ -142,7 +142,7 @@ class LDS_Settings_View {
                         </div>
                     </div>
 
-                    <div class="wldelay-card" data-section="xmlrpc">
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-xmlrpc-body">
                             <span class="dashicons dashicons-rss" aria-hidden="true"></span>
                             <?php esc_html_e( 'XML-RPC Protection', 'login-delay-shield' ); ?>
@@ -158,7 +158,6 @@ class LDS_Settings_View {
 
                 <?php submit_button(); ?>
             </form>
-            <?php $this->output_admin_scripts(); ?>
         </div>
         <?php
     }
@@ -337,132 +336,6 @@ class LDS_Settings_View {
         echo '</table>';
     }
 
-    /**
-     * Output admin JavaScript for field toggling
-     */
-    public function output_admin_scripts() {
-        ?>
-        <script>
-            jQuery(document).ready( function($) {
-                // Badge update helper
-                function updateBadge( toggleKey, isEnabled ) {
-                    var $badge = $( '.wldelay-badge[data-toggle="' + toggleKey + '"]' );
-                    if ( isEnabled ) {
-                        $badge.removeClass( 'wldelay-badge-disabled' ).addClass( 'wldelay-badge-enabled' ).text( 'Enabled' );
-                    } else {
-                        $badge.removeClass( 'wldelay-badge-enabled' ).addClass( 'wldelay-badge-disabled' ).text( 'Disabled' );
-                    }
-                }
-
-                // Summary box update helper
-                function updateSummary( toggleKey, isEnabled ) {
-                    var $feature = $( '.wldelay-summary-features span[data-feature="' + toggleKey + '"]' );
-                    var $icon = $feature.find( '.dashicons' );
-
-                    if ( isEnabled ) {
-                        $feature.removeClass( 'wldelay-feature-off' ).addClass( 'wldelay-feature-on' );
-                        $icon.removeClass( 'dashicons-no-alt' ).addClass( 'dashicons-yes' );
-                    } else {
-                        $feature.removeClass( 'wldelay-feature-on' ).addClass( 'wldelay-feature-off' );
-                        $icon.removeClass( 'dashicons-yes' ).addClass( 'dashicons-no-alt' );
-                    }
-
-                    // Update count
-                    var count = $( '.wldelay-summary-features .wldelay-feature-on' ).length;
-                    $( '#wldelay-enabled-count' ).text( count );
-                }
-
-                // Random delay toggle
-                function toggleRandomDelay() {
-                    var isRandomChecked = $( '#wldelay_delay_random' ).prop( 'checked' );
-                    $( '#wldelay_delay' ).closest( 'tr' ).toggle( ! isRandomChecked );
-                    $( '#wldelay_delay_random_min' ).closest( 'tr' ).toggle( isRandomChecked );
-                    $( '#wldelay_delay_random_max' ).closest( 'tr' ).toggle( isRandomChecked );
-                }
-                toggleRandomDelay();
-                $( '#wldelay_delay_random' ).on( 'change', toggleRandomDelay );
-
-                // Progressive delay toggle
-                function toggleProgressiveDelay() {
-                    var isProgressiveChecked = $( '#wldelay_progressive_enabled' ).prop( 'checked' );
-                    $( '#wldelay_progressive_increment' ).closest( 'tr' ).toggle( isProgressiveChecked );
-                    $( '#wldelay_progressive_max' ).closest( 'tr' ).toggle( isProgressiveChecked );
-                    updateSummary( 'wldelay_progressive_enabled', isProgressiveChecked );
-                }
-                toggleProgressiveDelay();
-                $( '#wldelay_progressive_enabled' ).on( 'change', toggleProgressiveDelay );
-
-                // IP Whitelist toggle
-                function toggleWhitelist() {
-                    var isWhitelistChecked = $( '#wldelay_whitelist_enabled' ).prop( 'checked' );
-                    $( '#wldelay_whitelist_ips' ).closest( 'tr' ).toggle( isWhitelistChecked );
-                    updateBadge( 'wldelay_whitelist_enabled', isWhitelistChecked );
-                    updateSummary( 'wldelay_whitelist_enabled', isWhitelistChecked );
-                }
-                toggleWhitelist();
-                $( '#wldelay_whitelist_enabled' ).on( 'change', toggleWhitelist );
-
-                // Email notifications toggle
-                $( '#wldelay_email_enabled' ).on( 'change', function() {
-                    var isChecked = $(this).prop( 'checked' );
-                    updateBadge( 'wldelay_email_enabled', isChecked );
-                    updateSummary( 'wldelay_email_enabled', isChecked );
-                });
-
-                // IP Lockout toggle
-                $( '#wldelay_lockout_enabled' ).on( 'change', function() {
-                    var isChecked = $(this).prop( 'checked' );
-                    updateBadge( 'wldelay_lockout_enabled', isChecked );
-                    updateSummary( 'wldelay_lockout_enabled', isChecked );
-                });
-
-                // XMLRPC Protection toggle
-                function toggleXmlrpc() {
-                    var isXmlrpcChecked = $( '#wldelay_xmlrpc_enabled' ).prop( 'checked' );
-                    $( '#wldelay_xmlrpc_block' ).closest( 'tr' ).toggle( isXmlrpcChecked );
-                    updateBadge( 'wldelay_xmlrpc_enabled', isXmlrpcChecked );
-                    updateSummary( 'wldelay_xmlrpc_enabled', isXmlrpcChecked );
-                }
-                toggleXmlrpc();
-                $( '#wldelay_xmlrpc_enabled' ).on( 'change', toggleXmlrpc );
-
-                // REST protection toggle
-                $( '#wldelay_rest_enabled' ).on( 'change', function() {
-                    updateSummary( 'wldelay_rest_enabled', $(this).prop( 'checked' ) );
-                });
-
-                // Application password protection toggle
-                $( '#wldelay_application_password_enabled' ).on( 'change', function() {
-                    updateSummary( 'wldelay_application_password_enabled', $(this).prop( 'checked' ) );
-                });
-
-                // Collapsible sections with keyboard support
-                function toggleCard( $header ) {
-                    var $card = $header.closest( '.wldelay-card' );
-                    var isCollapsed = $card.hasClass( 'collapsed' );
-                    $card.toggleClass( 'collapsed' );
-                    $header.attr( 'aria-expanded', isCollapsed ? 'true' : 'false' );
-                }
-
-                $( '.wldelay-card-header' ).on( 'click', function( e ) {
-                    // Don't collapse if clicking on a form element
-                    if ( $( e.target ).is( 'input, label' ) ) {
-                        return;
-                    }
-                    toggleCard( $( this ) );
-                });
-
-                // Keyboard support: Enter and Space to toggle
-                $( '.wldelay-card-header' ).on( 'keydown', function( e ) {
-                    if ( e.key === 'Enter' || e.key === ' ' ) {
-                        e.preventDefault();
-                        toggleCard( $( this ) );
-                    }
-                });
-            });
-        </script>
-        <?php
-    }
 
     /**
      * Print the Section text
@@ -671,9 +544,8 @@ class LDS_Settings_View {
      */
     public function trust_proxy_headers_callback() {
         printf(
-            '<label><input type="checkbox" id="wldelay_trust_proxy_headers" name="wldelay_options[wldelay_trust_proxy_headers]" value="1" %s /> %s</label>',
-            ! empty( $this->options['wldelay_trust_proxy_headers'] ) ? 'checked="checked"' : '',
-            esc_html__( 'Trust X-Forwarded-For and HTTP_CLIENT_IP headers for IP detection.', 'login-delay-shield' )
+            '<input type="checkbox" id="wldelay_trust_proxy_headers" name="wldelay_options[wldelay_trust_proxy_headers]" value="1" %s aria-describedby="wldelay_trust_proxy_desc" />',
+            ! empty( $this->options['wldelay_trust_proxy_headers'] ) ? 'checked="checked"' : ''
         );
         echo $this->tooltip( __( 'Enable this only if your site is behind a reverse proxy or load balancer (e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct connection IP is used, preventing attackers from spoofing their IP address.', 'login-delay-shield' ) );
         echo '<p id="wldelay_trust_proxy_desc" class="description">' . esc_html__( 'Leave disabled unless behind a trusted proxy. Enabling this on a non-proxied site allows IP spoofing.', 'login-delay-shield' ) . '</p>';
@@ -684,11 +556,11 @@ class LDS_Settings_View {
      */
     public function progressive_enabled_callback() {
         printf(
-            '<label><input type="checkbox" id="wldelay_progressive_enabled" name="wldelay_options[wldelay_progressive_enabled]" value="1" %s /> %s</label>',
-            ! empty( $this->options['wldelay_progressive_enabled'] ) ? 'checked="checked"' : '',
-            esc_html__( 'Increase delay with each consecutive failed attempt from the same IP.', 'login-delay-shield' )
+            '<input type="checkbox" id="wldelay_progressive_enabled" name="wldelay_options[wldelay_progressive_enabled]" value="1" %s aria-describedby="wldelay_progressive_enabled_desc" />',
+            ! empty( $this->options['wldelay_progressive_enabled'] ) ? 'checked="checked"' : ''
         );
         echo $this->tooltip( __( 'Delays grow longer with each failed attempt. First try might be 1s, second 2s, third 3s, etc. Very effective against automated attacks.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_progressive_enabled_desc" class="description">' . esc_html__( 'Increase delay with each consecutive failed attempt from the same IP.', 'login-delay-shield' ) . '</p>';
     }
 
     /**
