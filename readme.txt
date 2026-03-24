@@ -1,8 +1,8 @@
 === Login Delay Shield ===
 Contributors: michael.damoiseau
 Donate link: http://damoiseau.me/
-Tags: security,login,brute-force,lockout,xmlrpc
-Requires PHP: 5.4
+Tags: security,login,brute-force,lockout,authentication
+Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
 Version: 2.1.5
@@ -138,13 +138,13 @@ The plugin automatically uses your site's language setting. Want to help transla
 == Changelog ==
 
 = Unreleased =
-Adds a lightweight observability panel to the failed-login dashboard widget.
-
-**New Features:**
-* Dashboard telemetry trends for failed login logs over the last 7 days, including daily totals, top sources, and top IPs.
+Prepares the next minor release with documentation and admin UI polish.
 
 **Improvements:**
-* Dashboard widget cache now stores both recent attempts and the trends snapshot, while staying backward-compatible with the previous cache shape.
+* Updated the WordPress.org listing metadata, including a more accurate minimum PHP version and refreshed tags.
+* Extracted admin inline JavaScript into a dedicated file for easier maintenance.
+* Standardized settings checkbox rendering and added a small input unslashing hardening improvement for username normalization.
+
 
 = 2.1.5 =
 Patch release focused on safer defaults for migrated/legacy installs.

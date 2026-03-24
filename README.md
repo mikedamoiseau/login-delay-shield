@@ -91,8 +91,9 @@ English, Arabic, Chinese (Simplified), Czech, Dutch, French, German, Indonesian,
 
 ### Unreleased
 
-- Added a lightweight 7-day failed-login telemetry panel to the dashboard widget with daily totals, top sources, and top IPs.
-- Updated the widget cache to snapshot both recent attempts and trend data while remaining compatible with the previous cache format.
+- Updated the WordPress.org listing metadata, including a more accurate minimum PHP version and refreshed tags.
+- Extracted admin inline JavaScript into a dedicated file for easier maintenance.
+- Standardized settings checkbox rendering and added a small username unslashing hardening improvement.
 
 See [readme.txt](readme.txt) for the full changelog.
 
