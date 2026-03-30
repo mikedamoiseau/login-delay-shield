@@ -1365,7 +1365,8 @@ function wldelay_get_lockout_transient_key( $ip, $username = '', $options = null
  */
 function wldelay_get_requested_login_username() {
     if ( isset( $_POST['log'] ) ) {
-        return wldelay_normalize_username( $_POST['log'] );
+        // wp_unslash() strips WordPress magic-quote slashes before sanitization.
+        return wldelay_normalize_username( wp_unslash( $_POST['log'] ) );
     }
 
     return '';
@@ -1684,7 +1685,12 @@ function wldelay_ip_in_range( $ip, $range ) {
         $ip_bin = inet_pton( $ip );
         $range_bin = inet_pton( $range_ip );
 
-        // Create binary mask
+        // Build a 128-bit (16-byte) binary mask for IPv6 CIDR comparison.
+        // Full 0xff bytes cover complete octets ($netmask / 8).
+        // For any partial octet, left-shift 0xff by (8 - remaining bits) to
+        // zero out the host bits within that byte (e.g. /68 → 4 remainder bits
+        // → 0xff << 4 = 0xf0). The mask is then zero-padded to 16 bytes so
+        // bitwise AND with inet_pton() output isolates the network prefix.
         $mask = str_repeat( "\xff", (int) floor( $netmask / 8 ) );
         if ( $netmask % 8 ) {
             $mask .= chr( 0xff << ( 8 - ( $netmask % 8 ) ) );
@@ -2130,15 +2136,12 @@ function wldelay_send_notification_email( $ip, $username, $attempts ) {
 
     $to = ! empty( $options['wldelay_email_address'] ) ? $options['wldelay_email_address'] : get_option( 'admin_email' );
     $site_name = get_bloginfo( 'name' );
-    $subject = sprintf( '[%s] Failed login attempts alert', $site_name );
+    /* translators: %s: site name */
+    $subject = sprintf( __( '[%s] Failed login attempts alert', 'login-delay-shield' ), $site_name );
 
+    /* translators: 1: site name, 2: IP address, 3: attempted username, 4: failed attempt count, 5: timestamp */
     $message = sprintf(
-        "Multiple failed login attempts detected on %s.\n\n" .
-        "IP Address: %s\n" .
-        "Username attempted: %s\n" .
-        "Failed attempts: %d\n" .
-        "Time: %s\n\n" .
-        "This is an automated alert from Login Delay Shield.",
+        __( "Multiple failed login attempts detected on %1\$s.\n\nIP Address: %2\$s\nUsername attempted: %3\$s\nFailed attempts: %4\$d\nTime: %5\$s\n\nThis is an automated alert from Login Delay Shield.", 'login-delay-shield' ),
         $site_name,
         $ip,
         $username,

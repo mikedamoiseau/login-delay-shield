@@ -144,6 +144,23 @@ Want to help translate the plugin into your language? Visit [translate.wordpress
 
 == Changelog ==
 
+= 2.2.2 =
+Micro-hardening — input sanitization, i18n completeness, and code documentation.
+
+**Improvements:**
+* Added `wp_unslash()` before `sanitize_user()` in login username extraction to correctly handle WordPress magic-quote slashes.
+* Wrapped email notification subject and body in `__()` for full i18n/l10n support.
+* Added detailed inline comments explaining the IPv6 CIDR binary mask bit-shift logic.
+
+= 2.2.1 =
+Code housekeeping — JavaScript extraction and admin UI consistency.
+
+**Improvements:**
+* Extracted all inline JavaScript from the settings page view into a standalone `admin.js` file, loaded via `wp_enqueue_script()`.
+* Used `wp_localize_script()` to pass PHP-side translatable strings to JavaScript (Enabled/Disabled badge labels).
+* Standardized `<label>` association across all settings field callbacks.
+* Removed unused `data-section` attributes from settings card elements.
+
 = 2.2.0 =
 Adds Custom Login URL — the last major unimplemented roadmap feature.
 
