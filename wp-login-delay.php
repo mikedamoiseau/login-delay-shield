@@ -338,7 +338,11 @@ function wldelay_handle_unlock_current_ip() {
     );
 
     wp_safe_redirect( $redirect_url );
-    exit;
+
+    $should_exit = apply_filters( 'wldelay_unlock_current_ip_should_exit', true );
+    if ( $should_exit ) {
+        exit;
+    }
 }
 add_action( 'admin_post_wldelay_unlock_current_ip', 'wldelay_handle_unlock_current_ip' );
 
