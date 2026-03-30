@@ -332,14 +332,14 @@ class LDS_Settings {
         // Custom Login URL section
         add_settings_section(
             'wldelay_custom_login_section_id',
-            'Custom Login URL',
+            esc_html__( 'Custom Login URL', 'login-delay-shield' ),
             array( $this->view, 'print_custom_login_section_info' ),
             'login-delay-shield-admin'
         );
 
         add_settings_field(
             'wldelay_custom_login_enabled',
-            'Enable custom login URL',
+            esc_html__( 'Enable custom login URL', 'login-delay-shield' ),
             array( $this->view, 'custom_login_enabled_callback' ),
             'login-delay-shield-admin',
             'wldelay_custom_login_section_id'
@@ -347,7 +347,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_custom_login_slug',
-            'Custom login slug',
+            esc_html__( 'Custom login slug', 'login-delay-shield' ),
             array( $this->view, 'custom_login_slug_callback' ),
             'login-delay-shield-admin',
             'wldelay_custom_login_section_id'
@@ -492,6 +492,15 @@ class LDS_Settings {
             'admin',
             'login',
             'wp-cron',
+            'wp-json',
+            'wp-content',
+            'wp-includes',
+            'wp-signup',
+            'wp-activate',
+            'xmlrpc',
+            'feed',
+            'robots',
+            'sitemap',
         );
 
         if ( in_array( $slug, $reserved, true ) ) {

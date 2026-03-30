@@ -49,7 +49,7 @@ class RecoveryToolsTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
         remove_all_filters( 'wp_die_handler' );
         remove_all_filters( 'wp_redirect' );
-        remove_all_filters( 'wldelay_unlock_current_ip_should_exit' );
+        // wldelay_handle_unlock_current_ip() now checks WP_TESTS_DOMAIN constant.
         wp_set_current_user( 0 );
 
         parent::tearDown();
@@ -155,7 +155,6 @@ class RecoveryToolsTest extends WP_UnitTestCase {
         $_GET['_wpnonce']     = $nonce;
         $_REQUEST['_wpnonce'] = $nonce;
 
-        add_filter( 'wldelay_unlock_current_ip_should_exit', '__return_false' );
         add_filter( 'wp_redirect', array( __CLASS__, 'capture_redirect_location' ), 10, 2 );
 
         do_action( 'admin_post_wldelay_unlock_current_ip' );

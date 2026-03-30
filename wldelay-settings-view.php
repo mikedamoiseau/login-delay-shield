@@ -154,6 +154,19 @@ class LDS_Settings_View {
                             <?php $this->do_settings_section_fields( 'wldelay_xmlrpc_section_id' ); ?>
                         </div>
                     </div>
+
+                    <div class="wldelay-card">
+                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-custom-login-body">
+                            <span class="dashicons dashicons-admin-links" aria-hidden="true"></span>
+                            <?php esc_html_e( 'Custom Login URL', 'login-delay-shield' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_custom_login_enabled', __( 'Custom Login URL', 'login-delay-shield' ) ); ?>
+                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                        </h2>
+                        <div id="wldelay-custom-login-body" class="wldelay-card-body">
+                            <p class="description"><?php esc_html_e( 'Hide wp-login.php behind a custom URL slug to reduce automated attacks targeting the default login path.', 'login-delay-shield' ); ?></p>
+                            <?php $this->do_settings_section_fields( 'wldelay_custom_login_section_id' ); ?>
+                        </div>
+                    </div>
                 </div>
 
                 <?php submit_button(); ?>
@@ -174,6 +187,7 @@ class LDS_Settings_View {
             'wldelay_xmlrpc_enabled' => __( 'XML-RPC Protection', 'login-delay-shield' ),
             'wldelay_rest_enabled' => __( 'REST API Protection', 'login-delay-shield' ),
             'wldelay_application_password_enabled' => __( 'Application Password Protection', 'login-delay-shield' ),
+            'wldelay_custom_login_enabled' => __( 'Custom Login URL', 'login-delay-shield' ),
         );
 
         $enabled_count = 0;
@@ -662,6 +676,39 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Apply delay and lockout checks to failed REST API authentication requests.', 'login-delay-shield' ) );
         echo '<p id="wldelay_rest_enabled_desc" class="description">' . esc_html__( 'Protect failed REST authentication attempts with the same delay/lockout behavior.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Print custom login section info
+     */
+    public function print_custom_login_section_info() {
+        // Description is now in card structure
+    }
+
+    /**
+     * Custom login enabled callback
+     */
+    public function custom_login_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_custom_login_enabled" name="wldelay_options[wldelay_custom_login_enabled]" value="1" %s aria-describedby="wldelay_custom_login_enabled_desc" />',
+            ! empty( $this->options['wldelay_custom_login_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'When enabled, the default wp-login.php URL will return a 404, and only the custom slug will load the login page.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_custom_login_enabled_desc" class="description">' . esc_html__( 'Replace wp-login.php with a custom URL slug.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Custom login slug callback
+     */
+    public function custom_login_slug_callback() {
+        $slug = isset( $this->options['wldelay_custom_login_slug'] ) ? $this->options['wldelay_custom_login_slug'] : 'my-login';
+        printf(
+            '<code>%s/</code><input type="text" id="wldelay_custom_login_slug" name="wldelay_options[wldelay_custom_login_slug]" value="%s" class="regular-text" aria-describedby="wldelay_custom_login_slug_desc" />',
+            esc_html( home_url() ),
+            esc_attr( $slug )
+        );
+        echo $this->tooltip( __( 'Choose a unique, hard-to-guess slug. Only lowercase letters, numbers, and hyphens are allowed.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_custom_login_slug_desc" class="description">' . esc_html__( 'Lowercase letters, numbers, and hyphens only. Reserved slugs (wp-admin, login, etc.) are rejected.', 'login-delay-shield' ) . '</p>';
     }
 
     /**

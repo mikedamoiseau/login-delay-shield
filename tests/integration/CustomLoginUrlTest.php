@@ -280,7 +280,7 @@ class CustomLoginUrlTest extends WP_UnitTestCase {
         $this->assertNotFalse( has_filter( 'query_vars', 'wldelay_custom_login_query_vars' ) );
         $this->assertNotFalse( has_action( 'template_redirect', 'wldelay_custom_login_template_redirect' ) );
         $this->assertNotFalse( has_action( 'login_init', 'wldelay_custom_login_block_direct_access' ) );
-        $this->assertNotFalse( has_filter( 'wp_login_url', 'wldelay_filter_login_url' ) );
+        $this->assertNotFalse( has_filter( 'login_url', 'wldelay_filter_login_url' ) );
         $this->assertNotFalse( has_filter( 'logout_url', 'wldelay_filter_logout_url' ) );
         $this->assertNotFalse( has_filter( 'lostpassword_url', 'wldelay_filter_lostpassword_url' ) );
         $this->assertNotFalse( has_filter( 'retrieve_password_message', 'wldelay_filter_retrieve_password_message' ) );

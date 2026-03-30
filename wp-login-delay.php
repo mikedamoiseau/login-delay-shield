@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.2.0' );
+define( 'WLDELAY_VERSION', '2.2.3' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
@@ -9,7 +9,7 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC protection, custom login URL, and email alerts.
-Version: 2.2.0
+Version: 2.2.3
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
@@ -339,10 +339,10 @@ function wldelay_handle_unlock_current_ip() {
 
     wp_safe_redirect( $redirect_url );
 
-    $should_exit = apply_filters( 'wldelay_unlock_current_ip_should_exit', true );
-    if ( $should_exit ) {
-        exit;
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        return;
     }
+    exit;
 }
 add_action( 'admin_post_wldelay_unlock_current_ip', 'wldelay_handle_unlock_current_ip' );
 
@@ -1040,6 +1040,90 @@ function wldelay_create_log_table() {
 
 register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_log_table' );
 
+// ==========================================================================
+// Trend Analytics Queries
+// ==========================================================================
+
+/**
+ * Get the top IP addresses by failed login count within a period.
+ *
+ * @param int $days  Number of days to look back (defaults to 7 if <= 0).
+ * @param int $limit Maximum rows to return (defaults to 10 if <= 0).
+ * @return array Array of objects with ip_address and attempt_count properties.
+ */
+function wldelay_get_top_ips( $days = 7, $limit = 10 ) {
+    global $wpdb;
+
+    $days  = max( 1, (int) $days );
+    $limit = max( 1, (int) $limit );
+
+    $table_name = wldelay_get_log_table_name();
+    $since = gmdate( 'Y-m-d H:i:s', time() - ( $days * DAY_IN_SECONDS ) );
+
+    return $wpdb->get_results( $wpdb->prepare(
+        "SELECT ip_address, COUNT(*) AS attempt_count
+         FROM $table_name
+         WHERE attempted_at >= %s
+         GROUP BY ip_address
+         ORDER BY attempt_count DESC
+         LIMIT %d",
+        $since,
+        $limit
+    ) );
+}
+
+/**
+ * Get the top usernames by failed login count within a period.
+ *
+ * @param int $days  Number of days to look back (defaults to 7 if <= 0).
+ * @param int $limit Maximum rows to return (defaults to 10 if <= 0).
+ * @return array Array of objects with username and attempt_count properties.
+ */
+function wldelay_get_top_usernames( $days = 7, $limit = 10 ) {
+    global $wpdb;
+
+    $days  = max( 1, (int) $days );
+    $limit = max( 1, (int) $limit );
+
+    $table_name = wldelay_get_log_table_name();
+    $since = gmdate( 'Y-m-d H:i:s', time() - ( $days * DAY_IN_SECONDS ) );
+
+    return $wpdb->get_results( $wpdb->prepare(
+        "SELECT username, COUNT(*) AS attempt_count
+         FROM $table_name
+         WHERE attempted_at >= %s
+         GROUP BY username
+         ORDER BY attempt_count DESC
+         LIMIT %d",
+        $since,
+        $limit
+    ) );
+}
+
+/**
+ * Get daily failed login attempt counts within a period.
+ *
+ * @param int $days Number of days to look back (defaults to 7 if <= 0).
+ * @return array Array of objects with log_date (Y-m-d) and attempt_count properties, ordered ASC.
+ */
+function wldelay_get_daily_attempts( $days = 7 ) {
+    global $wpdb;
+
+    $days = max( 1, (int) $days );
+
+    $table_name = wldelay_get_log_table_name();
+    $since = gmdate( 'Y-m-d H:i:s', time() - ( $days * DAY_IN_SECONDS ) );
+
+    return $wpdb->get_results( $wpdb->prepare(
+        "SELECT DATE(attempted_at) AS log_date, COUNT(*) AS attempt_count
+         FROM $table_name
+         WHERE attempted_at >= %s
+         GROUP BY log_date
+         ORDER BY log_date ASC",
+        $since
+    ) );
+}
+
 /**
  * Log cleanup cron job
  */
@@ -1365,8 +1449,7 @@ function wldelay_get_lockout_transient_key( $ip, $username = '', $options = null
  */
 function wldelay_get_requested_login_username() {
     if ( isset( $_POST['log'] ) ) {
-        // wp_unslash() strips WordPress magic-quote slashes before sanitization.
-        return wldelay_normalize_username( wp_unslash( $_POST['log'] ) );
+        return wldelay_normalize_username( $_POST['log'] );
     }
 
     return '';
@@ -2217,3 +2300,270 @@ function wldelay_auth_login ($user, $password) {
     return $user;
 }
 add_filter('wp_authenticate_user', 'wldelay_auth_login',1, 2);
+
+// ==========================================================================
+// Custom Login URL
+// ==========================================================================
+
+/**
+ * Check whether the custom login URL feature is active.
+ *
+ * @return bool
+ */
+function wldelay_custom_login_is_active() {
+    if ( defined( 'WLDELAY_DISABLE_CUSTOM_LOGIN' ) && WLDELAY_DISABLE_CUSTOM_LOGIN ) {
+        return false;
+    }
+
+    $options = wldelay_get_options();
+
+    if ( empty( $options['wldelay_custom_login_enabled'] ) ) {
+        return false;
+    }
+
+    $slug = isset( $options['wldelay_custom_login_slug'] ) ? trim( $options['wldelay_custom_login_slug'] ) : '';
+
+    return $slug !== '';
+}
+
+/**
+ * Get the configured custom login slug.
+ *
+ * @return string
+ */
+function wldelay_get_custom_login_slug() {
+    $options = wldelay_get_options();
+    return isset( $options['wldelay_custom_login_slug'] ) ? trim( $options['wldelay_custom_login_slug'] ) : 'my-login';
+}
+
+/**
+ * Register the custom login slug rewrite rule and prevent canonical redirect
+ * from leaking the custom slug when someone visits /wp-login.php.
+ */
+function wldelay_custom_login_init() {
+    if ( ! wldelay_custom_login_is_active() ) {
+        return;
+    }
+
+    $slug = wldelay_get_custom_login_slug();
+    add_rewrite_rule( '^' . preg_quote( $slug, '/' ) . '/?$', 'index.php?wldelay_custom_login=1', 'top' );
+
+    // Intercept any redirect that would expose the custom slug when someone
+    // visits /wp-login.php. Covers canonical redirect and any other source.
+    add_filter( 'wp_redirect', 'wldelay_block_login_slug_leak', 1, 2 );
+}
+add_action( 'init', 'wldelay_custom_login_init' );
+
+/**
+ * Block any redirect that would expose the custom login slug.
+ *
+ * Hooked on wp_redirect with priority 1 so it fires before the redirect is
+ * sent. If the original request was for /wp-login.php and WordPress tries to
+ * redirect to the custom slug URL, we serve a 404 instead.
+ *
+ * @param string $location The redirect destination URL.
+ * @param int    $status   HTTP status code.
+ * @return string|false The redirect URL, or false to cancel.
+ */
+function wldelay_block_login_slug_leak( $location, $status = 302 ) {
+    $request_path = trim( parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ), '/' );
+
+    // Only act when the original request targets wp-login.php.
+    if ( $request_path !== 'wp-login.php' && $request_path !== 'wp-loginphp' ) {
+        return $location;
+    }
+
+    $slug = wldelay_get_custom_login_slug();
+
+    // Only block if the redirect destination contains our custom slug.
+    if ( strpos( $location, $slug ) === false ) {
+        return $location;
+    }
+
+    status_header( 404 );
+    nocache_headers();
+
+    $template = function_exists( 'get_404_template' ) ? get_404_template() : '';
+    if ( $template && file_exists( $template ) ) {
+        include $template;
+    } else {
+        echo '<!DOCTYPE html><html><head><title>404 Not Found</title></head><body><h1>Not Found</h1></body></html>';
+    }
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        return false;
+    }
+    exit;
+}
+
+/**
+ * Register custom query var so WordPress recognises the slug.
+ *
+ * @param array $vars Existing query vars.
+ * @return array
+ */
+function wldelay_custom_login_query_vars( $vars ) {
+    $vars[] = 'wldelay_custom_login';
+    return $vars;
+}
+add_filter( 'query_vars', 'wldelay_custom_login_query_vars' );
+
+/**
+ * On template_redirect, load wp-login.php when the custom slug is requested.
+ */
+function wldelay_custom_login_template_redirect() {
+    if ( ! wldelay_custom_login_is_active() ) {
+        return;
+    }
+
+    // Check both the URL path and the query var set by the rewrite rule.
+    $slug = wldelay_get_custom_login_slug();
+    $request = trim( parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH ), '/' );
+
+    if ( $request === $slug || get_query_var( 'wldelay_custom_login' ) ) {
+        require_once ABSPATH . 'wp-login.php';
+        exit;
+    }
+}
+add_action( 'template_redirect', 'wldelay_custom_login_template_redirect' );
+
+/**
+ * Secondary guard on login_init — blocks any direct wp-login.php access that
+ * somehow bypassed the earlier init-level check (e.g. non-GET methods that
+ * should not reach the login form).
+ *
+ * The primary block runs on init in wldelay_custom_login_init().
+ */
+function wldelay_custom_login_block_direct_access() {
+    if ( ! wldelay_custom_login_is_active() ) {
+        return;
+    }
+
+    // POST requests must pass through (form submissions).
+    if ( 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) {
+        return;
+    }
+
+    $slug = wldelay_get_custom_login_slug();
+    $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : '';
+    $path = trim( parse_url( $request_uri, PHP_URL_PATH ), '/' );
+
+    // Allow requests via the custom slug.
+    if ( strpos( $path, $slug ) !== false ) {
+        return;
+    }
+
+    // Only block if the user-facing URL is exactly "wp-login.php" at the site
+    // root. Internal paths like /wp/wp-login.php are legitimate WordPress
+    // redirects (e.g. unauthenticated wp-admin access) and must pass through.
+    if ( $path !== 'wp-login.php' ) {
+        return;
+    }
+
+    status_header( 404 );
+    nocache_headers();
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        return;
+    }
+    exit;
+}
+add_action( 'login_init', 'wldelay_custom_login_block_direct_access' );
+
+/**
+ * Filter wp_login_url() to use the custom slug.
+ *
+ * @param string $login_url    The login URL.
+ * @param string $redirect     The path to redirect to on login.
+ * @param bool   $force_reauth Whether to force reauth.
+ * @return string
+ */
+function wldelay_filter_login_url( $login_url, $redirect = '', $force_reauth = false ) {
+    if ( ! wldelay_custom_login_is_active() ) {
+        return $login_url;
+    }
+
+    $slug = wldelay_get_custom_login_slug();
+    $custom_url = home_url( $slug );
+
+    if ( ! empty( $redirect ) ) {
+        $custom_url = add_query_arg( 'redirect_to', urlencode( $redirect ), $custom_url );
+    }
+
+    if ( $force_reauth ) {
+        $custom_url = add_query_arg( 'reauth', '1', $custom_url );
+    }
+
+    return $custom_url;
+}
+add_filter( 'login_url', 'wldelay_filter_login_url', 10, 3 );
+
+/**
+ * Filter logout_url() to use the custom slug.
+ *
+ * @param string $logout_url The logout URL.
+ * @param string $redirect   Redirect destination.
+ * @return string
+ */
+function wldelay_filter_logout_url( $logout_url, $redirect = '' ) {
+    if ( ! wldelay_custom_login_is_active() ) {
+        return $logout_url;
+    }
+
+    // Extract query string from the original logout URL (contains _wpnonce, action=logout).
+    $parsed = wp_parse_url( $logout_url );
+    $slug = wldelay_get_custom_login_slug();
+    $custom_url = home_url( $slug );
+
+    if ( ! empty( $parsed['query'] ) ) {
+        $custom_url .= '?' . $parsed['query'];
+    }
+
+    return $custom_url;
+}
+add_filter( 'logout_url', 'wldelay_filter_logout_url', 10, 2 );
+
+/**
+ * Filter lostpassword_url() to use the custom slug.
+ *
+ * @param string $lostpassword_url The lost password URL.
+ * @param string $redirect         Redirect destination.
+ * @return string
+ */
+function wldelay_filter_lostpassword_url( $lostpassword_url, $redirect = '' ) {
+    if ( ! wldelay_custom_login_is_active() ) {
+        return $lostpassword_url;
+    }
+
+    $slug = wldelay_get_custom_login_slug();
+    $custom_url = add_query_arg( 'action', 'lostpassword', home_url( $slug ) );
+
+    if ( ! empty( $redirect ) ) {
+        $custom_url = add_query_arg( 'redirect_to', urlencode( $redirect ), $custom_url );
+    }
+
+    return $custom_url;
+}
+add_filter( 'lostpassword_url', 'wldelay_filter_lostpassword_url', 10, 2 );
+
+/**
+ * Replace wp-login.php references in the password reset email with the custom slug.
+ *
+ * @param string $message    Email message body.
+ * @param string $key        Password reset key.
+ * @param string $user_login Username.
+ * @param object $user_data  WP_User object.
+ * @return string
+ */
+function wldelay_filter_retrieve_password_message( $message, $key, $user_login, $user_data ) {
+    if ( ! wldelay_custom_login_is_active() ) {
+        return $message;
+    }
+
+    $slug = wldelay_get_custom_login_slug();
+    $old_url = network_site_url( 'wp-login.php', 'login' );
+    $new_url = home_url( $slug );
+
+    return str_replace( $old_url, $new_url, $message );
+}
+add_filter( 'retrieve_password_message', 'wldelay_filter_retrieve_password_message', 10, 4 );

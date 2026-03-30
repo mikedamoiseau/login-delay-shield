@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.2.0
-Stable tag: 2.2.0
+Version: 2.2.3
+Stable tag: 2.2.3
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -143,6 +143,27 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.2.3 =
+Complete Custom Login URL runtime, Trend Analytics queries, and bug fixes.
+
+**New Features:**
+* Custom Login URL runtime — custom slug now fully functional with login, logout, lost password, and password reset all routed through the custom URL.
+* Custom Login URL admin UI — settings card with enable/disable toggle, slug input, status badge, and tooltip help.
+* Trend Analytics query functions — `wldelay_get_top_ips()`, `wldelay_get_top_usernames()`, and `wldelay_get_daily_attempts()` for dashboard trend data.
+
+**Bug Fixes:**
+* Fixed double `wp_unslash()` on login username that could corrupt usernames with literal backslashes.
+* Fixed `wp_login_url` filter name (was `wp_login_url`, should be `login_url`) preventing URL rewriting.
+* Fixed canonical redirect leaking custom login slug via 302 when `/wp-login.php` is accessed through the front controller.
+* Fixed `login_init` blocking internal WordPress paths (e.g. `/wp/wp-login.php`) used for legitimate auth redirects.
+
+**Improvements:**
+* Expanded reserved slug list with `wp-json`, `wp-content`, `wp-includes`, `wp-signup`, `wp-activate`, `xmlrpc`, `feed`, `robots`, `sitemap`.
+* Replaced production `wldelay_unlock_current_ip_should_exit` filter with `WP_TESTS_DOMAIN` constant check — no longer exposes a testability surface in production.
+* Wrapped Custom Login URL section titles in `esc_html__()` for i18n completeness.
+* Added Custom Login URL to the protection features summary box.
+* Added Playwright end-to-end tests for full Custom Login URL verification.
 
 = 2.2.2 =
 Micro-hardening — input sanitization, i18n completeness, and code documentation.
