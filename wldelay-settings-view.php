@@ -256,9 +256,18 @@ class LDS_Settings_View {
                         <?php
                         printf(
                             /* translators: 1: detected 2FA provider, 2: number of privileged accounts */
-                            esc_html__( '%1$s is active and all %2$d detected administrator account(s) appear to have 2FA enabled.', 'login-delay-shield' ),
-                            esc_html( $provider_label ),
-                            esc_html( $privileged )
+                            esc_html(
+                                sprintf(
+                                    _n(
+                                        '%1$s is active and the detected administrator account appears to have 2FA enabled.',
+                                        '%1$s is active and all %2$d detected administrator accounts appear to have 2FA enabled.',
+                                        $privileged,
+                                        'login-delay-shield'
+                                    ),
+                                    $provider_label,
+                                    $privileged
+                                )
+                            )
                         );
                         ?>
                     </span>
@@ -276,10 +285,19 @@ class LDS_Settings_View {
                         <?php
                         printf(
                             /* translators: 1: detected 2FA provider, 2: number of unprotected privileged accounts, 3: total privileged accounts */
-                            esc_html__( '%1$s is active, but %2$d of %3$d detected administrator account(s) do not appear to have 2FA enabled yet.', 'login-delay-shield' ),
-                            esc_html( $provider_label ),
-                            esc_html( $unprotected ),
-                            esc_html( $privileged )
+                            esc_html(
+                                sprintf(
+                                    _n(
+                                        '%1$s is active, but %2$d of %3$d detected administrator account does not appear to have 2FA enabled yet.',
+                                        '%1$s is active, but %2$d of %3$d detected administrator accounts do not appear to have 2FA enabled yet.',
+                                        $unprotected,
+                                        'login-delay-shield'
+                                    ),
+                                    $provider_label,
+                                    $unprotected,
+                                    $privileged
+                                )
+                            )
                         );
                         ?>
                     </span>
