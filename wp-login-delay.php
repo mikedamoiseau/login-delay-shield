@@ -1791,7 +1791,13 @@ function wldelay_get_two_factor_privileged_user_coverage() {
     );
 
     foreach ( $users as $user ) {
-        $user_id = isset( $user->ID ) ? (int) $user->ID : 0;
+        if ( is_numeric( $user ) ) {
+            $user_id = (int) $user;
+        } elseif ( isset( $user->ID ) ) {
+            $user_id = (int) $user->ID;
+        } else {
+            $user_id = 0;
+        }
 
         if ( $user_id <= 0 ) {
             continue;

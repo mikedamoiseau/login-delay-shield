@@ -77,6 +77,20 @@ class TwoFactorHealthTest extends WP_UnitTestCase {
         $this->assertSame( $baseline['unknown'], $coverage['unknown'] );
     }
 
+    public function test_get_two_factor_privileged_user_coverage_counts_numeric_user_ids() {
+        $admin_with_2fa = self::factory()->user->create( array( 'role' => 'administrator' ) );
+        $admin_without_2fa = self::factory()->user->create( array( 'role' => 'administrator' ) );
+
+        update_user_meta( $admin_with_2fa, '_two_factor_enabled_providers', array( 'email' ) );
+        update_user_meta( $admin_without_2fa, '_two_factor_enabled_providers', array() );
+
+        $coverage = wldelay_get_two_factor_privileged_user_coverage();
+
+        $this->assertGreaterThanOrEqual( 2, $coverage['privileged_total'] );
+        $this->assertGreaterThanOrEqual( 1, $coverage['protected'] );
+        $this->assertGreaterThanOrEqual( 1, $coverage['unprotected'] );
+    }
+
     public function test_get_2fa_privileged_user_coverage_uses_filtered_checker() {
         add_filter(
             'wldelay_2fa_coverage_checkers',
