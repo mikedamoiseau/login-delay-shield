@@ -117,6 +117,13 @@ class TwoFactorHealthTest extends WP_UnitTestCase {
         $this->assertSame( 1, $coverage['unprotected'] );
     }
 
+    public function test_get_2fa_privileged_user_coverage_returns_unsupported_for_unknown_provider() {
+        $coverage = wldelay_get_2fa_privileged_user_coverage( 'wp-2fa' );
+
+        $this->assertFalse( $coverage['supported'] );
+        $this->assertSame( 0, $coverage['privileged_total'] );
+    }
+
     public function test_get_2fa_provider_label_returns_empty_for_unknown_provider() {
         $this->assertSame( '', wldelay_get_2fa_provider_label( 'unknown-provider' ) );
     }

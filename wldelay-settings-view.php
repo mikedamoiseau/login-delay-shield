@@ -254,19 +254,17 @@ class LDS_Settings_View {
                     <span>
                         <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
                         <?php
-                        printf(
-                            /* translators: 1: detected 2FA provider, 2: number of privileged accounts */
-                            esc_html(
-                                sprintf(
-                                    _n(
-                                        '%1$s is active and the detected administrator account appears to have 2FA enabled.',
-                                        '%1$s is active and all %2$d detected administrator accounts appear to have 2FA enabled.',
-                                        $privileged,
-                                        'login-delay-shield'
-                                    ),
-                                    $provider_label,
-                                    $privileged
-                                )
+                        echo esc_html(
+                            sprintf(
+                                /* translators: 1: detected 2FA provider, 2: number of privileged accounts */
+                                _n(
+                                    '%1$s is active and the detected administrator account appears to have 2FA enabled.',
+                                    '%1$s is active and all %2$d detected administrator accounts appear to have 2FA enabled.',
+                                    $privileged,
+                                    'login-delay-shield'
+                                ),
+                                $provider_label,
+                                $privileged
                             )
                         );
                         ?>
@@ -283,20 +281,18 @@ class LDS_Settings_View {
                     <span>
                         <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
                         <?php
-                        printf(
-                            /* translators: 1: detected 2FA provider, 2: number of unprotected privileged accounts, 3: total privileged accounts */
-                            esc_html(
-                                sprintf(
-                                    _n(
-                                        '%1$s is active, but %2$d of %3$d detected administrator account does not appear to have 2FA enabled yet.',
-                                        '%1$s is active, but %2$d of %3$d detected administrator accounts do not appear to have 2FA enabled yet.',
-                                        $unprotected,
-                                        'login-delay-shield'
-                                    ),
-                                    $provider_label,
+                        echo esc_html(
+                            sprintf(
+                                /* translators: 1: detected 2FA provider, 2: number of unprotected privileged accounts, 3: total privileged accounts */
+                                _n(
+                                    '%1$s is active, but %2$d of %3$d detected administrator account does not appear to have 2FA enabled yet.',
+                                    '%1$s is active, but %2$d of %3$d detected administrator accounts do not appear to have 2FA enabled yet.',
                                     $unprotected,
-                                    $privileged
-                                )
+                                    'login-delay-shield'
+                                ),
+                                $provider_label,
+                                $unprotected,
+                                $privileged
                             )
                         );
                         ?>

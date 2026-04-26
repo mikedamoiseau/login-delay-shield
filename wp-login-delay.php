@@ -1773,10 +1773,10 @@ function wldelay_get_2fa_privileged_user_coverage( $provider ) {
  * @return array{supported:bool,privileged_total:int,protected:int,unprotected:int,unknown:int}
  */
 function wldelay_get_two_factor_privileged_user_coverage() {
-    $users = get_users(
+    $user_ids = get_users(
         array(
             'role__in'    => array( 'administrator' ),
-            'fields'      => array( 'ID' ),
+            'fields'      => 'ID',
             'number'      => -1,
             'count_total' => false,
         )
@@ -1784,20 +1784,14 @@ function wldelay_get_two_factor_privileged_user_coverage() {
 
     $coverage = array(
         'supported'        => true,
-        'privileged_total' => count( $users ),
+        'privileged_total' => count( $user_ids ),
         'protected'        => 0,
         'unprotected'      => 0,
         'unknown'          => 0,
     );
 
-    foreach ( $users as $user ) {
-        if ( is_numeric( $user ) ) {
-            $user_id = (int) $user;
-        } elseif ( isset( $user->ID ) ) {
-            $user_id = (int) $user->ID;
-        } else {
-            $user_id = 0;
-        }
+    foreach ( $user_ids as $user_id ) {
+        $user_id = (int) $user_id;
 
         if ( $user_id <= 0 ) {
             continue;
