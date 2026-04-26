@@ -285,8 +285,8 @@ class LDS_Settings_View {
                             sprintf(
                                 /* translators: 1: detected 2FA provider, 2: number of unprotected privileged accounts, 3: total privileged accounts */
                                 _n(
-                                    '%1$s is active, but %2$d of %3$d detected administrator account does not appear to have 2FA enabled yet.',
-                                    '%1$s is active, but %2$d of %3$d detected administrator accounts do not appear to have 2FA enabled yet.',
+                                    '%1$s is active, but %2$d administrator account out of %3$d detected does not appear to have 2FA enabled yet.',
+                                    '%1$s is active, but %2$d administrator accounts out of %3$d detected do not appear to have 2FA enabled yet.',
                                     $unprotected,
                                     'login-delay-shield'
                                 ),
