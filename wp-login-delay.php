@@ -1688,7 +1688,7 @@ function wldelay_detect_2fa_provider( $active_plugins ) {
  * Build lightweight 2FA health status for admin UI.
  *
  * @param array<int,string>|null $active_plugins Optional active plugin basenames override (for tests).
- * @return array{enabled:bool,provider:string}
+ * @return array<string,mixed>
  */
 function wldelay_get_2fa_health_status( $active_plugins = null ) {
     if ( ! is_array( $active_plugins ) ) {
@@ -1701,12 +1701,143 @@ function wldelay_get_2fa_health_status( $active_plugins = null ) {
     }
 
     $provider = wldelay_detect_2fa_provider( $active_plugins );
+    $coverage = wldelay_get_2fa_privileged_user_coverage( $provider );
 
     return array(
         'enabled'         => $provider !== '',
         'provider'        => $provider,
         'provider_label'  => wldelay_get_2fa_provider_label( $provider ),
+        'coverage'        => $coverage,
     );
+}
+
+/**
+ * Get privileged user 2FA coverage data for a detected provider.
+ *
+ * The returned array is safe for admin UI consumption even when the provider
+ * does not expose coverage details. Third parties can add support for custom
+ * providers through the `wldelay_2fa_coverage_checkers` filter.
+ *
+ * @param string $provider Provider key.
+ * @return array{supported:bool,privileged_total:int,protected:int,unprotected:int,unknown:int}
+ */
+function wldelay_get_2fa_privileged_user_coverage( $provider ) {
+    $empty = array(
+        'supported'        => false,
+        'privileged_total' => 0,
+        'protected'        => 0,
+        'unprotected'      => 0,
+        'unknown'          => 0,
+    );
+
+    if ( ! is_string( $provider ) || '' === $provider ) {
+        return $empty;
+    }
+
+    $checkers = array(
+        'two-factor' => 'wldelay_get_two_factor_privileged_user_coverage',
+    );
+
+    /**
+     * Filter provider-specific privileged-user 2FA coverage callbacks.
+     *
+     * Each callback should return an array with keys: supported,
+     * privileged_total, protected, unprotected, unknown.
+     *
+     * @param array<string,callable|string> $checkers Coverage checker map.
+     */
+    $checkers = apply_filters( 'wldelay_2fa_coverage_checkers', $checkers );
+
+    if ( ! is_array( $checkers ) || empty( $checkers[ $provider ] ) || ! is_callable( $checkers[ $provider ] ) ) {
+        return $empty;
+    }
+
+    $coverage = call_user_func( $checkers[ $provider ] );
+
+    if ( ! is_array( $coverage ) ) {
+        return $empty;
+    }
+
+    return array(
+        'supported'        => ! empty( $coverage['supported'] ),
+        'privileged_total' => max( 0, (int) ( $coverage['privileged_total'] ?? 0 ) ),
+        'protected'        => max( 0, (int) ( $coverage['protected'] ?? 0 ) ),
+        'unprotected'      => max( 0, (int) ( $coverage['unprotected'] ?? 0 ) ),
+        'unknown'          => max( 0, (int) ( $coverage['unknown'] ?? 0 ) ),
+    );
+}
+
+/**
+ * Get coverage details for privileged users when the Two-Factor plugin is active.
+ *
+ * @return array{supported:bool,privileged_total:int,protected:int,unprotected:int,unknown:int}
+ */
+function wldelay_get_two_factor_privileged_user_coverage() {
+    $user_ids = get_users(
+        array(
+            'role__in'    => array( 'administrator' ),
+            'fields'      => 'ID',
+            'number'      => -1,
+            'count_total' => false,
+        )
+    );
+
+    $coverage = array(
+        'supported'        => true,
+        'privileged_total' => count( $user_ids ),
+        'protected'        => 0,
+        'unprotected'      => 0,
+        'unknown'          => 0,
+    );
+
+    foreach ( $user_ids as $user_id ) {
+        $user_id = (int) $user_id;
+
+        if ( $user_id <= 0 ) {
+            continue;
+        }
+
+        if ( wldelay_is_two_factor_enabled_for_user( $user_id ) ) {
+            $coverage['protected']++;
+            continue;
+        }
+
+        $coverage['unprotected']++;
+    }
+
+    return $coverage;
+}
+
+/**
+ * Determine whether the Two-Factor plugin appears enabled for a specific user.
+ *
+ * @param int $user_id User ID.
+ * @return bool
+ */
+function wldelay_is_two_factor_enabled_for_user( $user_id ) {
+    $user_id = (int) $user_id;
+
+    if ( $user_id <= 0 ) {
+        return false;
+    }
+
+    if ( class_exists( 'Two_Factor_Core' ) && method_exists( 'Two_Factor_Core', 'get_enabled_providers_for_user' ) ) {
+        $user = get_userdata( $user_id );
+
+        if ( $user instanceof WP_User ) {
+            $providers = Two_Factor_Core::get_enabled_providers_for_user( $user );
+
+            return is_array( $providers ) && ! empty( $providers );
+        }
+    }
+
+    $enabled = get_user_meta( $user_id, '_two_factor_enabled_providers', true );
+
+    if ( is_array( $enabled ) ) {
+        return ! empty( array_filter( $enabled ) );
+    }
+
+    return is_string( $enabled ) && '' !== trim( $enabled );
 }
 
 /**

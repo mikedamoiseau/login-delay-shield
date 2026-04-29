@@ -242,6 +242,65 @@ class LDS_Settings_View {
 
         if ( ! empty( $status['enabled'] ) ) {
             $provider_label = (string) $status['provider_label'];
+            $coverage       = isset( $status['coverage'] ) && is_array( $status['coverage'] ) ? $status['coverage'] : array();
+            $supported      = ! empty( $coverage['supported'] );
+            $unprotected    = isset( $coverage['unprotected'] ) ? (int) $coverage['unprotected'] : 0;
+            $privileged     = isset( $coverage['privileged_total'] ) ? (int) $coverage['privileged_total'] : 0;
+
+            if ( $supported && $privileged > 0 && $unprotected <= 0 ) {
+                ?>
+                <div class="wldelay-health-notice" role="note">
+                    <span class="dashicons dashicons-yes-alt" aria-hidden="true"></span>
+                    <span>
+                        <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
+                        <?php
+                        echo esc_html(
+                            sprintf(
+                                /* translators: 1: detected 2FA provider, 2: number of privileged accounts */
+                                _n(
+                                    '%1$s is active and the detected administrator account appears to have 2FA enabled.',
+                                    '%1$s is active and all %2$d detected administrator accounts appear to have 2FA enabled.',
+                                    $privileged,
+                                    'login-delay-shield'
+                                ),
+                                $provider_label,
+                                $privileged
+                            )
+                        );
+                        ?>
+                    </span>
+                </div>
+                <?php
+                return;
+            }
+
+            if ( $supported && $privileged > 0 && $unprotected > 0 ) {
+                ?>
+                <div class="wldelay-health-notice" role="note">
+                    <span class="dashicons dashicons-warning" aria-hidden="true"></span>
+                    <span>
+                        <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
+                        <?php
+                        echo esc_html(
+                            sprintf(
+                                /* translators: 1: detected 2FA provider, 2: number of unprotected privileged accounts, 3: total privileged accounts */
+                                _n(
+                                    '%1$s is active, but %2$d administrator account out of %3$d detected does not appear to have 2FA enabled yet.',
+                                    '%1$s is active, but %2$d administrator accounts out of %3$d detected do not appear to have 2FA enabled yet.',
+                                    $unprotected,
+                                    'login-delay-shield'
+                                ),
+                                $provider_label,
+                                $unprotected,
+                                $privileged
+                            )
+                        );
+                        ?>
+                    </span>
+                </div>
+                <?php
+                return;
+            }
             ?>
             <div class="wldelay-health-notice" role="note">
                 <span class="dashicons dashicons-shield" aria-hidden="true"></span>
