@@ -225,4 +225,34 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertArrayHasKey( 'wldelay_rest_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
         $this->assertArrayHasKey( 'wldelay_application_password_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
     }
+    /**
+     * Test telemetry UI renders filtered rows and export URL.
+     */
+    public function test_login_log_telemetry_renders_filtered_results() {
+        global $wpdb;
+        wldelay_create_log_table();
+        $table_name = wldelay_get_log_table_name();
+        $wpdb->query( 'TRUNCATE TABLE ' . $table_name );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.10', 'username' => 'alice', 'attempted_at' => '2026-04-01 10:00:00', 'source' => 'wp-login' ) );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.11', 'username' => 'bob', 'attempted_at' => '2026-04-01 11:00:00', 'source' => 'xmlrpc' ) );
+
+        $admin_id = $this->factory->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $admin_id );
+
+        $_GET['wldelay_log_username'] = 'alice';
+        $_SERVER['REQUEST_URI'] = '/wp-admin/options-general.php?page=login-delay-shield-admin&wldelay_log_username=alice';
+
+        ob_start();
+        $this->settings->create_admin_page();
+        $output = ob_get_clean();
+
+        unset( $_GET['wldelay_log_username'] );
+
+        $this->assertStringContainsString( 'Failed Login Telemetry', $output );
+        $this->assertStringContainsString( 'alice', $output );
+        $this->assertStringNotContainsString( 'bob', $output );
+        $this->assertStringContainsString( 'wldelay_log_username=alice', html_entity_decode( $output, ENT_QUOTES, 'UTF-8' ) );
+        $this->assertStringContainsString( 'Export filtered CSV', $output );
+    }
+
 }

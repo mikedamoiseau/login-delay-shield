@@ -505,7 +505,43 @@ function wldelay_get_login_log_attempts( $args = array() ) {
     );
     $fields = in_array( $args['fields'], $allowed_fields, true ) ? $args['fields'] : '*';
 
-    $table_name = wldelay_get_log_table_name();
+    $table_name   = wldelay_get_log_table_name();
+    $where_parts  = wldelay_build_login_log_where_clause( $filters );
+    $where_clause = $where_parts['where'];
+    $params       = $where_parts['params'];
+
+    // $fields and $table_name are safe to interpolate: $fields is validated against
+    // a strict allowlist above, and $table_name is derived from $wpdb->prefix (not
+    // user input). $wpdb->prepare() cannot parameterize SQL identifiers.
+    $sql = "SELECT $fields FROM $table_name{$where_clause} ORDER BY attempted_at DESC";
+
+    $limit = absint( $args['limit'] );
+    if ( $limit < 1 ) {
+        $limit = 1;
+    }
+    $sql     .= ' LIMIT %d';
+    $params[] = $limit;
+
+    $offset = absint( $args['offset'] );
+    if ( $offset > 0 ) {
+        $sql     .= ' OFFSET %d';
+        $params[] = $offset;
+    }
+
+    return $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
+}
+
+
+/**
+ * Build a reusable WHERE clause for login-log filters.
+ *
+ * @param array $filters Raw or sanitized filter values.
+ * @return array{where:string,params:array}
+ */
+function wldelay_build_login_log_where_clause( $filters ) {
+    global $wpdb;
+
+    $filters = wldelay_sanitize_login_log_filters( $filters );
 
     $where  = array();
     $params = array();
@@ -535,26 +571,119 @@ function wldelay_get_login_log_attempts( $args = array() ) {
         $params[] = $filters['to'] . ' 23:59:59';
     }
 
-    // $fields and $table_name are safe to interpolate: $fields is validated against
-    // a strict allowlist above, and $table_name is derived from $wpdb->prefix (not
-    // user input). $wpdb->prepare() cannot parameterize SQL identifiers.
-    $where_clause = ! empty( $where ) ? ' WHERE ' . implode( ' AND ', $where ) : '';
-    $sql = "SELECT $fields FROM $table_name{$where_clause} ORDER BY attempted_at DESC";
+    return array(
+        'where'  => ! empty( $where ) ? ' WHERE ' . implode( ' AND ', $where ) : '',
+        'params' => $params,
+    );
+}
 
-    $limit = absint( $args['limit'] );
-    if ( $limit < 1 ) {
-        $limit = 1;
+/**
+ * Count failed login attempts matching optional filters.
+ *
+ * @param array $filters Raw or sanitized filter values.
+ * @return int Matching row count.
+ */
+function wldelay_count_login_log_attempts( $filters = array() ) {
+    global $wpdb;
+
+    $table_name   = wldelay_get_log_table_name();
+    $where_parts  = wldelay_build_login_log_where_clause( $filters );
+    $where_clause = $where_parts['where'];
+    $params       = $where_parts['params'];
+
+    $sql = "SELECT COUNT(*) FROM $table_name{$where_clause}";
+
+    if ( empty( $params ) ) {
+        return (int) $wpdb->get_var( $sql );
     }
-    $sql     .= ' LIMIT %d';
-    $params[] = $limit;
 
-    $offset = absint( $args['offset'] );
-    if ( $offset > 0 ) {
-        $sql     .= ' OFFSET %d';
-        $params[] = $offset;
+    return (int) $wpdb->get_var( $wpdb->prepare( $sql, $params ) );
+}
+
+/**
+ * Get filtered telemetry summary data for the login log admin view.
+ *
+ * @param array $filters Raw or sanitized filter values.
+ * @param int   $limit   Maximum grouped rows for source/IP lists.
+ * @return array{total_attempts:int,daily_counts:array,source_counts:array,top_ips:array}
+ */
+function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
+    global $wpdb;
+
+    $limit        = max( 1, absint( $limit ) );
+    $table_name   = wldelay_get_log_table_name();
+    $where_parts  = wldelay_build_login_log_where_clause( $filters );
+    $where_clause = $where_parts['where'];
+    $params       = $where_parts['params'];
+
+    $run_query = function ( $sql, $extra_params = array() ) use ( $wpdb, $params ) {
+        $all_params = array_merge( $params, $extra_params );
+        if ( empty( $all_params ) ) {
+            return $wpdb->get_results( $sql );
+        }
+
+        return $wpdb->get_results( $wpdb->prepare( $sql, $all_params ) );
+    };
+
+    $daily_rows = $run_query(
+        "SELECT DATE(attempted_at) AS attempted_date, COUNT(*) AS failures
+        FROM $table_name{$where_clause}
+        GROUP BY DATE(attempted_at)
+        ORDER BY attempted_date DESC
+        LIMIT %d",
+        array( 31 )
+    );
+
+    $daily_rows = array_reverse( $daily_rows );
+
+    $daily_counts = array();
+    foreach ( $daily_rows as $row ) {
+        $daily_counts[] = array(
+            'date'  => (string) $row->attempted_date,
+            'count' => (int) $row->failures,
+        );
     }
 
-    return $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
+    $source_rows = $run_query(
+        "SELECT source, COUNT(*) AS failures
+        FROM $table_name{$where_clause}
+        GROUP BY source
+        ORDER BY failures DESC, source ASC
+        LIMIT %d",
+        array( $limit )
+    );
+
+    $source_counts = array();
+    foreach ( $source_rows as $row ) {
+        $source_counts[] = array(
+            'source' => (string) $row->source,
+            'count'  => (int) $row->failures,
+        );
+    }
+
+    $ip_rows = $run_query(
+        "SELECT ip_address, COUNT(*) AS failures
+        FROM $table_name{$where_clause}
+        GROUP BY ip_address
+        ORDER BY failures DESC, ip_address ASC
+        LIMIT %d",
+        array( $limit )
+    );
+
+    $top_ips = array();
+    foreach ( $ip_rows as $row ) {
+        $top_ips[] = array(
+            'ip_address' => (string) $row->ip_address,
+            'count'      => (int) $row->failures,
+        );
+    }
+
+    return array(
+        'total_attempts' => wldelay_count_login_log_attempts( $filters ),
+        'daily_counts'   => $daily_counts,
+        'source_counts'  => $source_counts,
+        'top_ips'        => $top_ips,
+    );
 }
 
 /**
