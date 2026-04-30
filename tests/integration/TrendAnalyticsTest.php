@@ -229,3 +229,52 @@ class TrendAnalyticsTest extends WP_UnitTestCase {
         $this->assertIsArray( $results );
     }
 }
+
+class LoginLogTelemetryTest extends WP_UnitTestCase {
+    public function setUp(): void {
+        parent::setUp();
+        wldelay_create_log_table();
+        global $wpdb;
+        $wpdb->query( 'TRUNCATE TABLE ' . wldelay_get_log_table_name() );
+    }
+
+    public function tearDown(): void {
+        global $wpdb;
+        $wpdb->query( 'TRUNCATE TABLE ' . wldelay_get_log_table_name() );
+        parent::tearDown();
+    }
+
+    public function test_count_login_log_attempts_respects_filters() {
+        global $wpdb;
+        $table_name = wldelay_get_log_table_name();
+
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.10', 'username' => 'alice', 'attempted_at' => '2026-04-01 10:00:00', 'source' => 'wp-login' ) );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.11', 'username' => 'alice-admin', 'attempted_at' => '2026-04-02 10:00:00', 'source' => 'xmlrpc' ) );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.12', 'username' => 'bob', 'attempted_at' => '2026-04-03 10:00:00', 'source' => 'wp-login' ) );
+
+        $this->assertSame( 2, wldelay_count_login_log_attempts( array( 'username' => 'alice' ) ) );
+        $this->assertSame( 1, wldelay_count_login_log_attempts( array( 'source' => 'xmlrpc', 'from' => '2026-04-02', 'to' => '2026-04-02' ) ) );
+        $this->assertSame( 0, wldelay_count_login_log_attempts( array( 'ip' => '198.51.100.99' ) ) );
+    }
+
+    public function test_login_log_summary_aggregates_filtered_rows() {
+        global $wpdb;
+        $table_name = wldelay_get_log_table_name();
+
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.10', 'username' => 'alice', 'attempted_at' => '2026-04-01 10:00:00', 'source' => 'wp-login' ) );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.10', 'username' => 'alice', 'attempted_at' => '2026-04-01 11:00:00', 'source' => 'wp-login' ) );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.11', 'username' => 'alice', 'attempted_at' => '2026-04-02 10:00:00', 'source' => 'xmlrpc' ) );
+        $wpdb->insert( $table_name, array( 'ip_address' => '198.51.100.8', 'username' => 'bob', 'attempted_at' => '2026-04-02 10:00:00', 'source' => 'rest' ) );
+
+        $summary = wldelay_get_login_log_summary( array( 'username' => 'alice' ), 3 );
+
+        $this->assertSame( 3, $summary['total_attempts'] );
+        $this->assertCount( 2, $summary['daily_counts'] );
+        $this->assertSame( '2026-04-01', $summary['daily_counts'][0]['date'] );
+        $this->assertSame( 2, $summary['daily_counts'][0]['count'] );
+        $this->assertSame( 'wp-login', $summary['source_counts'][0]['source'] );
+        $this->assertSame( 2, $summary['source_counts'][0]['count'] );
+        $this->assertSame( '203.0.113.10', $summary['top_ips'][0]['ip_address'] );
+        $this->assertSame( 2, $summary['top_ips'][0]['count'] );
+    }
+}

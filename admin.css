@@ -578,3 +578,88 @@
         width: 140px;
     }
 }
+
+/* Login Log Telemetry */
+.wldelay-telemetry {
+    margin-top: 20px;
+}
+
+.wldelay-telemetry h3 {
+    margin-top: 0;
+}
+
+.wldelay-telemetry-filters {
+    margin: 16px 0;
+    padding: 16px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    background: #f6f7f7;
+}
+
+.wldelay-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.wldelay-filter-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-weight: 600;
+}
+
+.wldelay-filter-grid input,
+.wldelay-filter-grid select {
+    max-width: 100%;
+    font-weight: 400;
+}
+
+.wldelay-telemetry-actions {
+    margin: 14px 0 0;
+}
+
+.wldelay-telemetry-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.wldelay-telemetry-summary .wldelay-trend-card {
+    padding: 12px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.wldelay-telemetry-total {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.wldelay-telemetry-results {
+    margin-top: 16px;
+}
+
+.wldelay-telemetry-table {
+    margin-top: 8px;
+}
+
+.wldelay-empty-state {
+    padding: 12px;
+    border: 1px dashed #c3c4c7;
+    background: #fff;
+}
+
+.wldelay-pagination {
+    margin-top: 12px;
+}
+
+.wldelay-pagination-status {
+    display: inline-block;
+    margin: 0 8px;
+    color: #50575e;
+}

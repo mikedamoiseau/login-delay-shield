@@ -60,6 +60,8 @@ class LDS_Settings_View {
             <?php $this->render_2fa_health_notice(); ?>
             <?php $this->render_object_cache_notice(); ?>
 
+            <form id="wldelay-telemetry-filter-form" method="get" action="<?php echo esc_url( admin_url( 'options-general.php' ) ); ?>"></form>
+
             <form method="post" action="options.php">
                 <?php settings_fields( 'wldelay_option_group' ); ?>
 
@@ -131,14 +133,7 @@ class LDS_Settings_View {
                         <div id="wldelay-log-body" class="wldelay-card-body">
                             <p class="description"><?php esc_html_e( 'Failed login attempts are logged and displayed in the dashboard widget.', 'login-delay-shield' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_log_section_id' ); ?>
-                            <p>
-                                <a class="button button-secondary" href="<?php echo esc_url( wldelay_get_export_login_log_url() ); ?>">
-                                    <?php esc_html_e( 'Export CSV', 'login-delay-shield' ); ?>
-                                </a>
-                            </p>
-                            <p class="description" id="wldelay_export_csv_desc">
-                                <?php esc_html_e( 'Download a CSV of recorded failed login attempts (source, IP, username, timestamp).', 'login-delay-shield' ); ?>
-                            </p>
+                            <?php $this->render_login_log_telemetry(); ?>
                         </div>
                     </div>
 
@@ -348,6 +343,249 @@ class LDS_Settings_View {
             </span>
         </div>
         <?php
+    }
+
+
+    /**
+     * Render filtered login-log telemetry controls, summary, and results.
+     */
+    private function render_login_log_telemetry() {
+        $filters      = wldelay_get_login_log_filters_from_request();
+        $current_page = isset( $_GET['wldelay_log_page'] ) ? max( 1, absint( wp_unslash( $_GET['wldelay_log_page'] ) ) ) : 1;
+        $per_page     = 25;
+        $total        = wldelay_count_login_log_attempts( $filters );
+        $total_pages  = max( 1, (int) ceil( $total / $per_page ) );
+
+        if ( $current_page > $total_pages ) {
+            $current_page = $total_pages;
+        }
+
+        $attempts = wldelay_get_login_log_attempts(
+            array(
+                'filters' => $filters,
+                'limit'   => $per_page,
+                'offset'  => ( $current_page - 1 ) * $per_page,
+                'fields'  => 'source, ip_address, username, attempted_at',
+            )
+        );
+        $summary = wldelay_get_login_log_summary( $filters );
+        ?>
+        <hr />
+        <div class="wldelay-telemetry" aria-labelledby="wldelay-telemetry-title">
+            <h3 id="wldelay-telemetry-title"><?php esc_html_e( 'Failed Login Telemetry', 'login-delay-shield' ); ?></h3>
+            <p class="description"><?php esc_html_e( 'Filter failed login attempts, inspect recent patterns, and export the matching rows as CSV.', 'login-delay-shield' ); ?></p>
+
+            <div class="wldelay-telemetry-filters">
+                <input form="wldelay-telemetry-filter-form" type="hidden" name="page" value="login-delay-shield-admin" />
+                <div class="wldelay-filter-grid">
+                    <label for="wldelay_log_source">
+                        <?php esc_html_e( 'Source', 'login-delay-shield' ); ?>
+                        <select id="wldelay_log_source" name="wldelay_log_source" form="wldelay-telemetry-filter-form">
+                            <option value=""><?php esc_html_e( 'All sources', 'login-delay-shield' ); ?></option>
+                            <?php foreach ( $this->get_login_log_source_options( $summary, $filters ) as $source ) : ?>
+                                <option value="<?php echo esc_attr( $source ); ?>" <?php selected( $filters['source'], $source ); ?>><?php echo esc_html( wldelay_get_login_source_label( $source ) ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label for="wldelay_log_ip">
+                        <?php esc_html_e( 'IP address', 'login-delay-shield' ); ?>
+                        <input id="wldelay_log_ip" name="wldelay_log_ip" form="wldelay-telemetry-filter-form" type="text" value="<?php echo esc_attr( $filters['ip'] ); ?>" placeholder="<?php echo esc_attr__( 'Any IP', 'login-delay-shield' ); ?>" />
+                    </label>
+                    <label for="wldelay_log_username">
+                        <?php esc_html_e( 'Username', 'login-delay-shield' ); ?>
+                        <input id="wldelay_log_username" name="wldelay_log_username" form="wldelay-telemetry-filter-form" type="text" value="<?php echo esc_attr( $filters['username'] ); ?>" placeholder="<?php echo esc_attr__( 'Partial match', 'login-delay-shield' ); ?>" />
+                    </label>
+                    <label for="wldelay_log_from">
+                        <?php esc_html_e( 'From', 'login-delay-shield' ); ?>
+                        <input id="wldelay_log_from" name="wldelay_log_from" form="wldelay-telemetry-filter-form" type="date" value="<?php echo esc_attr( $filters['from'] ); ?>" />
+                    </label>
+                    <label for="wldelay_log_to">
+                        <?php esc_html_e( 'To', 'login-delay-shield' ); ?>
+                        <input id="wldelay_log_to" name="wldelay_log_to" form="wldelay-telemetry-filter-form" type="date" value="<?php echo esc_attr( $filters['to'] ); ?>" />
+                    </label>
+                </div>
+                <p class="wldelay-telemetry-actions">
+                    <button type="submit" form="wldelay-telemetry-filter-form" class="button button-primary"><?php esc_html_e( 'Apply filters', 'login-delay-shield' ); ?></button>
+                    <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=login-delay-shield-admin' ) ); ?>"><?php esc_html_e( 'Reset', 'login-delay-shield' ); ?></a>
+                    <a class="button button-secondary" href="<?php echo esc_url( wldelay_get_export_login_log_url( $filters ) ); ?>"><?php esc_html_e( 'Export filtered CSV', 'login-delay-shield' ); ?></a>
+                </p>
+            </div>
+
+            <?php $this->render_login_log_summary( $summary ); ?>
+            <?php $this->render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters ); ?>
+        </div>
+        <?php
+    }
+
+
+    /**
+     * Get source dropdown options, preserving active legacy/future source values.
+     *
+     * @param array $summary Summary data.
+     * @param array $filters Active filters.
+     * @return array<int,string>
+     */
+    private function get_login_log_source_options( $summary, $filters ) {
+        $sources = array( 'wp-login', 'xmlrpc', 'rest', 'application-password' );
+
+        if ( ! empty( $summary['source_counts'] ) && is_array( $summary['source_counts'] ) ) {
+            foreach ( $summary['source_counts'] as $source_count ) {
+                if ( ! empty( $source_count['source'] ) ) {
+                    $sources[] = (string) $source_count['source'];
+                }
+            }
+        }
+
+        if ( ! empty( $filters['source'] ) ) {
+            $sources[] = (string) $filters['source'];
+        }
+
+        return array_values( array_unique( array_filter( $sources ) ) );
+    }
+
+    /**
+     * Render telemetry summary cards.
+     *
+     * @param array $summary Summary data.
+     */
+    private function render_login_log_summary( $summary ) {
+        ?>
+        <div class="wldelay-telemetry-summary">
+            <section class="wldelay-trend-card">
+                <h4><?php esc_html_e( 'Total attempts', 'login-delay-shield' ); ?></h4>
+                <p class="wldelay-telemetry-total"><?php echo esc_html( number_format_i18n( (int) $summary['total_attempts'] ) ); ?></p>
+            </section>
+            <section class="wldelay-trend-card">
+                <h4><?php esc_html_e( 'Daily activity', 'login-delay-shield' ); ?></h4>
+                <?php $this->render_count_list( $summary['daily_counts'], 'date' ); ?>
+            </section>
+            <section class="wldelay-trend-card">
+                <h4><?php esc_html_e( 'Top sources', 'login-delay-shield' ); ?></h4>
+                <?php $this->render_count_list( $summary['source_counts'], 'source' ); ?>
+            </section>
+            <section class="wldelay-trend-card">
+                <h4><?php esc_html_e( 'Top IPs', 'login-delay-shield' ); ?></h4>
+                <?php $this->render_count_list( $summary['top_ips'], 'ip_address' ); ?>
+            </section>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render a compact label/count list.
+     *
+     * @param array  $rows      Count rows.
+     * @param string $label_key Row key to use for label.
+     */
+    private function render_count_list( $rows, $label_key ) {
+        echo '<ul class="wldelay-trend-list">';
+        if ( empty( $rows ) ) {
+            echo '<li><span>' . esc_html__( 'No matching data', 'login-delay-shield' ) . '</span><strong>0</strong></li>';
+            echo '</ul>';
+            return;
+        }
+
+        foreach ( $rows as $row ) {
+            $label = isset( $row[ $label_key ] ) ? (string) $row[ $label_key ] : '';
+            if ( $label_key === 'source' ) {
+                $label = wldelay_get_login_source_label( $label );
+            } elseif ( $label_key === 'date' ) {
+                $label = date_i18n( _x( 'M j, Y', 'date format for login log telemetry', 'login-delay-shield' ), strtotime( $label . ' 00:00:00' ) );
+            }
+            echo '<li><span>' . esc_html( $label ) . '</span><strong>' . esc_html( number_format_i18n( (int) $row['count'] ) ) . '</strong></li>';
+        }
+        echo '</ul>';
+    }
+
+    /**
+     * Render filtered login-log table and pagination.
+     *
+     * @param array $attempts    Attempt rows.
+     * @param int   $total       Total matching attempts.
+     * @param int   $current_page Current page number.
+     * @param int   $total_pages Total page count.
+     * @param array $filters     Active filters.
+     */
+    private function render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters ) {
+        ?>
+        <div class="wldelay-telemetry-results">
+            <h4><?php esc_html_e( 'Matching attempts', 'login-delay-shield' ); ?></h4>
+            <p class="description">
+                <?php
+                printf(
+                    /* translators: %s: number of matching failed login attempts */
+                    esc_html__( '%s matching failed login attempts.', 'login-delay-shield' ),
+                    esc_html( number_format_i18n( $total ) )
+                );
+                ?>
+            </p>
+            <?php if ( empty( $attempts ) ) : ?>
+                <p class="wldelay-empty-state"><?php esc_html_e( 'No failed login attempts match the current filters.', 'login-delay-shield' ); ?></p>
+            <?php else : ?>
+                <table class="widefat striped wldelay-telemetry-table">
+                    <caption class="screen-reader-text"><?php esc_html_e( 'Filtered failed login attempts', 'login-delay-shield' ); ?></caption>
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php esc_html_e( 'Time', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Username', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'IP address', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Source', 'login-delay-shield' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $attempts as $attempt ) : ?>
+                            <?php $source = ! empty( $attempt->source ) ? (string) $attempt->source : 'wp-login'; ?>
+                            <tr>
+                                <td><?php echo esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $attempt->attempted_at ) ); ?></td>
+                                <td><?php echo esc_html( $attempt->username ); ?></td>
+                                <td><?php echo esc_html( $attempt->ip_address ); ?></td>
+                                <td><span class="wldelay-source-badge <?php echo esc_attr( 'wldelay-source-' . sanitize_html_class( $source ) ); ?>"><?php echo esc_html( wldelay_get_login_source_label( $source ) ); ?></span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php $this->render_login_log_pagination( $current_page, $total_pages, $filters ); ?>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render telemetry pagination links.
+     *
+     * @param int   $current_page Current page number.
+     * @param int   $total_pages Total page count.
+     * @param array $filters Active filters.
+     */
+    private function render_login_log_pagination( $current_page, $total_pages, $filters ) {
+        if ( $total_pages <= 1 ) {
+            return;
+        }
+
+        $base_args = array_merge(
+            array( 'page' => 'login-delay-shield-admin' ),
+            wldelay_login_log_filters_to_query_args( $filters )
+        );
+
+        echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Login log pagination', 'login-delay-shield' ) . '">';
+        if ( $current_page > 1 ) {
+            echo '<a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_log_page' => $current_page - 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Previous', 'login-delay-shield' ) . '</a> ';
+        }
+        printf(
+            '<span class="wldelay-pagination-status">%s</span>',
+            esc_html(
+                sprintf(
+                    /* translators: 1: current page, 2: total pages */
+                    __( 'Page %1$d of %2$d', 'login-delay-shield' ),
+                    $current_page,
+                    $total_pages
+                )
+            )
+        );
+        if ( $current_page < $total_pages ) {
+            echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_log_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'login-delay-shield' ) . '</a>';
+        }
+        echo '</nav>';
     }
 
     /**
