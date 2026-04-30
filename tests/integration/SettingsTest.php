@@ -246,13 +246,63 @@ class SettingsTest extends WP_UnitTestCase {
         $this->settings->create_admin_page();
         $output = ob_get_clean();
 
-        unset( $_GET['wldelay_log_username'] );
+        unset( $_GET['wldelay_log_username'], $_SERVER['REQUEST_URI'] );
 
         $this->assertStringContainsString( 'Failed Login Telemetry', $output );
         $this->assertStringContainsString( 'alice', $output );
         $this->assertStringNotContainsString( 'bob', $output );
         $this->assertStringContainsString( 'wldelay_log_username=alice', html_entity_decode( $output, ENT_QUOTES, 'UTF-8' ) );
         $this->assertStringContainsString( 'Export filtered CSV', $output );
+    }
+
+    /**
+     * Test telemetry table renders stored local-time MySQL values without GMT conversion.
+     */
+    public function test_login_log_telemetry_does_not_double_convert_local_time() {
+        global $wpdb;
+        wldelay_create_log_table();
+        $table_name = wldelay_get_log_table_name();
+        $wpdb->query( 'TRUNCATE TABLE ' . $table_name );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.20', 'username' => 'time-user', 'attempted_at' => '2026-04-01 12:00:00', 'source' => 'wp-login' ) );
+
+        update_option( 'timezone_string', '' );
+        update_option( 'gmt_offset', 2 );
+        update_option( 'date_format', 'Y-m-d' );
+        update_option( 'time_format', 'H:i' );
+
+        $_SERVER['REQUEST_URI'] = '/wp-admin/options-general.php?page=login-delay-shield-admin';
+
+        ob_start();
+        $this->settings->create_admin_page();
+        $output = ob_get_clean();
+
+        unset( $_SERVER['REQUEST_URI'] );
+
+        $this->assertStringContainsString( '2026-04-01 12:00', $output );
+        $this->assertStringNotContainsString( '2026-04-01 14:00', $output );
+    }
+
+    /**
+     * Test telemetry source dropdown preserves active legacy/future source filters.
+     */
+    public function test_login_log_telemetry_preserves_legacy_source_filter_selection() {
+        global $wpdb;
+        wldelay_create_log_table();
+        $table_name = wldelay_get_log_table_name();
+        $wpdb->query( 'TRUNCATE TABLE ' . $table_name );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.30', 'username' => 'legacy-user', 'attempted_at' => '2026-04-01 10:00:00', 'source' => 'legacy-source' ) );
+
+        $_GET['wldelay_log_source'] = 'legacy-source';
+        $_SERVER['REQUEST_URI'] = '/wp-admin/options-general.php?page=login-delay-shield-admin&wldelay_log_source=legacy-source';
+
+        ob_start();
+        $this->settings->create_admin_page();
+        $output = ob_get_clean();
+
+        unset( $_GET['wldelay_log_source'], $_SERVER['REQUEST_URI'] );
+
+        $this->assertMatchesRegularExpression( '/value=["\']legacy-source["\'][^>]+selected/', $output );
+        $this->assertStringContainsString( 'legacy-user', $output );
     }
 
 }

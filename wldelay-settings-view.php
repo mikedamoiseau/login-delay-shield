@@ -368,7 +368,7 @@ class LDS_Settings_View {
                 'fields'  => 'source, ip_address, username, attempted_at',
             )
         );
-        $summary = wldelay_get_login_log_summary( $filters, 5 );
+        $summary = wldelay_get_login_log_summary( $filters );
         ?>
         <hr />
         <div class="wldelay-telemetry" aria-labelledby="wldelay-telemetry-title">
@@ -382,7 +382,7 @@ class LDS_Settings_View {
                         <?php esc_html_e( 'Source', 'login-delay-shield' ); ?>
                         <select id="wldelay_log_source" name="wldelay_log_source" form="wldelay-telemetry-filter-form">
                             <option value=""><?php esc_html_e( 'All sources', 'login-delay-shield' ); ?></option>
-                            <?php foreach ( array( 'wp-login', 'xmlrpc', 'rest', 'application-password' ) as $source ) : ?>
+                            <?php foreach ( $this->get_login_log_source_options( $summary, $filters ) as $source ) : ?>
                                 <option value="<?php echo esc_attr( $source ); ?>" <?php selected( $filters['source'], $source ); ?>><?php echo esc_html( wldelay_get_login_source_label( $source ) ); ?></option>
                             <?php endforeach; ?>
                         </select>
@@ -417,6 +417,32 @@ class LDS_Settings_View {
         <?php
     }
 
+
+    /**
+     * Get source dropdown options, preserving active legacy/future source values.
+     *
+     * @param array $summary Summary data.
+     * @param array $filters Active filters.
+     * @return array<int,string>
+     */
+    private function get_login_log_source_options( $summary, $filters ) {
+        $sources = array( 'wp-login', 'xmlrpc', 'rest', 'application-password' );
+
+        if ( ! empty( $summary['source_counts'] ) && is_array( $summary['source_counts'] ) ) {
+            foreach ( $summary['source_counts'] as $source_count ) {
+                if ( ! empty( $source_count['source'] ) ) {
+                    $sources[] = (string) $source_count['source'];
+                }
+            }
+        }
+
+        if ( ! empty( $filters['source'] ) ) {
+            $sources[] = (string) $filters['source'];
+        }
+
+        return array_values( array_unique( array_filter( $sources ) ) );
+    }
+
     /**
      * Render telemetry summary cards.
      *
@@ -424,7 +450,7 @@ class LDS_Settings_View {
      */
     private function render_login_log_summary( $summary ) {
         ?>
-        <div class="wldelay-telemetry-summary" role="status" aria-live="polite">
+        <div class="wldelay-telemetry-summary">
             <section class="wldelay-trend-card">
                 <h4><?php esc_html_e( 'Total attempts', 'login-delay-shield' ); ?></h4>
                 <p class="wldelay-telemetry-total"><?php echo esc_html( number_format_i18n( (int) $summary['total_attempts'] ) ); ?></p>
@@ -510,7 +536,7 @@ class LDS_Settings_View {
                         <?php foreach ( $attempts as $attempt ) : ?>
                             <?php $source = ! empty( $attempt->source ) ? (string) $attempt->source : 'wp-login'; ?>
                             <tr>
-                                <td><?php echo esc_html( get_date_from_gmt( $attempt->attempted_at, get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) ); ?></td>
+                                <td><?php echo esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $attempt->attempted_at ) ); ?></td>
                                 <td><?php echo esc_html( $attempt->username ); ?></td>
                                 <td><?php echo esc_html( $attempt->ip_address ); ?></td>
                                 <td><span class="wldelay-source-badge <?php echo esc_attr( 'wldelay-source-' . sanitize_html_class( $source ) ); ?>"><?php echo esc_html( wldelay_get_login_source_label( $source ) ); ?></span></td>
@@ -536,12 +562,10 @@ class LDS_Settings_View {
             return;
         }
 
-        $base_args = array( 'page' => 'login-delay-shield-admin' );
-        foreach ( $filters as $key => $value ) {
-            if ( $value !== '' ) {
-                $base_args[ 'wldelay_log_' . $key ] = $value;
-            }
-        }
+        $base_args = array_merge(
+            array( 'page' => 'login-delay-shield-admin' ),
+            wldelay_login_log_filters_to_query_args( $filters )
+        );
 
         echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Login log pagination', 'login-delay-shield' ) . '">';
         if ( $current_page > 1 ) {

@@ -122,33 +122,44 @@ function wldelay_get_unlock_current_ip_url() {
     return wp_nonce_url( $url, 'wldelay_unlock_current_ip' );
 }
 
+
+/**
+ * Convert sanitized login-log filters to public query arguments.
+ *
+ * @param array $filters Raw or sanitized filter values.
+ * @return array Query arguments using wldelay_log_* keys.
+ */
+function wldelay_login_log_filters_to_query_args( $filters = array() ) {
+    $filters = wldelay_sanitize_login_log_filters( $filters );
+
+    $query_args = array();
+    $key_map    = array(
+        'source'   => 'wldelay_log_source',
+        'ip'       => 'wldelay_log_ip',
+        'username' => 'wldelay_log_username',
+        'from'     => 'wldelay_log_from',
+        'to'       => 'wldelay_log_to',
+    );
+
+    foreach ( $key_map as $short_key => $query_key ) {
+        if ( $filters[ $short_key ] !== '' ) {
+            $query_args[ $query_key ] = $filters[ $short_key ];
+        }
+    }
+
+    return $query_args;
+}
+
 /**
  * Build the export-login-log admin action URL.
  *
  * @return string URL to admin-post endpoint with nonce.
  */
 function wldelay_get_export_login_log_url( $filters = array() ) {
-    $filters = wldelay_sanitize_login_log_filters( $filters );
-
-    $query_args = array(
-        'action' => 'wldelay_export_login_log',
+    $query_args = array_merge(
+        array( 'action' => 'wldelay_export_login_log' ),
+        wldelay_login_log_filters_to_query_args( $filters )
     );
-
-    if ( ! empty( $filters['source'] ) ) {
-        $query_args['wldelay_log_source'] = $filters['source'];
-    }
-    if ( ! empty( $filters['ip'] ) ) {
-        $query_args['wldelay_log_ip'] = $filters['ip'];
-    }
-    if ( ! empty( $filters['username'] ) ) {
-        $query_args['wldelay_log_username'] = $filters['username'];
-    }
-    if ( ! empty( $filters['from'] ) ) {
-        $query_args['wldelay_log_from'] = $filters['from'];
-    }
-    if ( ! empty( $filters['to'] ) ) {
-        $query_args['wldelay_log_to'] = $filters['to'];
-    }
 
     $url = add_query_arg( $query_args, admin_url( 'admin-post.php' ) );
 
