@@ -390,3 +390,52 @@ msgid ""
 "Completely block XML-RPC authentication. Use this if you don't need remote "
 "publishing or the WordPress mobile app."
 msgstr ""
+
+#: wldelay-settings.php:301
+msgid "Enable fail2ban logging"
+msgstr ""
+
+#: wldelay-settings.php:309
+msgid "Fail2ban log path"
+msgstr ""
+
+#: wldelay-settings.php:317
+msgid "Log lockout events"
+msgstr ""
+
+#: wldelay-settings-view.php:131 wldelay-settings-view.php:187
+msgid "fail2ban Logging"
+msgstr ""
+
+#: wldelay-settings-view.php:952
+msgid ""
+"Write a fail2ban-compatible line when Login Delay Shield records an "
+"authentication failure."
+msgstr ""
+
+#: wldelay-settings-view.php:953
+msgid ""
+"Disabled by default. Enable only after configuring a fail2ban jail to watch "
+"the selected log file."
+msgstr ""
+
+#: wldelay-settings-view.php:968
+msgid ""
+"Log paths are restricted to the WordPress uploads directory by default. "
+"Leave empty to use the default uploads log file."
+msgstr ""
+
+#: wldelay-settings-view.php:971
+msgid "Leave empty to write to:"
+msgstr ""
+
+#: wldelay-settings-view.php:988
+msgid ""
+"Also write a line when Login Delay Shield creates a temporary lockout."
+msgstr ""
+
+#: wldelay-settings-view.php:989
+msgid ""
+"Useful when your jail should ban on plugin lockouts as well as individual "
+"failed-login lines."
+msgstr ""

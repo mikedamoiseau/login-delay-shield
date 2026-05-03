@@ -1418,6 +1418,18 @@ function wldelay_get_options() {
             $options['wldelay_application_password_enabled'] = false;
         }
 
+        if ( ! array_key_exists( 'wldelay_fail2ban_enabled', $options ) ) {
+            $options['wldelay_fail2ban_enabled'] = false;
+        }
+
+        if ( ! array_key_exists( 'wldelay_fail2ban_log_path', $options ) ) {
+            $options['wldelay_fail2ban_log_path'] = '';
+        }
+
+        if ( ! array_key_exists( 'wldelay_fail2ban_include_lockouts', $options ) ) {
+            $options['wldelay_fail2ban_include_lockouts'] = LDS_Settings::_DEFAULT_FAIL2BAN_INCLUDE_LOCKOUTS;
+        }
+
         $GLOBALS['wldelay_options_cache'] = $options;
     }
 
@@ -2147,13 +2159,15 @@ function wldelay_get_failure_count( $ip = null, $username = '' ) {
  *
  * @param string $ip IP address.
  * @param string $username Optional username for IP+username strategy.
+ * @param string|null $source Optional source of the lockout event.
  */
-function wldelay_lock_ip( $ip, $username = '' ) {
+function wldelay_lock_ip( $ip, $username = '', $source = null ) {
     $options = wldelay_get_options();
     $lockout_duration = wldelay_get_lockout_duration_seconds( $options );
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
     wldelay_register_transient_key( $transient_key );
+    wldelay_write_fail2ban_log( 'lockout', $ip, $username, $source );
 }
 
 /**
@@ -2185,6 +2199,8 @@ function wldelay_log_failed_attempt( $ip, $username, $source = null ) {
 
     // Invalidate dashboard widget cache so new attempts appear immediately
     delete_transient( 'wldelay_dashboard_attempts' );
+
+    wldelay_write_fail2ban_log( 'failed login', $ip, $username, $source );
 }
 
 /**
@@ -2330,7 +2346,7 @@ function wldelay_handle_rest_authentication( $errors ) {
         $delay = LDS_Settings::_DEFAULT_DELAY_IN_SECONDS;
     }
 
-    $failed_attempts = wldelay_track_failed_attempt( $username );
+    $failed_attempts = wldelay_track_failed_attempt( $username, 'rest' );
     wldelay_log_failed_attempt( $ip, $username, 'rest' );
     sleep( $delay );
 
@@ -2395,7 +2411,7 @@ function wldelay_handle_application_password_auth( $user, $username, $password )
         $delay = LDS_Settings::_DEFAULT_DELAY_IN_SECONDS;
     }
 
-    $failed_attempts = wldelay_track_failed_attempt( $username );
+    $failed_attempts = wldelay_track_failed_attempt( $username, 'application-password' );
     wldelay_log_failed_attempt( $ip, $username, 'application-password' );
     sleep( $delay );
 
@@ -2414,9 +2430,10 @@ add_filter( 'authenticate', 'wldelay_handle_application_password_auth', 25, 3 );
  * Track a failed login attempt for counters, notifications, and lockout.
  *
  * @param string $username Username attempted.
+ * @param string|null $source Optional login source for lockout logging.
  * @return int Updated failure count for the current tracking key. 0 if tracking is skipped.
  */
-function wldelay_track_failed_attempt( $username ) {
+function wldelay_track_failed_attempt( $username, $source = null ) {
     $ip = wldelay_get_client_ip();
     if ( empty( $ip ) ) {
         return 0;
@@ -2460,7 +2477,7 @@ function wldelay_track_failed_attempt( $username ) {
             : LDS_Settings::_DEFAULT_LOCKOUT_THRESHOLD;
 
         if ( $failed_attempts >= $lockout_threshold ) {
-            wldelay_lock_ip( $ip, $username );
+            wldelay_lock_ip( $ip, $username, $source );
         }
     }
 
@@ -2535,7 +2552,7 @@ function wldelay_auth_login ($user, $password) {
         }
 
         // Track failed attempt for email notifications and lockout
-        $failed_attempts = wldelay_track_failed_attempt( $username );
+        $failed_attempts = wldelay_track_failed_attempt( $username, wldelay_get_login_source() );
 
         sleep( $delay );
 

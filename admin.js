@@ -73,6 +73,14 @@ jQuery(document).ready(function ($) {
         updateSummary('wldelay_xmlrpc_enabled', isXmlrpcChecked);
     }
 
+    function toggleFail2ban() {
+        var isFail2banChecked = $('#wldelay_fail2ban_enabled').prop('checked');
+        $('#wldelay_fail2ban_log_path').closest('tr').toggle(isFail2banChecked);
+        $('#wldelay_fail2ban_include_lockouts').closest('tr').toggle(isFail2banChecked);
+        updateBadge('wldelay_fail2ban_enabled', isFail2banChecked);
+        updateSummary('wldelay_fail2ban_enabled', isFail2banChecked);
+    }
+
     function toggleCard($header) {
         var $card = $header.closest('.wldelay-card');
         var isCollapsed = $card.hasClass('collapsed');
@@ -110,6 +118,11 @@ jQuery(document).ready(function ($) {
     if ($('#wldelay_xmlrpc_enabled').length) {
         toggleXmlrpc();
         $('#wldelay_xmlrpc_enabled').on('change', toggleXmlrpc);
+    }
+
+    if ($('#wldelay_fail2ban_enabled').length) {
+        toggleFail2ban();
+        $('#wldelay_fail2ban_enabled').on('change', toggleFail2ban);
     }
 
     $('#wldelay_rest_enabled').on('change', function () {

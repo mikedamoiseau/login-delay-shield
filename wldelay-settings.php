@@ -1,6 +1,8 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+require_once dirname( __FILE__ ) . '/wldelay-fail2ban.php';
+
 class LDS_Settings {
     /**
      * Default delay value is 1 second
@@ -40,6 +42,11 @@ class LDS_Settings {
      * Default log retention (days)
      */
     const _DEFAULT_LOG_RETENTION_DAYS = 30;
+
+    /**
+     * Default fail2ban logging settings
+     */
+    const _DEFAULT_FAIL2BAN_INCLUDE_LOCKOUTS = true;
 
     /**
      * Holds the values to be used in the fields callbacks
@@ -289,6 +296,30 @@ class LDS_Settings {
             'wldelay_log_section_id'
         );
 
+        add_settings_field(
+            'wldelay_fail2ban_enabled',
+            esc_html__( 'Enable fail2ban logging', 'login-delay-shield' ),
+            array( $this->view, 'fail2ban_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_log_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_fail2ban_log_path',
+            esc_html__( 'Fail2ban log path', 'login-delay-shield' ),
+            array( $this->view, 'fail2ban_log_path_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_log_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_fail2ban_include_lockouts',
+            esc_html__( 'Log lockout events', 'login-delay-shield' ),
+            array( $this->view, 'fail2ban_include_lockouts_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_log_section_id'
+        );
+
         // XMLRPC Protection section
         add_settings_section(
             'wldelay_xmlrpc_section_id',
@@ -450,6 +481,13 @@ class LDS_Settings {
             ? absint( $input['wldelay_log_retention_days'] )
             : self::_DEFAULT_LOG_RETENTION_DAYS;
         $new_input['wldelay_log_retention_days'] = min( 365, $log_retention );
+
+        // fail2ban-compatible file logging is disabled by default.
+        $new_input['wldelay_fail2ban_enabled'] = ! empty( $input['wldelay_fail2ban_enabled'] );
+        $new_input['wldelay_fail2ban_log_path'] = isset( $input['wldelay_fail2ban_log_path'] )
+            ? wldelay_sanitize_fail2ban_log_path( $input['wldelay_fail2ban_log_path'] )
+            : '';
+        $new_input['wldelay_fail2ban_include_lockouts'] = ! empty( $input['wldelay_fail2ban_include_lockouts'] );
 
         // XMLRPC Protection settings
         $new_input['wldelay_xmlrpc_enabled'] = ! empty( $input['wldelay_xmlrpc_enabled'] );

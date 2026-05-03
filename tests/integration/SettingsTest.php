@@ -73,6 +73,9 @@ class SettingsTest extends WP_UnitTestCase {
             'wldelay_email_address' => 'test@example.com',
             'wldelay_rest_enabled' => true,
             'wldelay_application_password_enabled' => true,
+            'wldelay_fail2ban_enabled' => true,
+            'wldelay_fail2ban_log_path' => 'security/fail2ban.log',
+            'wldelay_fail2ban_include_lockouts' => true,
         ];
 
         $result = $this->settings->sanitize( $input );
@@ -86,6 +89,9 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertEquals( 'test@example.com', $result['wldelay_email_address'] );
         $this->assertTrue( $result['wldelay_rest_enabled'] );
         $this->assertTrue( $result['wldelay_application_password_enabled'] );
+        $this->assertTrue( $result['wldelay_fail2ban_enabled'] );
+        $this->assertStringEndsWith( '/wp-content/uploads/security/fail2ban.log', $result['wldelay_fail2ban_log_path'] );
+        $this->assertTrue( $result['wldelay_fail2ban_include_lockouts'] );
     }
 
     /**
@@ -224,6 +230,11 @@ class SettingsTest extends WP_UnitTestCase {
         // Check auth protection section fields
         $this->assertArrayHasKey( 'wldelay_rest_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
         $this->assertArrayHasKey( 'wldelay_application_password_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
+
+        // Check fail2ban logging fields
+        $this->assertArrayHasKey( 'wldelay_fail2ban_enabled', $wp_settings_fields[ $page ]['wldelay_log_section_id'] );
+        $this->assertArrayHasKey( 'wldelay_fail2ban_log_path', $wp_settings_fields[ $page ]['wldelay_log_section_id'] );
+        $this->assertArrayHasKey( 'wldelay_fail2ban_include_lockouts', $wp_settings_fields[ $page ]['wldelay_log_section_id'] );
     }
     /**
      * Test telemetry UI renders filtered rows and export URL.
