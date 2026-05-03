@@ -3,7 +3,17 @@
  * Unit tests for fail2ban-compatible logging helpers.
  */
 
+use Brain\Monkey\Functions;
+
 class Fail2BanTest extends LDS_Unit_Test_Case {
+
+    protected function setUp(): void {
+        parent::setUp();
+
+        Functions\when( 'sanitize_text_field' )->alias( function( $value ) {
+            return trim( strip_tags( (string) $value ) );
+        } );
+    }
 
     public function test_formats_failed_login_line_with_stable_prefix_and_fields() {
         $line = wldelay_format_fail2ban_line(
@@ -55,6 +65,7 @@ class Fail2BanTest extends LDS_Unit_Test_Case {
 
     public function test_sanitizes_empty_path_as_empty_for_runtime_default() {
         $this->assertSame( '', wldelay_sanitize_fail2ban_log_path( '' ) );
+        $this->assertSame( '/tmp/wordpress/wp-content/uploads/login-delay-shield-fail2ban/login-delay-shield-fail2ban.log', wldelay_fail2ban_resolve_log_path( '' ) );
     }
 
     public function test_rejects_path_traversal_and_disallowed_absolute_paths() {

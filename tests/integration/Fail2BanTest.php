@@ -34,6 +34,21 @@ class Fail2BanTest extends WP_UnitTestCase {
         if ( $this->log_path && file_exists( $this->log_path ) ) {
             unlink( $this->log_path );
         }
+
+        $default_path = wldelay_fail2ban_get_default_log_path();
+        $default_dir  = dirname( $default_path );
+        if ( file_exists( $default_path ) ) {
+            unlink( $default_path );
+        }
+        foreach ( array( '.htaccess', 'index.html' ) as $filename ) {
+            $file = trailingslashit( $default_dir ) . $filename;
+            if ( file_exists( $file ) ) {
+                unlink( $file );
+            }
+        }
+        if ( is_dir( $default_dir ) ) {
+            rmdir( $default_dir );
+        }
     }
 
     public function test_failed_attempt_does_not_write_when_disabled() {
@@ -63,6 +78,25 @@ class Fail2BanTest extends WP_UnitTestCase {
         $this->assertStringContainsString( 'source=wp-login', $contents );
         $this->assertStringContainsString( 'ip=203.0.113.10', $contents );
         $this->assertStringContainsString( 'username=alice', $contents );
+    }
+
+    public function test_default_log_directory_gets_basic_web_protection() {
+        update_option( 'wldelay_options', array(
+            'wldelay_fail2ban_enabled'  => true,
+            'wldelay_fail2ban_log_path' => '',
+        ) );
+        wldelay_clear_options_cache();
+
+        wldelay_log_failed_attempt( '203.0.113.10', 'alice', 'wp-login' );
+
+        $default_path = wldelay_fail2ban_get_default_log_path();
+        $default_dir  = dirname( $default_path );
+        $this->assertFileExists( $default_path );
+        $this->assertFileExists( trailingslashit( $default_dir ) . '.htaccess' );
+        $this->assertFileExists( trailingslashit( $default_dir ) . 'index.html' );
+        $htaccess = file_get_contents( trailingslashit( $default_dir ) . '.htaccess' );
+        $this->assertStringContainsString( 'Require all denied', $htaccess );
+        $this->assertStringContainsString( 'Deny from all', $htaccess );
     }
 
     public function test_lockout_event_respects_toggle() {

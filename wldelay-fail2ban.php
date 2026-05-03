@@ -109,7 +109,7 @@ function wldelay_fail2ban_get_uploads_basedir() {
  * @return string
  */
 function wldelay_fail2ban_get_default_log_path() {
-    return wldelay_fail2ban_get_uploads_basedir() . '/login-delay-shield-fail2ban.log';
+    return wldelay_fail2ban_get_uploads_basedir() . '/login-delay-shield-fail2ban/login-delay-shield-fail2ban.log';
 }
 
 /**
@@ -316,6 +316,30 @@ function wldelay_fail2ban_should_log_event( $event, $options ) {
 }
 
 /**
+ * Add lightweight web-server protections to plugin-owned log directories.
+ *
+ * @param string $dir Log directory.
+ */
+function wldelay_fail2ban_protect_log_dir( $dir ) {
+    $dir          = rtrim( wldelay_fail2ban_collapse_path( $dir ), '/' );
+    $uploads_base = rtrim( wldelay_fail2ban_get_uploads_basedir(), '/' );
+
+    if ( $dir === '' || $uploads_base === '' || $dir === $uploads_base || strpos( $dir . '/', $uploads_base . '/' ) !== 0 ) {
+        return;
+    }
+
+    $htaccess = $dir . '/.htaccess';
+    if ( ! file_exists( $htaccess ) ) {
+        @file_put_contents( $htaccess, "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n", LOCK_EX );
+    }
+
+    $index = $dir . '/index.html';
+    if ( ! file_exists( $index ) ) {
+        @file_put_contents( $index, '', LOCK_EX );
+    }
+}
+
+/**
  * Write a fail2ban-compatible log line when enabled.
  *
  * @param string      $event Event key.
@@ -359,6 +383,8 @@ function wldelay_write_fail2ban_log( $event, $ip, $username, $source = null ) {
     if ( ! is_dir( $dir ) || ! is_writable( $dir ) ) {
         return false;
     }
+
+    wldelay_fail2ban_protect_log_dir( $dir );
 
     return false !== @file_put_contents( $path, $line . PHP_EOL, FILE_APPEND | LOCK_EX );
 }
