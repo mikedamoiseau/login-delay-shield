@@ -196,6 +196,11 @@ function wldelay_sanitize_fail2ban_log_path( $path ) {
         return '';
     }
 
+    $uploads_base = rtrim( wldelay_fail2ban_get_uploads_basedir(), '/' );
+    if ( $uploads_base !== '' && rtrim( dirname( $path ), '/' ) === $uploads_base ) {
+        return '';
+    }
+
     return $path;
 }
 

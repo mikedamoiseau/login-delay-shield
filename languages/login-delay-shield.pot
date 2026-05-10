@@ -421,12 +421,12 @@ msgstr ""
 
 #: wldelay-settings-view.php:968
 msgid ""
-"Log paths are restricted to the WordPress uploads directory by default. "
-"Leave empty to use the protected default log directory."
+"Log paths are restricted to a subdirectory of the WordPress uploads directory "
+"by default. Leave empty to use the protected default log directory."
 msgstr ""
 
 #: wldelay-settings-view.php:971
-msgid "Leave empty to write to:"
+msgid "Leave empty to write to the protected default path:"
 msgstr ""
 
 #: wldelay-settings-view.php:988

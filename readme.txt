@@ -86,7 +86,7 @@ A dashboard widget shows the 10 most recent failed login attempts, including the
 
 = How do I use fail2ban logging? =
 
-Enable fail2ban logging under `Settings` > `Login Delay Shield` > `Login Log`. If the log path is empty, Login Delay Shield writes to `login-delay-shield-fail2ban/login-delay-shield-fail2ban.log` in the WordPress uploads directory and adds basic `.htaccess`/`index.html` protections to that plugin-owned directory. Custom paths are restricted to the uploads directory by default; if you use a custom path, make sure your web server does not expose the log publicly.
+Enable fail2ban logging under `Settings` > `Login Delay Shield` > `Login Log`. If the log path is empty, Login Delay Shield writes to `login-delay-shield-fail2ban/login-delay-shield-fail2ban.log` in the WordPress uploads directory and adds basic `.htaccess`/`index.html` protections to that plugin-owned directory. Custom paths are restricted to a subdirectory of the uploads directory by default; paths directly in the uploads root are rejected so Login Delay Shield can add basic directory protections. If lockout-event logging is enabled, an attempt that triggers a lockout may produce both a `failed login` line and a `lockout` line, so tune your jail's `maxretry` accordingly.
 
 Log lines include an ISO-8601 timestamp, stable prefix, and fields such as:
 

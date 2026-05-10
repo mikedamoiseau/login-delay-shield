@@ -15,14 +15,19 @@ class Fail2BanTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
 
         $uploads = wp_upload_dir();
-        $this->log_path = trailingslashit( $uploads['basedir'] ) . 'login-delay-shield-fail2ban-test.log';
+        $this->log_path = trailingslashit( $uploads['basedir'] ) . 'login-delay-shield-fail2ban-test/login-delay-shield-fail2ban-test.log';
         $this->delete_log_file();
 
         $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
     }
 
     public function tearDown(): void {
+        global $wpdb;
+
         $this->delete_log_file();
+        if ( $wpdb ) {
+            $wpdb->query( 'TRUNCATE TABLE ' . wldelay_get_log_table_name() );
+        }
         unset( $_SERVER['REMOTE_ADDR'] );
         delete_option( 'wldelay_options' );
         wldelay_clear_options_cache();
@@ -33,6 +38,15 @@ class Fail2BanTest extends WP_UnitTestCase {
     private function delete_log_file() {
         if ( $this->log_path && file_exists( $this->log_path ) ) {
             unlink( $this->log_path );
+        }
+        if ( $this->log_path && is_dir( dirname( $this->log_path ) ) ) {
+            foreach ( array( '.htaccess', 'index.html' ) as $filename ) {
+                $file = trailingslashit( dirname( $this->log_path ) ) . $filename;
+                if ( file_exists( $file ) ) {
+                    unlink( $file );
+                }
+            }
+            rmdir( dirname( $this->log_path ) );
         }
 
         $default_path = wldelay_fail2ban_get_default_log_path();

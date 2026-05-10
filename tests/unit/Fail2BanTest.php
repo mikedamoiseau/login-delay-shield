@@ -60,17 +60,19 @@ class Fail2BanTest extends LDS_Unit_Test_Case {
     public function test_sanitizes_relative_log_path_under_uploads_directory() {
         $path = wldelay_sanitize_fail2ban_log_path( 'security/fail2ban.log' );
 
-        $this->assertSame( '/tmp/wordpress/wp-content/uploads/security/fail2ban.log', $path );
+        $this->assertSame( wldelay_fail2ban_get_uploads_basedir() . '/security/fail2ban.log', $path );
     }
 
     public function test_sanitizes_empty_path_as_empty_for_runtime_default() {
         $this->assertSame( '', wldelay_sanitize_fail2ban_log_path( '' ) );
-        $this->assertSame( '/tmp/wordpress/wp-content/uploads/login-delay-shield-fail2ban/login-delay-shield-fail2ban.log', wldelay_fail2ban_resolve_log_path( '' ) );
+        $this->assertSame( wldelay_fail2ban_get_default_log_path(), wldelay_fail2ban_resolve_log_path( '' ) );
     }
 
-    public function test_rejects_path_traversal_and_disallowed_absolute_paths() {
+    public function test_rejects_path_traversal_uploads_root_and_disallowed_absolute_paths() {
         $this->assertSame( '', wldelay_sanitize_fail2ban_log_path( '../fail2ban.log' ) );
         $this->assertSame( '', wldelay_sanitize_fail2ban_log_path( 'php://temp.log' ) );
+        $this->assertSame( '', wldelay_sanitize_fail2ban_log_path( 'fail2ban.log' ) );
+        $this->assertSame( '', wldelay_sanitize_fail2ban_log_path( wldelay_fail2ban_get_uploads_basedir() . '/fail2ban.log' ) );
         $this->assertSame( '', wldelay_sanitize_fail2ban_log_path( '/var/log/auth.log' ) );
     }
 

@@ -965,10 +965,10 @@ class LDS_Settings_View {
             esc_attr( $path ),
             esc_attr( $default_path )
         );
-        echo $this->tooltip( __( 'Log paths are restricted to the WordPress uploads directory by default. Leave empty to use the protected default log directory.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'Log paths are restricted to a subdirectory of the WordPress uploads directory by default. Leave empty to use the protected default log directory.', 'login-delay-shield' ) );
         printf(
             '<p id="wldelay_fail2ban_log_path_desc" class="description">%s <code>%s</code></p>',
-            esc_html__( 'Leave empty to write to:', 'login-delay-shield' ),
+            esc_html__( 'Leave empty to write to the protected default path:', 'login-delay-shield' ),
             esc_html( $default_path )
         );
     }
