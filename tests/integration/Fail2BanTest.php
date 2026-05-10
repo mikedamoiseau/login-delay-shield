@@ -14,8 +14,7 @@ class Fail2BanTest extends WP_UnitTestCase {
         delete_option( 'wldelay_options' );
         wldelay_clear_options_cache();
 
-        $uploads = wp_upload_dir();
-        $this->log_path = trailingslashit( $uploads['basedir'] ) . 'login-delay-shield-fail2ban-test/login-delay-shield-fail2ban-test.log';
+        $this->log_path = trailingslashit( dirname( wldelay_fail2ban_get_default_log_path() ) ) . 'test/login-delay-shield-fail2ban-test.log';
         $this->delete_log_file();
 
         $_SERVER['REMOTE_ADDR'] = '203.0.113.10';

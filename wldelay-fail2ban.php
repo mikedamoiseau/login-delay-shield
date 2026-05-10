@@ -104,12 +104,25 @@ function wldelay_fail2ban_get_uploads_basedir() {
 }
 
 /**
+ * Get the plugin-owned base directory for the default fail2ban log.
+ *
+ * @return string Normalized directory path.
+ */
+function wldelay_fail2ban_get_default_base_dir() {
+    if ( defined( 'WP_CONTENT_DIR' ) ) {
+        return rtrim( wldelay_fail2ban_collapse_path( dirname( WP_CONTENT_DIR ) ), '/' );
+    }
+
+    return rtrim( wldelay_fail2ban_collapse_path( dirname( rtrim( ABSPATH, '/\\' ) ) ), '/' );
+}
+
+/**
  * Get the default fail2ban log path.
  *
  * @return string
  */
 function wldelay_fail2ban_get_default_log_path() {
-    return wldelay_fail2ban_get_uploads_basedir() . '/login-delay-shield-fail2ban/login-delay-shield-fail2ban.log';
+    return wldelay_fail2ban_get_default_base_dir() . '/login-delay-shield-fail2ban/login-delay-shield-fail2ban.log';
 }
 
 /**
@@ -118,7 +131,7 @@ function wldelay_fail2ban_get_default_log_path() {
  * @return array<int,string>
  */
 function wldelay_fail2ban_get_allowed_log_dirs() {
-    $dirs = array( wldelay_fail2ban_get_uploads_basedir() );
+    $dirs = array( dirname( wldelay_fail2ban_get_default_log_path() ) );
 
     if ( function_exists( 'apply_filters' ) ) {
         /**
@@ -127,7 +140,7 @@ function wldelay_fail2ban_get_allowed_log_dirs() {
          * Keep this list narrow. Paths entered in settings must resolve under
          * one of these directories before Login Delay Shield writes to them.
          *
-         * @param array<int,string> $dirs Allowed absolute directory paths.
+         * @param array<int,string> $dirs Allowed absolute directory paths. The plugin-owned default log directory is allowed by default; add explicit directories here only when they are protected by server configuration.
          */
         $dirs = apply_filters( 'wldelay_fail2ban_allowed_log_dirs', $dirs );
     }
@@ -188,7 +201,7 @@ function wldelay_sanitize_fail2ban_log_path( $path ) {
     }
 
     if ( ! wldelay_fail2ban_path_is_absolute( $path ) ) {
-        $path = wldelay_fail2ban_get_uploads_basedir() . '/' . ltrim( $path, '/' );
+        $path = dirname( wldelay_fail2ban_get_default_log_path() ) . '/' . ltrim( $path, '/' );
         $path = wldelay_fail2ban_collapse_path( $path );
     }
 
@@ -321,15 +334,18 @@ function wldelay_fail2ban_should_log_event( $event, $options ) {
 }
 
 /**
- * Add lightweight web-server protections to plugin-owned log directories.
+ * Add lightweight web-server protections to plugin-owned/uploads-based log directories.
  *
  * @param string $dir Log directory.
  */
 function wldelay_fail2ban_protect_log_dir( $dir ) {
-    $dir          = rtrim( wldelay_fail2ban_collapse_path( $dir ), '/' );
-    $uploads_base = rtrim( wldelay_fail2ban_get_uploads_basedir(), '/' );
+    $dir            = rtrim( wldelay_fail2ban_collapse_path( $dir ), '/' );
+    $default_dir    = rtrim( dirname( wldelay_fail2ban_get_default_log_path() ), '/' );
+    $uploads_base   = rtrim( wldelay_fail2ban_get_uploads_basedir(), '/' );
+    $is_default_dir = $default_dir !== '' && ( $dir === $default_dir || strpos( $dir . '/', $default_dir . '/' ) === 0 );
+    $is_uploads_dir = $uploads_base !== '' && $dir !== $uploads_base && strpos( $dir . '/', $uploads_base . '/' ) === 0;
 
-    if ( $dir === '' || $uploads_base === '' || $dir === $uploads_base || strpos( $dir . '/', $uploads_base . '/' ) !== 0 ) {
+    if ( $dir === '' || ( ! $is_default_dir && ! $is_uploads_dir ) ) {
         return;
     }
 

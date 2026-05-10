@@ -484,9 +484,21 @@ class LDS_Settings {
 
         // fail2ban-compatible file logging is disabled by default.
         $new_input['wldelay_fail2ban_enabled'] = ! empty( $input['wldelay_fail2ban_enabled'] );
-        $new_input['wldelay_fail2ban_log_path'] = isset( $input['wldelay_fail2ban_log_path'] )
-            ? wldelay_sanitize_fail2ban_log_path( $input['wldelay_fail2ban_log_path'] )
+        $raw_fail2ban_log_path = isset( $input['wldelay_fail2ban_log_path'] ) ? (string) $input['wldelay_fail2ban_log_path'] : '';
+        $new_input['wldelay_fail2ban_log_path'] = $raw_fail2ban_log_path !== ''
+            ? wldelay_sanitize_fail2ban_log_path( $raw_fail2ban_log_path )
             : '';
+        if ( $raw_fail2ban_log_path !== '' && $new_input['wldelay_fail2ban_log_path'] === '' ) {
+            $new_input['wldelay_fail2ban_enabled'] = false;
+            if ( function_exists( 'add_settings_error' ) ) {
+                add_settings_error(
+                    WLDELAY_OPTION_NAME,
+                    'wldelay_fail2ban_log_path_invalid',
+                    esc_html__( 'fail2ban logging was disabled because the selected log path is not allowed. Use a .log file in the protected default directory, or leave the path empty for the protected default log location.', 'login-delay-shield' ),
+                    'error'
+                );
+            }
+        }
         $new_input['wldelay_fail2ban_include_lockouts'] = ! empty( $input['wldelay_fail2ban_include_lockouts'] );
 
         // XMLRPC Protection settings

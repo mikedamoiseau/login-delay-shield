@@ -65,7 +65,7 @@ If you don't use the WordPress mobile app or remote publishing tools like Window
 
 ### How do I use fail2ban logging?
 
-Enable fail2ban logging under **Settings > Login Delay Shield > Login Log**. If the log path is empty, Login Delay Shield writes to `login-delay-shield-fail2ban/login-delay-shield-fail2ban.log` in the WordPress uploads directory and adds basic `.htaccess`/`index.html` protections to that plugin-owned directory. Custom paths are restricted to a subdirectory of the uploads directory by default; paths directly in the uploads root are rejected so Login Delay Shield can add basic directory protections. If lockout-event logging is enabled, an attempt that triggers a lockout may produce both a `failed login` line and a `lockout` line, so tune your jail's `maxretry` accordingly.
+Enable fail2ban logging under **Settings > Login Delay Shield > Login Log**. If the log path is empty, Login Delay Shield writes to `login-delay-shield-fail2ban/login-delay-shield-fail2ban.log` in a plugin-owned temporary directory outside the WordPress uploads tree and adds basic `.htaccess`/`index.html` protections. Custom paths are restricted to the protected default directory by default; use the `wldelay_fail2ban_allowed_log_dirs` filter only for server-protected directories. If a custom path is rejected, logging is disabled instead of silently writing somewhere else. If lockout-event logging is enabled, an attempt that triggers a lockout may produce both a `failed login` line and a `lockout` line, so tune your jail's `maxretry` accordingly.
 
 Log lines include an ISO-8601 timestamp, stable prefix, and fields such as:
 

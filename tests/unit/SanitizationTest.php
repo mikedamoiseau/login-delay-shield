@@ -212,12 +212,16 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $input = [ 'wldelay_fail2ban_log_path' => 'security/fail2ban.log' ];
         $result = $this->settings->sanitize( $input );
 
-        $this->assertEquals( wldelay_fail2ban_get_uploads_basedir() . '/security/fail2ban.log', $result['wldelay_fail2ban_log_path'] );
+        $this->assertEquals( dirname( wldelay_fail2ban_get_default_log_path() ) . '/security/fail2ban.log', $result['wldelay_fail2ban_log_path'] );
 
-        $input = [ 'wldelay_fail2ban_log_path' => '/var/log/auth.log' ];
+        $input = [
+            'wldelay_fail2ban_enabled' => '1',
+            'wldelay_fail2ban_log_path' => '/var/log/auth.log',
+        ];
         $result = $this->settings->sanitize( $input );
 
         $this->assertEquals( '', $result['wldelay_fail2ban_log_path'] );
+        $this->assertFalse( $result['wldelay_fail2ban_enabled'] );
     }
 
     /**

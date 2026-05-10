@@ -419,10 +419,18 @@ msgid ""
 "the selected log file."
 msgstr ""
 
+#: wldelay-settings.php:494
+msgid ""
+"fail2ban logging was disabled because the selected log path is not allowed. "
+"Use a .log file in the protected default directory, or leave the path empty "
+"for the protected default log location."
+msgstr ""
+
 #: wldelay-settings-view.php:968
 msgid ""
-"Log paths are restricted to a subdirectory of the WordPress uploads directory "
-"by default. Leave empty to use the protected default log directory."
+"Leave empty to use the protected default log directory. Custom paths are "
+"restricted to the protected default directory by default; use the filter only "
+"for server-protected directories."
 msgstr ""
 
 #: wldelay-settings-view.php:971
