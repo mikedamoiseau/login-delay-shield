@@ -90,7 +90,10 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertTrue( $result['wldelay_rest_enabled'] );
         $this->assertTrue( $result['wldelay_application_password_enabled'] );
         $this->assertTrue( $result['wldelay_fail2ban_enabled'] );
-        $this->assertStringEndsWith( '/login-delay-shield-fail2ban/security/fail2ban.log', $result['wldelay_fail2ban_log_path'] );
+        $this->assertMatchesRegularExpression(
+            '#/login-delay-shield-fail2ban-[A-Za-z0-9]{16}/security/fail2ban\.log$#',
+            $result['wldelay_fail2ban_log_path']
+        );
         $this->assertTrue( $result['wldelay_fail2ban_include_lockouts'] );
     }
 

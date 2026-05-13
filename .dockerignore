@@ -1,0 +1,13 @@
+.git
+.github
+vendor
+node_modules
+tests/.phpunit.result.cache
+.phpunit.result.cache
+.idea
+.vscode
+*.zip
+login-delay-shield.zip
+test-results
+.claude
+.claude-bw

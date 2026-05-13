@@ -35,33 +35,29 @@ class Fail2BanTest extends WP_UnitTestCase {
     }
 
     private function delete_log_file() {
-        if ( $this->log_path && file_exists( $this->log_path ) ) {
-            unlink( $this->log_path );
-        }
         if ( $this->log_path && is_dir( dirname( $this->log_path ) ) ) {
-            foreach ( array( '.htaccess', 'index.html', 'index.php' ) as $filename ) {
-                $file = trailingslashit( dirname( $this->log_path ) ) . $filename;
-                if ( file_exists( $file ) ) {
-                    unlink( $file );
-                }
-            }
-            rmdir( dirname( $this->log_path ) );
+            $this->recursive_rmdir( dirname( $this->log_path ) );
         }
 
-        $default_path = wldelay_fail2ban_get_default_log_path();
-        $default_dir  = dirname( $default_path );
-        if ( file_exists( $default_path ) ) {
-            unlink( $default_path );
+        $default_dir = dirname( wldelay_fail2ban_get_default_log_path() );
+        if ( is_dir( $default_dir ) ) {
+            $this->recursive_rmdir( $default_dir );
         }
-        foreach ( array( '.htaccess', 'index.html' ) as $filename ) {
-            $file = trailingslashit( $default_dir ) . $filename;
-            if ( file_exists( $file ) ) {
-                unlink( $file );
+    }
+
+    private function recursive_rmdir( $dir ) {
+        foreach ( scandir( $dir ) as $entry ) {
+            if ( $entry === '.' || $entry === '..' ) {
+                continue;
+            }
+            $path = $dir . '/' . $entry;
+            if ( is_dir( $path ) && ! is_link( $path ) ) {
+                $this->recursive_rmdir( $path );
+            } else {
+                @unlink( $path );
             }
         }
-        if ( is_dir( $default_dir ) ) {
-            rmdir( $default_dir );
-        }
+        @rmdir( $dir );
     }
 
     public function test_failed_attempt_does_not_write_when_disabled() {
