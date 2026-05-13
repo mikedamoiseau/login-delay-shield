@@ -128,6 +128,7 @@ class LDS_Settings_View {
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-log-body">
                             <span class="dashicons dashicons-list-view" aria-hidden="true"></span>
                             <?php esc_html_e( 'Login Log', 'login-delay-shield' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_fail2ban_enabled', __( 'fail2ban Logging', 'login-delay-shield' ) ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-log-body" class="wldelay-card-body">
@@ -183,6 +184,7 @@ class LDS_Settings_View {
             'wldelay_rest_enabled' => __( 'REST API Protection', 'login-delay-shield' ),
             'wldelay_application_password_enabled' => __( 'Application Password Protection', 'login-delay-shield' ),
             'wldelay_custom_login_enabled' => __( 'Custom Login URL', 'login-delay-shield' ),
+            'wldelay_fail2ban_enabled' => __( 'fail2ban Logging', 'login-delay-shield' ),
         );
 
         $enabled_count = 0;
@@ -937,6 +939,54 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Old logs are automatically cleaned up to save database space. Shorter retention = smaller database.', 'login-delay-shield' ) );
         echo '<p id="wldelay_log_retention_desc" class="description">' . esc_html__( 'Automatically delete log entries older than this many days. Set to 0 to keep logs forever.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * fail2ban logging enabled callback.
+     */
+    public function fail2ban_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_fail2ban_enabled" name="wldelay_options[wldelay_fail2ban_enabled]" value="1" %s aria-describedby="wldelay_fail2ban_enabled_desc" />',
+            ! empty( $this->options['wldelay_fail2ban_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'Write a fail2ban-compatible line when Login Delay Shield records an authentication failure.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_fail2ban_enabled_desc" class="description">' . esc_html__( 'Disabled by default. Enable only after configuring a fail2ban jail to watch the selected log file.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * fail2ban log path callback.
+     */
+    public function fail2ban_log_path_callback() {
+        $path = isset( $this->options['wldelay_fail2ban_log_path'] ) ? $this->options['wldelay_fail2ban_log_path'] : '';
+        $default_path = wldelay_fail2ban_get_default_log_path();
+
+        printf(
+            '<input type="text" id="wldelay_fail2ban_log_path" name="wldelay_options[wldelay_fail2ban_log_path]" value="%s" class="regular-text code" placeholder="%s" aria-describedby="wldelay_fail2ban_log_path_desc" />',
+            esc_attr( $path ),
+            esc_attr( $default_path )
+        );
+        echo $this->tooltip( __( 'Leave empty to use the protected default log directory. Custom paths are restricted to the protected default directory by default; use the filter only for server-protected directories.', 'login-delay-shield' ) );
+        printf(
+            '<p id="wldelay_fail2ban_log_path_desc" class="description">%s <code>%s</code></p>',
+            esc_html__( 'Leave empty to write to the protected default path:', 'login-delay-shield' ),
+            esc_html( $default_path )
+        );
+    }
+
+    /**
+     * fail2ban lockout event callback.
+     */
+    public function fail2ban_include_lockouts_callback() {
+        $include_lockouts = array_key_exists( 'wldelay_fail2ban_include_lockouts', (array) $this->options )
+            ? ! empty( $this->options['wldelay_fail2ban_include_lockouts'] )
+            : LDS_Settings::_DEFAULT_FAIL2BAN_INCLUDE_LOCKOUTS;
+
+        printf(
+            '<input type="checkbox" id="wldelay_fail2ban_include_lockouts" name="wldelay_options[wldelay_fail2ban_include_lockouts]" value="1" %s aria-describedby="wldelay_fail2ban_include_lockouts_desc" />',
+            $include_lockouts ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'Also write a line when Login Delay Shield creates a temporary lockout.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_fail2ban_include_lockouts_desc" class="description">' . esc_html__( 'Useful when your jail should ban on plugin lockouts as well as individual failed-login lines.', 'login-delay-shield' ) . '</p>';
     }
 
     /**

@@ -22,6 +22,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 - **IP whitelist** — Bypass all security measures for trusted IPs (supports CIDR notation)
 - **Email notifications** — Receive alerts when failed login thresholds are reached
 - **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity and 7-day trends
+- **fail2ban logging (optional)** — Write fail2ban-compatible failed-login and lockout lines to a safe log file
 - **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 - **REST/API auth protection (optional)** — Apply delay/lockout checks to REST and application-password authentication paths
 - **Log retention** — Automatic cleanup of old log entries (configurable retention period)
@@ -61,6 +62,22 @@ Enable the IP whitelist feature and add your IP address (or a range using CIDR n
 ### Should I block XML-RPC?
 
 If you don't use the WordPress mobile app or remote publishing tools like Windows Live Writer, blocking XML-RPC authentication removes a common attack vector. You can also choose to just apply delays without blocking it entirely.
+
+### How do I use fail2ban logging?
+
+Enable fail2ban logging under **Settings > Login Delay Shield > Login Log**. If the log path is empty, Login Delay Shield writes to `login-delay-shield-fail2ban/login-delay-shield-fail2ban.log` in a plugin-owned temporary directory outside the WordPress uploads tree and adds basic `.htaccess`/`index.html` protections. Custom paths are restricted to the protected default directory by default; use the `wldelay_fail2ban_allowed_log_dirs` filter only for server-protected directories. If a custom path is rejected, logging is disabled instead of silently writing somewhere else. If lockout-event logging is enabled, an attempt that triggers a lockout may produce both a `failed login` line and a `lockout` line, so tune your jail's `maxretry` accordingly.
+
+Log lines include an ISO-8601 timestamp, stable prefix, and fields such as:
+
+```text
+2026-05-04T12:00:00+00:00 Login Delay Shield: failed login source=wp-login ip=203.0.113.10 username=admin
+```
+
+A fail2ban filter can match the IP with:
+
+```text
+failregex = Login Delay Shield: (?:failed login|lockout) .* ip=<HOST>
+```
 
 ### WP-CLI Commands
 
