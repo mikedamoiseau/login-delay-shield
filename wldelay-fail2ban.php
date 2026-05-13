@@ -106,14 +106,63 @@ function wldelay_fail2ban_get_uploads_basedir() {
 /**
  * Get the plugin-owned base directory for the default fail2ban log.
  *
+ * Returns WP_CONTENT_DIR (not its parent) so the default log directory never
+ * lands inside the document root. Combined with the unguessable token from
+ * wldelay_fail2ban_get_default_dir_token(), the default log file is not
+ * reachable by URL guessing even on Nginx-fronted installs where .htaccess
+ * is ignored.
+ *
  * @return string Normalized directory path.
  */
 function wldelay_fail2ban_get_default_base_dir() {
     if ( defined( 'WP_CONTENT_DIR' ) ) {
-        return rtrim( wldelay_fail2ban_collapse_path( dirname( WP_CONTENT_DIR ) ), '/' );
+        return rtrim( wldelay_fail2ban_collapse_path( WP_CONTENT_DIR ), '/' );
     }
 
-    return rtrim( wldelay_fail2ban_collapse_path( dirname( rtrim( ABSPATH, '/\\' ) ) ), '/' );
+    return rtrim( wldelay_fail2ban_collapse_path( rtrim( ABSPATH, '/\\' ) . '/wp-content' ), '/' );
+}
+
+/**
+ * Get (and lazily persist) the per-install random token used in the default
+ * fail2ban log directory name. The token makes the default log path
+ * non-enumerable from outside, so static-file servers (Nginx, etc.) cannot
+ * be used to download the log even if directory listing is on.
+ *
+ * @return string 16-char alphanumeric token.
+ */
+function wldelay_fail2ban_get_default_dir_token() {
+    static $cache = null;
+
+    if ( is_string( $cache ) && $cache !== '' ) {
+        return $cache;
+    }
+
+    $token = '';
+    if ( function_exists( 'get_option' ) ) {
+        $stored = get_option( 'wldelay_fail2ban_default_token' );
+        if ( is_string( $stored ) && preg_match( '/^[A-Za-z0-9]{16}$/', $stored ) ) {
+            $token = $stored;
+        }
+    }
+
+    if ( $token === '' ) {
+        if ( function_exists( 'wp_generate_password' ) ) {
+            $token = wp_generate_password( 16, false, false );
+        } else {
+            try {
+                $token = substr( bin2hex( random_bytes( 8 ) ), 0, 16 );
+            } catch ( Exception $e ) {
+                $token = substr( md5( uniqid( '', true ) ), 0, 16 );
+            }
+        }
+
+        if ( function_exists( 'update_option' ) ) {
+            update_option( 'wldelay_fail2ban_default_token', $token, false );
+        }
+    }
+
+    $cache = $token;
+    return $token;
 }
 
 /**
@@ -122,7 +171,7 @@ function wldelay_fail2ban_get_default_base_dir() {
  * @return string
  */
 function wldelay_fail2ban_get_default_log_path() {
-    return wldelay_fail2ban_get_default_base_dir() . '/login-delay-shield-fail2ban/login-delay-shield-fail2ban.log';
+    return wldelay_fail2ban_get_default_base_dir() . '/login-delay-shield-fail2ban-' . wldelay_fail2ban_get_default_dir_token() . '/login-delay-shield-fail2ban.log';
 }
 
 /**
@@ -354,9 +403,15 @@ function wldelay_fail2ban_protect_log_dir( $dir ) {
         @file_put_contents( $htaccess, "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n", LOCK_EX );
     }
 
-    $index = $dir . '/index.html';
-    if ( ! file_exists( $index ) ) {
-        @file_put_contents( $index, '', LOCK_EX );
+    $index_html = $dir . '/index.html';
+    if ( ! file_exists( $index_html ) ) {
+        @file_put_contents( $index_html, '', LOCK_EX );
+    }
+
+    // Silence under Nginx+PHP-FPM: ignores .htaccess, so add a PHP guard too.
+    $index_php = $dir . '/index.php';
+    if ( ! file_exists( $index_php ) ) {
+        @file_put_contents( $index_php, "<?php\n// Silence is golden.\n", LOCK_EX );
     }
 }
 

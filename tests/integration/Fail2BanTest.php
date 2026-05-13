@@ -39,7 +39,7 @@ class Fail2BanTest extends WP_UnitTestCase {
             unlink( $this->log_path );
         }
         if ( $this->log_path && is_dir( dirname( $this->log_path ) ) ) {
-            foreach ( array( '.htaccess', 'index.html' ) as $filename ) {
+            foreach ( array( '.htaccess', 'index.html', 'index.php' ) as $filename ) {
                 $file = trailingslashit( dirname( $this->log_path ) ) . $filename;
                 if ( file_exists( $file ) ) {
                     unlink( $file );
@@ -107,9 +107,12 @@ class Fail2BanTest extends WP_UnitTestCase {
         $this->assertFileExists( $default_path );
         $this->assertFileExists( trailingslashit( $default_dir ) . '.htaccess' );
         $this->assertFileExists( trailingslashit( $default_dir ) . 'index.html' );
+        $this->assertFileExists( trailingslashit( $default_dir ) . 'index.php' );
         $htaccess = file_get_contents( trailingslashit( $default_dir ) . '.htaccess' );
         $this->assertStringContainsString( 'Require all denied', $htaccess );
         $this->assertStringContainsString( 'Deny from all', $htaccess );
+        $index_php = file_get_contents( trailingslashit( $default_dir ) . 'index.php' );
+        $this->assertStringContainsString( 'Silence is golden', $index_php );
     }
 
     public function test_lockout_event_respects_toggle() {

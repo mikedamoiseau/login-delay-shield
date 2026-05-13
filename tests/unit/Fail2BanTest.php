@@ -92,6 +92,24 @@ class Fail2BanTest extends LDS_Unit_Test_Case {
         $this->assertFalse( wldelay_fail2ban_should_log_event( 'lockout', $options ) );
     }
 
+    public function test_default_log_directory_uses_random_token_and_stays_under_wp_content() {
+        $base = wldelay_fail2ban_get_default_base_dir();
+        $path = wldelay_fail2ban_get_default_log_path();
+
+        // Base directory must stay inside wp-content, never collapse to the document root.
+        $this->assertStringEndsWith( '/wp-content', $base );
+
+        // Default log directory carries an unguessable per-install token so it
+        // cannot be downloaded by URL guessing on servers that ignore .htaccess.
+        $this->assertMatchesRegularExpression(
+            '#/login-delay-shield-fail2ban-[A-Za-z0-9]{16}/login-delay-shield-fail2ban\.log$#',
+            $path
+        );
+
+        // Token must be stable across calls within a request.
+        $this->assertSame( $path, wldelay_fail2ban_get_default_log_path() );
+    }
+
     public function test_lockout_toggle_controls_lockout_events_only() {
         $options = array(
             'wldelay_fail2ban_enabled'          => true,
