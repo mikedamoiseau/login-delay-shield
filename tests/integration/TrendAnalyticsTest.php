@@ -228,6 +228,30 @@ class TrendAnalyticsTest extends WP_UnitTestCase {
         $results = wldelay_get_daily_attempts( 0 );
         $this->assertIsArray( $results );
     }
+
+    public function test_login_log_summary_includes_ranked_top_usernames() {
+        $this->insert_attempt( '203.0.113.10', 'alice', '2026-04-01 10:00:00' );
+        $this->insert_attempt( '203.0.113.11', 'alice', '2026-04-01 11:00:00' );
+        $this->insert_attempt( '203.0.113.12', 'bob', '2026-04-02 10:00:00', 'rest' );
+
+        $summary = wldelay_get_login_log_summary( array(), 3 );
+
+        $this->assertSame( 'alice', $summary['top_usernames'][0]['username'] );
+        $this->assertSame( 2, $summary['top_usernames'][0]['count'] );
+        $this->assertSame( 'bob', $summary['top_usernames'][1]['username'] );
+        $this->assertSame( 1, $summary['top_usernames'][1]['count'] );
+    }
+
+    public function test_login_log_summary_ignores_blank_top_usernames() {
+        $this->insert_attempt( '203.0.113.10', '', '2026-04-01 10:00:00' );
+        $this->insert_attempt( '203.0.113.11', '', '2026-04-01 11:00:00' );
+        $this->insert_attempt( '203.0.113.12', 'alice', '2026-04-02 10:00:00', 'rest' );
+
+        $summary = wldelay_get_login_log_summary( array(), 3 );
+
+        $this->assertSame( 'alice', $summary['top_usernames'][0]['username'] );
+        $this->assertSame( 1, $summary['top_usernames'][0]['count'] );
+    }
 }
 
 class LoginLogTelemetryTest extends WP_UnitTestCase {
@@ -276,5 +300,8 @@ class LoginLogTelemetryTest extends WP_UnitTestCase {
         $this->assertSame( 2, $summary['source_counts'][0]['count'] );
         $this->assertSame( '203.0.113.10', $summary['top_ips'][0]['ip_address'] );
         $this->assertSame( 2, $summary['top_ips'][0]['count'] );
+        $this->assertSame( 'alice', $summary['top_usernames'][0]['username'] );
+        $this->assertSame( 3, $summary['top_usernames'][0]['count'] );
     }
+
 }

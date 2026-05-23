@@ -616,7 +616,7 @@ function wldelay_count_login_log_attempts( $filters = array() ) {
  *
  * @param array $filters Raw or sanitized filter values.
  * @param int   $limit   Maximum grouped rows for source/IP lists.
- * @return array{total_attempts:int,daily_counts:array,source_counts:array,top_ips:array}
+ * @return array{total_attempts:int,daily_counts:array,source_counts:array,top_ips:array,top_usernames:array}
  */
 function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
     global $wpdb;
@@ -689,11 +689,33 @@ function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
         );
     }
 
+    $username_where_clause = $where_clause === ''
+        ? ' WHERE username IS NOT NULL AND username <> \'\''
+        : $where_clause . ' AND username IS NOT NULL AND username <> \'\'';
+
+    $username_rows = $run_query(
+        "SELECT username, COUNT(*) AS failures
+        FROM $table_name{$username_where_clause}
+        GROUP BY username
+        ORDER BY failures DESC, username ASC
+        LIMIT %d",
+        array( $limit )
+    );
+
+    $top_usernames = array();
+    foreach ( $username_rows as $row ) {
+        $top_usernames[] = array(
+            'username' => (string) $row->username,
+            'count'    => (int) $row->failures,
+        );
+    }
+
     return array(
         'total_attempts' => wldelay_count_login_log_attempts( $filters ),
         'daily_counts'   => $daily_counts,
         'source_counts'  => $source_counts,
         'top_ips'        => $top_ips,
+        'top_usernames'  => $top_usernames,
     );
 }
 
