@@ -252,21 +252,6 @@ class TrendAnalyticsTest extends WP_UnitTestCase {
         $this->assertSame( 'alice', $summary['top_usernames'][0]['username'] );
         $this->assertSame( 1, $summary['top_usernames'][0]['count'] );
     }
-}
-
-class LoginLogTelemetryTest extends WP_UnitTestCase {
-    public function setUp(): void {
-        parent::setUp();
-        wldelay_create_log_table();
-        global $wpdb;
-        $wpdb->query( 'TRUNCATE TABLE ' . wldelay_get_log_table_name() );
-    }
-
-    public function tearDown(): void {
-        global $wpdb;
-        $wpdb->query( 'TRUNCATE TABLE ' . wldelay_get_log_table_name() );
-        parent::tearDown();
-    }
 
     public function test_count_login_log_attempts_respects_filters() {
         global $wpdb;
@@ -302,6 +287,21 @@ class LoginLogTelemetryTest extends WP_UnitTestCase {
         $this->assertSame( 2, $summary['top_ips'][0]['count'] );
         $this->assertSame( 'alice', $summary['top_usernames'][0]['username'] );
         $this->assertSame( 3, $summary['top_usernames'][0]['count'] );
+    }
+
+    public function test_login_log_summary_applies_source_filter_to_top_usernames() {
+        global $wpdb;
+        $table_name = wldelay_get_log_table_name();
+
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.10', 'username' => 'alice', 'attempted_at' => '2026-04-01 10:00:00', 'source' => 'wp-login' ) );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.11', 'username' => 'bob', 'attempted_at' => '2026-04-01 11:00:00', 'source' => 'rest' ) );
+        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.12', 'username' => 'bob', 'attempted_at' => '2026-04-01 12:00:00', 'source' => 'rest' ) );
+
+        $summary = wldelay_get_login_log_summary( array( 'source' => 'wp-login' ), 3 );
+
+        $this->assertCount( 1, $summary['top_usernames'] );
+        $this->assertSame( 'alice', $summary['top_usernames'][0]['username'] );
+        $this->assertSame( 1, $summary['top_usernames'][0]['count'] );
     }
 
 }
