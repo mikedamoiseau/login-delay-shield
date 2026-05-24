@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.2.3
-Stable tag: 2.2.3
+Version: 2.2.4
+Stable tag: 2.2.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -156,6 +156,18 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.2.4 =
+Top targeted usernames in login telemetry and hardening.
+
+**New Features:**
+* Added "Top usernames" card to the telemetry summary — ranks the most-targeted usernames by failed login attempts with description text for admin context.
+
+**Improvements:**
+* Added database index on the `username` column for faster GROUP BY queries at scale.
+* Username aggregation excludes NULL, empty, and whitespace-only values using parameterized TRIM filter.
+* Expanded PHPDoc return types for `wldelay_get_login_log_summary()` with full nested array structures.
+* Updated readme feature list and FAQ to mention top targeted usernames.
 
 = 2.2.3 =
 Complete Custom Login URL runtime, Trend Analytics queries, and bug fixes.
