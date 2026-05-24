@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.2.3
-Stable tag: 2.2.3
+Version: 2.2.4
+Stable tag: 2.2.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,7 +27,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **Login feedback** — Shows remaining attempts before lockout and a lockout countdown when blocked
 * **IP whitelist** — Bypass all security measures for trusted IPs (supports CIDR notation)
 * **Email notifications** — Receive alerts when failed login thresholds are reached
-* **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity and 7-day trends
+* **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity, 7-day trends, and top targeted usernames
 * **fail2ban logging (optional)** — Write fail2ban-compatible failed-login and lockout lines to a safe log file
 * **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 * **Custom login URL** — Move the login page to a custom URL to reduce automated bot traffic targeting `/wp-login.php`
@@ -82,7 +82,7 @@ When enabled, the plugin tracks failed login attempts per IP address. Once the t
 
 = Where can I see failed login attempts? =
 
-A dashboard widget shows the 10 most recent failed login attempts, including the time, username attempted, IP address, and source. It also includes a lightweight 7-day trends panel with daily totals, top sources, and top IPs.
+A dashboard widget shows the 10 most recent failed login attempts, including the time, username attempted, IP address, and source. It also includes a lightweight 7-day trends panel with daily totals, top sources, top IPs, and top targeted usernames.
 
 = How do I use fail2ban logging? =
 
@@ -156,6 +156,18 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.2.4 =
+Top targeted usernames in login telemetry and hardening.
+
+**New Features:**
+* Added "Top usernames" card to the telemetry summary — ranks the most-targeted usernames by failed login attempts with description text for admin context.
+
+**Improvements:**
+* Added database index on the `username` column for faster GROUP BY queries at scale.
+* Username aggregation excludes NULL, empty, and whitespace-only values using parameterized TRIM filter.
+* Expanded PHPDoc return types for `wldelay_get_login_log_summary()` with full nested array structures.
+* Updated readme feature list and FAQ to mention top targeted usernames.
 
 = 2.2.3 =
 Complete Custom Login URL runtime, Trend Analytics queries, and bug fixes.

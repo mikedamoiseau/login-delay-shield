@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.2.3' );
+define( 'WLDELAY_VERSION', '2.2.4' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
@@ -9,7 +9,7 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC protection, custom login URL, and email alerts.
-Version: 2.2.3
+Version: 2.2.4
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
@@ -616,7 +616,7 @@ function wldelay_count_login_log_attempts( $filters = array() ) {
  *
  * @param array $filters Raw or sanitized filter values.
  * @param int   $limit   Maximum grouped rows for source/IP lists.
- * @return array{total_attempts:int,daily_counts:array,source_counts:array,top_ips:array}
+ * @return array{total_attempts:int,daily_counts:array<array{date:string,count:int}>,source_counts:array<array{source:string,count:int}>,top_ips:array<array{ip_address:string,count:int}>,top_usernames:array<array{username:string,count:int}>}
  */
 function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
     global $wpdb;
@@ -689,11 +689,36 @@ function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
         );
     }
 
+    // Exclude NULL and blank/whitespace-only usernames from ranking — these are
+    // noise from bots that submit empty credentials.  Other aggregations (IPs,
+    // sources) keep all rows because those columns are always meaningful.
+    $username_where_clause = $where_clause === ''
+        ? ' WHERE username IS NOT NULL AND TRIM(username) <> %s'
+        : $where_clause . ' AND username IS NOT NULL AND TRIM(username) <> %s';
+
+    $username_rows = $run_query(
+        "SELECT username, COUNT(*) AS failures
+        FROM $table_name{$username_where_clause}
+        GROUP BY username
+        ORDER BY failures DESC, username ASC
+        LIMIT %d",
+        array( '', $limit )
+    );
+
+    $top_usernames = array();
+    foreach ( $username_rows as $row ) {
+        $top_usernames[] = array(
+            'username' => (string) $row->username,
+            'count'    => (int) $row->failures,
+        );
+    }
+
     return array(
         'total_attempts' => wldelay_count_login_log_attempts( $filters ),
         'daily_counts'   => $daily_counts,
         'source_counts'  => $source_counts,
         'top_ips'        => $top_ips,
+        'top_usernames'  => $top_usernames,
     );
 }
 
@@ -1169,6 +1194,7 @@ function wldelay_create_log_table() {
         PRIMARY KEY  (id),
         KEY attempted_at (attempted_at),
         KEY ip_address (ip_address),
+        KEY username (username),
         KEY source (source)
     ) $charset_collate;";
 
