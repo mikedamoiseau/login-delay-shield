@@ -654,7 +654,7 @@ function wldelay_get_telemetry_snapshot_hash( $total, $filters = array() ) {
  *
  * @param array $filters Raw or sanitized filter values.
  * @param int   $limit   Maximum grouped rows for source/IP lists.
- * @return array{total_attempts:int,daily_counts:array<array{date:string,count:int}>,source_counts:array<array{source:string,count:int}>,top_ips:array<array{ip_address:string,count:int}>,top_usernames:array<array{username:string,count:int}>}
+ * @return array{total_attempts:int,daily_counts:array<array{date:string,count:int}>,source_counts:array<array{source:string,count:int}>,top_ips:array<array{ip_address:string,count:int}>,top_usernames:array<array{username:string,count:int}>,top_target_pairs:array<array{ip_address:string,username:string,count:int}>}
  */
 function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
     global $wpdb;
@@ -751,12 +751,31 @@ function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
         );
     }
 
+    $target_pair_rows = $run_query(
+        "SELECT ip_address, username, COUNT(*) AS failures
+        FROM $table_name{$username_where_clause}
+        GROUP BY ip_address, username
+        ORDER BY failures DESC, ip_address ASC, username ASC
+        LIMIT %d",
+        array( '', $limit )
+    );
+
+    $top_target_pairs = array();
+    foreach ( $target_pair_rows as $row ) {
+        $top_target_pairs[] = array(
+            'ip_address' => (string) $row->ip_address,
+            'username'   => (string) $row->username,
+            'count'      => (int) $row->failures,
+        );
+    }
+
     return array(
-        'total_attempts' => wldelay_count_login_log_attempts( $filters ),
-        'daily_counts'   => $daily_counts,
-        'source_counts'  => $source_counts,
-        'top_ips'        => $top_ips,
-        'top_usernames'  => $top_usernames,
+        'total_attempts'    => wldelay_count_login_log_attempts( $filters ),
+        'daily_counts'      => $daily_counts,
+        'source_counts'     => $source_counts,
+        'top_ips'           => $top_ips,
+        'top_usernames'     => $top_usernames,
+        'top_target_pairs'  => $top_target_pairs,
     );
 }
 

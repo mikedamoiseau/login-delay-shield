@@ -523,6 +523,11 @@ class LDS_Settings_View {
                 <p class="description"><?php esc_html_e( 'Usernames most targeted by failed login attempts.', 'login-delay-shield' ); ?></p>
                 <?php $this->render_count_list( $summary['top_usernames'], 'username' ); ?>
             </section>
+            <section class="wldelay-trend-card">
+                <h4><?php esc_html_e( 'Top target pairs', 'login-delay-shield' ); ?></h4>
+                <p class="description"><?php esc_html_e( 'Most common IP and username combinations from failed login attempts.', 'login-delay-shield' ); ?></p>
+                <?php $this->render_count_list( $summary['top_target_pairs'], 'target_pair' ); ?>
+            </section>
         </div>
         <?php
     }
@@ -547,6 +552,13 @@ class LDS_Settings_View {
                 $label = wldelay_get_login_source_label( $label );
             } elseif ( $label_key === 'date' ) {
                 $label = date_i18n( _x( 'M j, Y', 'date format for login log telemetry', 'login-delay-shield' ), strtotime( $label . ' 00:00:00' ) );
+            } elseif ( $label_key === 'target_pair' ) {
+                $label = sprintf(
+                    /* translators: 1: IP address, 2: username. */
+                    __( '%1$s / %2$s', 'login-delay-shield' ),
+                    isset( $row['ip_address'] ) ? (string) $row['ip_address'] : '',
+                    isset( $row['username'] ) ? (string) $row['username'] : ''
+                );
             }
             echo '<li><span>' . esc_html( $label ) . '</span><strong>' . esc_html( number_format_i18n( (int) $row['count'] ) ) . '</strong></li>';
         }
