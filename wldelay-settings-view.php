@@ -471,6 +471,7 @@ class LDS_Settings_View {
             </section>
             <section class="wldelay-trend-card">
                 <h4><?php esc_html_e( 'Top usernames', 'login-delay-shield' ); ?></h4>
+                <p class="description"><?php esc_html_e( 'Usernames most targeted by failed login attempts.', 'login-delay-shield' ); ?></p>
                 <?php $this->render_count_list( $summary['top_usernames'], 'username' ); ?>
             </section>
         </div>

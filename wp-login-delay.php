@@ -616,7 +616,7 @@ function wldelay_count_login_log_attempts( $filters = array() ) {
  *
  * @param array $filters Raw or sanitized filter values.
  * @param int   $limit   Maximum grouped rows for source/IP lists.
- * @return array{total_attempts:int,daily_counts:array,source_counts:array,top_ips:array,top_usernames:array}
+ * @return array{total_attempts:int,daily_counts:array<array{date:string,count:int}>,source_counts:array<array{source:string,count:int}>,top_ips:array<array{ip_address:string,count:int}>,top_usernames:array<array{username:string,count:int}>}
  */
 function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
     global $wpdb;
@@ -689,9 +689,12 @@ function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
         );
     }
 
+    // Exclude NULL and blank/whitespace-only usernames from ranking — these are
+    // noise from bots that submit empty credentials.  Other aggregations (IPs,
+    // sources) keep all rows because those columns are always meaningful.
     $username_where_clause = $where_clause === ''
-        ? ' WHERE username IS NOT NULL AND username <> \'\''
-        : $where_clause . ' AND username IS NOT NULL AND username <> \'\'';
+        ? ' WHERE username IS NOT NULL AND TRIM(username) <> %s'
+        : $where_clause . ' AND username IS NOT NULL AND TRIM(username) <> %s';
 
     $username_rows = $run_query(
         "SELECT username, COUNT(*) AS failures
@@ -699,7 +702,7 @@ function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
         GROUP BY username
         ORDER BY failures DESC, username ASC
         LIMIT %d",
-        array( $limit )
+        array( '', $limit )
     );
 
     $top_usernames = array();
@@ -1191,6 +1194,7 @@ function wldelay_create_log_table() {
         PRIMARY KEY  (id),
         KEY attempted_at (attempted_at),
         KEY ip_address (ip_address),
+        KEY username (username),
         KEY source (source)
     ) $charset_collate;";
 

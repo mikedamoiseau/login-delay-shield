@@ -27,7 +27,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **Login feedback** — Shows remaining attempts before lockout and a lockout countdown when blocked
 * **IP whitelist** — Bypass all security measures for trusted IPs (supports CIDR notation)
 * **Email notifications** — Receive alerts when failed login thresholds are reached
-* **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity and 7-day trends
+* **Failed login log** — Track all failed attempts with a dashboard widget showing recent activity, 7-day trends, and top targeted usernames
 * **fail2ban logging (optional)** — Write fail2ban-compatible failed-login and lockout lines to a safe log file
 * **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 * **Custom login URL** — Move the login page to a custom URL to reduce automated bot traffic targeting `/wp-login.php`
@@ -82,7 +82,7 @@ When enabled, the plugin tracks failed login attempts per IP address. Once the t
 
 = Where can I see failed login attempts? =
 
-A dashboard widget shows the 10 most recent failed login attempts, including the time, username attempted, IP address, and source. It also includes a lightweight 7-day trends panel with daily totals, top sources, and top IPs.
+A dashboard widget shows the 10 most recent failed login attempts, including the time, username attempted, IP address, and source. It also includes a lightweight 7-day trends panel with daily totals, top sources, top IPs, and top targeted usernames.
 
 = How do I use fail2ban logging? =
 

@@ -290,12 +290,9 @@ class TrendAnalyticsTest extends WP_UnitTestCase {
     }
 
     public function test_login_log_summary_applies_source_filter_to_top_usernames() {
-        global $wpdb;
-        $table_name = wldelay_get_log_table_name();
-
-        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.10', 'username' => 'alice', 'attempted_at' => '2026-04-01 10:00:00', 'source' => 'wp-login' ) );
-        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.11', 'username' => 'bob', 'attempted_at' => '2026-04-01 11:00:00', 'source' => 'rest' ) );
-        $wpdb->insert( $table_name, array( 'ip_address' => '203.0.113.12', 'username' => 'bob', 'attempted_at' => '2026-04-01 12:00:00', 'source' => 'rest' ) );
+        $this->insert_attempt( '203.0.113.10', 'alice', '2026-04-01 10:00:00' );
+        $this->insert_attempt( '203.0.113.11', 'bob', '2026-04-01 11:00:00', 'rest' );
+        $this->insert_attempt( '203.0.113.12', 'bob', '2026-04-01 12:00:00', 'rest' );
 
         $summary = wldelay_get_login_log_summary( array( 'source' => 'wp-login' ), 3 );
 
