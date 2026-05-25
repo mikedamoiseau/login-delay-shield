@@ -1612,10 +1612,16 @@ function wldelay_normalize_username( $username ) {
      * login, SSO) to map login input to a canonical identifier before it
      * enters the lockout/failure tracking key.
      *
+     * Returning an empty string is treated as invalid and falls back to the
+     * default normalization. Callbacks must be idempotent — the filter fires
+     * exactly once per raw input, but callers must not depend on that changing.
+     *
      * @param string $normalized The default-normalized username.
      * @param string $username   The raw username input before normalization.
      */
-    return (string) apply_filters( 'wldelay_normalize_username', $normalized, $username );
+    $filtered = (string) apply_filters( 'wldelay_normalize_username', $normalized, $username );
+
+    return $filtered !== '' ? $filtered : $normalized;
 }
 
 /**
@@ -1628,10 +1634,9 @@ function wldelay_normalize_username( $username ) {
  */
 function wldelay_get_attempt_identifier( $ip, $username = '', $options = null ) {
     $strategy = wldelay_get_lockout_attempt_strategy( $options );
-    $normalized_username = wldelay_normalize_username( $username );
 
-    if ( $strategy === 'ip_username' && $normalized_username !== '' ) {
-        return $ip . '|' . $normalized_username;
+    if ( $strategy === 'ip_username' && $username !== '' ) {
+        return $ip . '|' . $username;
     }
 
     return $ip;
@@ -2553,8 +2558,6 @@ function wldelay_track_failed_attempt( $username, $source = null ) {
     if ( empty( $ip ) ) {
         return 0;
     }
-
-    $username = wldelay_normalize_username( $username );
     $options = wldelay_get_options();
     $email_enabled = ! empty( $options['wldelay_email_enabled'] );
     $lockout_enabled = ! empty( $options['wldelay_lockout_enabled'] );
