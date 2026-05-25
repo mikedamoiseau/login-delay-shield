@@ -1452,6 +1452,87 @@ function wldelay_dismiss_name_change_notice() {
 }
 add_action( 'wp_ajax_wldelay_dismiss_name_change_notice', 'wldelay_dismiss_name_change_notice' );
 
+/**
+ * Show a "What's New" banner after plugin upgrade.
+ *
+ * Feature highlights only — no security fix details.
+ */
+function wldelay_show_whats_new_notice() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    $dismissed_version = get_option( 'wldelay_whats_new_dismissed', '' );
+    if ( $dismissed_version === WLDELAY_VERSION ) {
+        return;
+    }
+
+    $previous_version = get_option( 'wldelay_previous_version', '' );
+    if ( empty( $previous_version ) ) {
+        return;
+    }
+
+    $highlights = wldelay_get_version_highlights( WLDELAY_VERSION );
+    if ( empty( $highlights ) ) {
+        return;
+    }
+
+    ?>
+    <div class="notice notice-info is-dismissible wldelay-whats-new-notice" data-version="<?php echo esc_attr( WLDELAY_VERSION ); ?>">
+        <p>
+            <strong><?php
+                printf(
+                    /* translators: %s: plugin version number */
+                    esc_html__( "What's new in Login Delay Shield %s", 'login-delay-shield' ),
+                    esc_html( WLDELAY_VERSION )
+                );
+            ?></strong>
+        </p>
+        <ul style="list-style: disc; margin-left: 20px;">
+            <?php foreach ( $highlights as $highlight ) : ?>
+                <li><?php echo esc_html( $highlight ); ?></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+    <?php
+}
+add_action( 'admin_notices', 'wldelay_show_whats_new_notice' );
+
+/**
+ * Get feature highlights for a given version.
+ *
+ * Returns an empty array for versions without curated highlights.
+ *
+ * @param string $version Version string.
+ * @return array<int,string>
+ */
+function wldelay_get_version_highlights( $version ) {
+    $highlights = array(
+        '2.2.4' => array(
+            __( 'Top targeted usernames in login telemetry.', 'login-delay-shield' ),
+            __( 'Faster database queries with username index.', 'login-delay-shield' ),
+        ),
+    );
+
+    return isset( $highlights[ $version ] ) ? $highlights[ $version ] : array();
+}
+
+/**
+ * Dismiss the "What's New" notice via AJAX.
+ */
+function wldelay_dismiss_whats_new_notice() {
+    check_ajax_referer( 'wldelay_dismiss_notice', '_wpnonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die();
+    }
+
+    $version = isset( $_POST['version'] ) ? sanitize_text_field( wp_unslash( $_POST['version'] ) ) : WLDELAY_VERSION;
+    update_option( 'wldelay_whats_new_dismissed', $version );
+    wp_die();
+}
+add_action( 'wp_ajax_wldelay_dismiss_whats_new_notice', 'wldelay_dismiss_whats_new_notice' );
+
 function wldelay_track_version() {
     $stored_version = get_option( 'wldelay_plugin_version' );
     if ( $stored_version !== WLDELAY_VERSION ) {
