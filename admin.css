@@ -463,6 +463,28 @@
     outline-offset: 2px;
 }
 
+.wldelay-tooltip-learn-more {
+    display: block;
+    margin-top: 6px;
+    color: #72aee6;
+    text-decoration: none;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.wldelay-tooltip-learn-more:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.wldelay-tooltip-learn-more .dashicons {
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+    vertical-align: middle;
+    color: inherit;
+}
+
 /* Adjust tooltip position for right side of screen */
 .wldelay-card .form-table td .wldelay-tooltip .wldelay-tooltip-text {
     left: 0;
