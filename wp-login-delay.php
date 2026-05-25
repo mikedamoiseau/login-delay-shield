@@ -81,6 +81,15 @@ function wldelay_enqueue_admin_assets( $hook ) {
         true
     );
 
+    $health = wldelay_get_security_score();
+    $score_weights = array();
+    foreach ( $health['features'] as $key => $feat ) {
+        $score_weights[ $key ] = array(
+            'points' => $feat['points'],
+            'label'  => $feat['label'],
+        );
+    }
+
     wp_localize_script(
         'wldelay-admin-script',
         'wldelayAdmin',
@@ -89,6 +98,10 @@ function wldelay_enqueue_admin_assets( $hook ) {
             'dismissNoticeNonce' => wp_create_nonce( 'wldelay_dismiss_notice' ),
             'badgeEnabled'       => __( 'Enabled', 'login-delay-shield' ),
             'badgeDisabled'      => __( 'Disabled', 'login-delay-shield' ),
+            'scoreWeights'       => $score_weights,
+            'recommendPrefix'    => __( 'Next recommended: enable', 'login-delay-shield' ),
+            /* translators: %d: points value */
+            'recommendSuffix'    => __( '(+%d points)', 'login-delay-shield' ),
         )
     );
 
@@ -1493,7 +1506,7 @@ function wldelay_get_security_score( $options = null ) {
 
         if ( $enabled ) {
             $score += $feature['points'];
-        } elseif ( $recommendation === null ) {
+        } elseif ( $recommendation === null || $feature['points'] > $recommendation['points'] ) {
             $recommendation = array(
                 'key'    => $key,
                 'label'  => $feature['label'],

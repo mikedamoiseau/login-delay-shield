@@ -42,7 +42,46 @@ jQuery(document).ready(function ($) {
             $icon.removeClass('dashicons-yes').addClass('dashicons-no-alt');
         }
 
-        $('#wldelay-enabled-count').text($('.wldelay-summary-features .wldelay-feature-on').length);
+        var enabledCount = $('.wldelay-summary-features .wldelay-feature-on').length;
+        var totalCount = $('.wldelay-summary-features span[data-feature]').length;
+        $('.wldelay-summary-fraction').text('(' + enabledCount + '/' + totalCount + ')');
+
+        var config = getAdminConfig();
+        var weights = config.scoreWeights || {};
+        var score = 0;
+        var max = 0;
+        var bestRec = null;
+
+        $.each(weights, function (key, w) {
+            max += w.points;
+            var on = $('.wldelay-summary-features span[data-feature="' + key + '"]').hasClass('wldelay-feature-on');
+            if (on) {
+                score += w.points;
+            } else if (!bestRec || w.points > bestRec.points) {
+                bestRec = { label: w.label, points: w.points };
+            }
+        });
+
+        var pct = max > 0 ? Math.round((score / max) * 100) : 0;
+        $('.wldelay-score-value').text(pct);
+        $('.wldelay-score-circle').css('--score-pct', pct);
+
+        var $rec = $('.wldelay-summary-recommendation');
+        if (bestRec && config.recommendPrefix) {
+            if (!$rec.length) {
+                $rec = $('<div class="wldelay-summary-recommendation"></div>');
+                $('.wldelay-summary-features').after($rec);
+            }
+            $rec.empty()
+                .append($('<span class="dashicons dashicons-lightbulb" aria-hidden="true"></span>'))
+                .append(' ')
+                .append(document.createTextNode(config.recommendPrefix + ' '))
+                .append($('<strong></strong>').text(bestRec.label))
+                .append(' ')
+                .append(document.createTextNode(config.recommendSuffix.replace('%d', bestRec.points)));
+        } else {
+            $rec.remove();
+        }
     }
 
     function toggleRandomDelay() {
@@ -102,6 +141,13 @@ jQuery(document).ready(function ($) {
         toggleWhitelist();
         $('#wldelay_whitelist_enabled').on('change', toggleWhitelist);
     }
+
+    $('#wldelay_custom_login_enabled').on('change', function () {
+        var isChecked = $(this).prop('checked');
+        $('#wldelay_custom_login_slug').closest('tr').toggle(isChecked);
+        updateBadge('wldelay_custom_login_enabled', isChecked);
+        updateSummary('wldelay_custom_login_enabled', isChecked);
+    });
 
     $('#wldelay_email_enabled').on('change', function () {
         var isChecked = $(this).prop('checked');
