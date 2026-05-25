@@ -100,3 +100,57 @@ All 217 tests pass after changes.
 
 ---
 
+
+## [Codex — Reviewer] Round 2
+
+NEEDS_FIX: The attempted fix makes XML-RPC lockout checks use raw usernames while other authentication paths write normalized keys, allowing `ip_username` lockouts to be bypassed.
+
+**Finding 1: XML-RPC can bypass an existing per-username lockout by changing username casing or formatting**
+
+- **File and lines:** [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:1635), [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:1638), [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:2407), [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:2448), [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:2598)
+- **What:** With `wldelay_lockout_attempt_strategy = ip_username`, an account locked through REST or normal login under normalized username `admin` is not blocked through XML-RPC when the request supplies an equivalent raw login such as `Admin`. The XML-RPC request checks the transient key for `IP|Admin`, while the lockout was written under `IP|admin`.
+- **Why:** `wldelay_get_attempt_identifier()` no longer normalizes its `$username` parameter, but `wldelay_block_xmlrpc_auth()` passes WordPress's raw `$username` argument directly into `wldelay_is_ip_locked()`. In contrast, REST obtains its identifier through `wldelay_get_php_auth_username()`, which calls `wldelay_normalize_username()` before failed attempts create a lockout. The claimed invariant that all callers already pass normalized usernames is false for the XML-RPC path.
+- **Impact:** An attacker can evade an existing per-account lockout on the XML-RPC authentication surface using a case or normalization variant of the same username, weakening brute-force enforcement across authentication backends even without any custom filter installed.
+- **Fix:** Normalize the XML-RPC `$username` once before every lockout lookup, for example at entry to `wldelay_block_xmlrpc_auth()`, and audit other callers that pass attempted usernames directly, including recovery deletion paths. Prefer introducing separate clearly named raw-input and canonical-identifier APIs so key helpers cannot silently receive inconsistent representations. Add an integration test that creates an `ip_username` lockout for normalized `admin` and verifies an XML-RPC request using `Admin` is still rejected.
+- **Severity:** BLOCKING
+- **Fixable:** YES
+
+---
+
+## [Gemini — Reviewer] Round 2
+
+LGTM: The critical issues regarding redundant normalization and empty filter returns have been addressed, and the architectural design trade-offs are acknowledged.
+
+---
+
+## [Claude — Implementer] Round 2
+
+### Finding 1 — XML-RPC passes raw username, bypassing ip_username lockouts (Codex)
+
+**Raised by:** Codex only | **Severity:** BLOCKING | **Verdict: AGREE — FIXED**
+
+Codex is correct. Traced all four auth entry points:
+
+| Entry point | Normalizes before lockout? |
+|---|---|
+| `wldelay_auth_login` | Yes — via `wldelay_get_requested_login_username()` |
+| `wldelay_handle_rest_authentication` | Yes — via `wldelay_get_php_auth_username()` |
+| `wldelay_handle_application_password_auth` | Yes — explicit `wldelay_normalize_username()` at line 2507 |
+| `wldelay_block_xmlrpc_auth` | **No** — raw `$username` from WP `authenticate` filter |
+
+With `ip_username` strategy, lockout written under `IP|admin` but XML-RPC checks `IP|Admin`. Case variant bypasses lockout.
+
+**Fix:** Added `$username = wldelay_normalize_username( $username );` at entry to `wldelay_block_xmlrpc_auth()`, after early returns for disabled/whitelisted but before any lockout check or logging. All four auth paths now normalize before touching lockout keys.
+
+---
+
+## Round 2 Summary
+
+| Issue | Raised by | Action | Reason |
+|-------|-----------|--------|--------|
+| XML-RPC raw username bypasses ip_username lockout | Codex | **Fixed** — normalize at entry to `wldelay_block_xmlrpc_auth` | Verified: only auth path missing normalization. Case variants produce different transient keys. |
+
+All 217 tests pass after changes.
+
+---
+

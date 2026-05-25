@@ -2387,6 +2387,8 @@ function wldelay_block_xmlrpc_auth( $user, $username, $password ) {
         return $user;
     }
 
+    $username = wldelay_normalize_username( $username );
+
     // Check if XMLRPC auth should be completely blocked
     if ( ! empty( $options['wldelay_xmlrpc_block'] ) ) {
         // Log the blocked attempt (only if this is a real auth attempt with username)
