@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.3.0
-Stable tag: 2.3.0
+Version: 2.3.1
+Stable tag: 2.3.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -156,6 +156,16 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.3.1 =
+Patch release with CI fixes and new telemetry feature.
+
+**New Features:**
+* Added "Top target pairs" card to telemetry — ranks the most common IP + username combinations from failed login attempts for faster incident triage.
+
+**Bug Fixes:**
+* Fixed unit tests failing in CI due to unmocked `get_option()` calls in fail2ban and sanitization test suites.
+* Fixed `wp plugin check` failing in CI because the plugin-check plugin was not activated before use.
 
 = 2.3.0 =
 Performance, UX, architecture, and CI improvements.
