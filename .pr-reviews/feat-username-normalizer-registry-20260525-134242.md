@@ -154,3 +154,31 @@ All 217 tests pass after changes.
 
 ---
 
+
+## [Claude — Implementer] Round 2
+
+## Round 2 Analysis
+
+### Finding 1 — XML-RPC raw username bypasses ip_username lockout (Codex)
+
+**Raised by:** Codex only | **Verdict: AGREE — FIXED**
+
+Codex nailed it again. Audited all four auth entry points:
+
+| Entry point | Normalized before lockout? |
+|---|---|
+| `wldelay_auth_login` | Yes — `wldelay_get_requested_login_username()` |
+| `wldelay_handle_rest_authentication` | Yes — `wldelay_get_php_auth_username()` |
+| `wldelay_handle_application_password_auth` | Yes — explicit call at line 2507 |
+| `wldelay_block_xmlrpc_auth` | **No** — raw `$username` from WP authenticate filter |
+
+With `ip_username` strategy, lockout written as `IP|admin` but XML-RPC checked `IP|Admin`. One-line fix: added `$username = wldelay_normalize_username( $username )` at entry to `wldelay_block_xmlrpc_auth`, after early returns but before any lockout check or logging.
+
+| Issue | Raised by | Action | Reason |
+|-------|-----------|--------|--------|
+| XML-RPC raw username bypasses ip_username lockout | Codex | **Fixed** | Only auth path missing normalization. Case variants produce different transient keys. |
+
+217 tests pass. Committed as `67d7f78`.
+
+---
+
