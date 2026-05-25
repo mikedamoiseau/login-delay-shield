@@ -334,7 +334,7 @@ function wldelay_handle_unlock_current_ip() {
     if ( function_exists( 'wp_get_current_user' ) ) {
         $current_user = wp_get_current_user();
         if ( $current_user instanceof WP_User ) {
-            $username = $current_user->user_login;
+            $username = wldelay_normalize_username( $current_user->user_login );
         }
     }
 

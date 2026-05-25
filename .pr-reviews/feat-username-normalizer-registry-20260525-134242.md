@@ -182,3 +182,94 @@ With `ip_username` strategy, lockout written as `IP|admin` but XML-RPC checked `
 
 ---
 
+
+## [Codex — Reviewer] Round 3
+
+NEEDS_FIX: The recovery unlock path still uses an unnormalized username, so `ip_username` lockouts created through the new filter cannot be removed.
+
+**Finding 1: “Unlock current IP” cannot remove filtered per-username lockouts**
+
+- **File and lines:** [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:337), [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:341), [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:258), [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:264), [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:1635)
+- **What:** With `wldelay_lockout_attempt_strategy = ip_username` and a supported callback such as `return $normalized . '@ldap';`, a failed login for `admin` creates lockout/failure keys under `IP|admin@ldap`. When a logged-in administrator clicks the recovery action, `wldelay_handle_unlock_current_ip()` passes `$current_user->user_login` directly to `wldelay_delete_lockout_for_ip()`, which now deletes `IP|admin` instead. The actual tuple lockout remains active and the UI reports that no active lockout was found.
+- **Why:** The fix removed normalization from `wldelay_get_attempt_identifier()`, making every caller responsible for supplying the filtered canonical identifier. The authentication paths were updated, but the recovery path at lines 337-341 still passes an unnormalized username into key generation at lines 258 and 264.
+- **Impact:** The administrative recovery mechanism fails for exactly the custom-authentication configurations introduced by this feature. An administrator can remain locked out from the current IP until the transient expires or all lockouts are flushed, which can affect other users and counters.
+- **Fix:** Normalize the user login once in `wldelay_handle_unlock_current_ip()` before calling `wldelay_delete_lockout_for_ip()`, or make `wldelay_delete_lockout_for_ip()` explicitly accept raw usernames and canonicalize them internally. Add a recovery integration test with `ip_username` enabled and a non-idempotent normalizer callback that creates a tuple lockout and verifies the unlock action removes it.
+- **Severity:** BLOCKING
+- **Fixable:** YES
+
+---
+
+## [Gemini — Reviewer] Round 3
+
+LGTM: All critical issues regarding username normalization, idempotency, and XML-RPC bypass have been addressed by the implemented changes.
+
+---
+
+
+## [Claude — Implementer] Round 3
+
+### Finding 1 — Recovery unlock passes raw username, can't remove filtered lockouts (Codex)
+
+**Raised by:** Codex only | **Severity:** BLOCKING | **Verdict: AGREE — FIXED**
+
+Same class of bug as round 2's XML-RPC issue. `wldelay_handle_unlock_current_ip()` at line 337 passes raw `$current_user->user_login` into `wldelay_delete_lockout_for_ip()`. With a filter callback like `return $normalized . '@ldap'`, lockout key is `IP|admin@ldap` but recovery deletes `IP|admin`. Lockout persists, admin stays locked.
+
+Audited all callers of key-generation functions. Five entry points now covered:
+
+| Entry point | Normalizes? |
+|---|---|
+| `wldelay_auth_login` | Yes — `wldelay_get_requested_login_username()` |
+| `wldelay_handle_rest_authentication` | Yes — `wldelay_get_php_auth_username()` |
+| `wldelay_handle_application_password_auth` | Yes — explicit call at line 2509 |
+| `wldelay_block_xmlrpc_auth` | Yes — added in round 2 |
+| `wldelay_handle_unlock_current_ip` | **Fixed** — now normalizes `$current_user->user_login` |
+
+Line 865 (`wldelay_flush_lockouts_for_ip`) passes IP-only, no username — not affected.
+
+**Fix:** Changed line 337 from `$username = $current_user->user_login` to `$username = wldelay_normalize_username( $current_user->user_login )`.
+
+---
+
+## Round 3 Summary
+
+| Issue | Raised by | Action | Reason |
+|-------|-----------|--------|--------|
+| Recovery unlock uses raw username, can't clear filtered lockouts | Codex | **Fixed** — normalize `user_login` in `wldelay_handle_unlock_current_ip` | Same pattern as XML-RPC bug. Raw username produces wrong transient key when filter is active. |
+
+All 217 tests pass after fix.
+
+---
+
+
+## [Claude — Implementer] Round 3
+
+## Round 3 Analysis
+
+### Finding 1 — Recovery unlock passes raw username, can't remove filtered lockouts (Codex)
+
+**Raised by:** Codex only | **Gemini:** LGTM | **Verdict: AGREE — FIXED**
+
+Codex correct again. Same bug class as round 2. `wldelay_handle_unlock_current_ip()` passed raw `$current_user->user_login` into `wldelay_delete_lockout_for_ip()`. With filter callback like `@ldap` suffix, lockout written under `IP|admin@ldap` but recovery tried deleting `IP|admin`. Lockout persists.
+
+**Fix:** Wrapped `$current_user->user_login` in `wldelay_normalize_username()` at line 337.
+
+Full audit of all entry points into key-generation — five total, all now normalize:
+
+| Entry point | Status |
+|---|---|
+| `wldelay_auth_login` | Was OK |
+| `wldelay_handle_rest_authentication` | Was OK |
+| `wldelay_handle_application_password_auth` | Was OK |
+| `wldelay_block_xmlrpc_auth` | Fixed round 2 |
+| `wldelay_handle_unlock_current_ip` | **Fixed this round** |
+
+---
+
+| Issue | Raised by | Action | Reason |
+|-------|-----------|--------|--------|
+| Recovery unlock uses raw username, can't clear filtered lockouts | Codex | **Fixed** — normalize `user_login` in `wldelay_handle_unlock_current_ip` | Same pattern as XML-RPC bug; raw username produces wrong transient key when filter active |
+
+217 tests pass.
+
+---
+
