@@ -116,6 +116,44 @@
     flex-shrink: 0;
 }
 
+/* Referral Card (dashboard widget) */
+.wldelay-referral-card {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-top: 1px solid #dcdcde;
+    text-align: center;
+}
+
+.wldelay-referral-text {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: #50575e;
+}
+
+.wldelay-referral-links {
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+}
+
+.wldelay-referral-links a {
+    font-size: 12px;
+    text-decoration: none;
+    color: #2271b1;
+}
+
+.wldelay-referral-links a:hover {
+    color: #135e96;
+}
+
+.wldelay-referral-links .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}
+
 /* ==========================================================================
    Settings Page Styles
    ========================================================================== */

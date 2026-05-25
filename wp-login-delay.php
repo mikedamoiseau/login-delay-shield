@@ -992,6 +992,33 @@ function wldelay_dashboard_widget_content() {
     echo '<p class="wldelay-widget-footer" style="margin-top: 10px; text-align: right;">';
     echo '<a href="' . esc_url( $settings_url ) . '">' . esc_html__( 'Settings', 'login-delay-shield' ) . '</a>';
     echo '</p>';
+
+    wldelay_render_referral_card();
+}
+
+/**
+ * Render a lightweight "recommend this plugin" card in the dashboard widget.
+ */
+function wldelay_render_referral_card() {
+    $plugin_url  = 'https://wordpress.org/plugins/login-delay-shield/';
+    $review_url  = 'https://wordpress.org/support/plugin/login-delay-shield/reviews/#new-post';
+    $support_url = 'https://wordpress.org/support/plugin/login-delay-shield/';
+
+    echo '<div class="wldelay-referral-card">';
+    echo '<p class="wldelay-referral-text">';
+    echo esc_html__( 'Find Login Delay Shield useful?', 'login-delay-shield' );
+    echo '</p>';
+    echo '<p class="wldelay-referral-links">';
+    echo '<a href="' . esc_url( $review_url ) . '" target="_blank" rel="noopener noreferrer">';
+    echo '<span class="dashicons dashicons-star-filled" aria-hidden="true"></span> ';
+    echo esc_html__( 'Leave a review', 'login-delay-shield' );
+    echo '</a>';
+    echo '<a href="' . esc_url( $support_url ) . '" target="_blank" rel="noopener noreferrer">';
+    echo '<span class="dashicons dashicons-sos" aria-hidden="true"></span> ';
+    echo esc_html__( 'Get support', 'login-delay-shield' );
+    echo '</a>';
+    echo '</p>';
+    echo '</div>';
 }
 
 /**
