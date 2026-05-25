@@ -24,6 +24,12 @@ class SanitizationTest extends LDS_Unit_Test_Case {
             return filter_var( $email, FILTER_SANITIZE_EMAIL );
         });
 
+        Functions\when( 'get_option' )->justReturn( false );
+        Functions\when( 'update_option' )->justReturn( true );
+        Functions\when( 'wp_generate_password' )->alias( function( $length = 12 ) {
+            return substr( str_repeat( 'abcdefghijklmnop', 2 ), 0, $length );
+        } );
+
         // Create settings instance
         $this->settings = new LDS_Settings();
     }

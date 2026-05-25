@@ -13,6 +13,12 @@ class Fail2BanTest extends LDS_Unit_Test_Case {
         Functions\when( 'sanitize_text_field' )->alias( function( $value ) {
             return trim( strip_tags( (string) $value ) );
         } );
+
+        Functions\when( 'get_option' )->justReturn( false );
+        Functions\when( 'update_option' )->justReturn( true );
+        Functions\when( 'wp_generate_password' )->alias( function( $length = 12 ) {
+            return substr( str_repeat( 'abcdefghijklmnop', 2 ), 0, $length );
+        } );
     }
 
     public function test_formats_failed_login_line_with_stable_prefix_and_fields() {
