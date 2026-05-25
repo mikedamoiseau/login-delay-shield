@@ -67,15 +67,18 @@ jQuery(document).ready(function ($) {
         $('.wldelay-score-circle').css('--score-pct', pct);
 
         var $rec = $('.wldelay-summary-recommendation');
-        if (bestRec && config.recommendTpl) {
-            var text = config.recommendTpl
-                .replace('%1$s', '<strong>' + bestRec.label + '</strong>')
-                .replace('%2$d', bestRec.points);
+        if (bestRec && config.recommendPrefix) {
             if (!$rec.length) {
                 $rec = $('<div class="wldelay-summary-recommendation"></div>');
                 $('.wldelay-summary-features').after($rec);
             }
-            $rec.html('<span class="dashicons dashicons-lightbulb" aria-hidden="true"></span> ' + text);
+            $rec.empty()
+                .append($('<span class="dashicons dashicons-lightbulb" aria-hidden="true"></span>'))
+                .append(' ')
+                .append(document.createTextNode(config.recommendPrefix + ' '))
+                .append($('<strong></strong>').text(bestRec.label))
+                .append(' ')
+                .append(document.createTextNode(config.recommendSuffix.replace('%d', bestRec.points)));
         } else {
             $rec.remove();
         }

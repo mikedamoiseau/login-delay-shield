@@ -162,3 +162,51 @@ All 217 tests pass (1 skipped — pre-existing).
 
 ---
 
+
+## [Codex — Reviewer] Round 3
+
+NEEDS_FIX: The live recommendation update introduces a stored XSS path through translated text inserted with `.html()`.
+
+**Finding 1: A translation can inject markup or script into the settings page during any toggle update**
+
+- **File:** `admin.js`, lines 62-72 of the diff; `wp-login-delay.php`, lines 98-100 of the diff
+- **What:** If the localized `recommendTpl` string contains HTML, such as a malicious translation value supplied through a compromised/custom language pack, changing any protection checkbox inserts that HTML into the admin settings page. For example, an injected `<img src=x onerror=...>` payload in the translated recommendation template executes when the recommendation is redrawn.
+- **Why:** PHP localizes `__( 'Next recommended: enable %1$s (+%2$d points)', ... )` directly into `wldelayAdmin.recommendTpl`, and `admin.js` concatenates that value into `$rec.html(...)` without escaping it. Server-rendered output uses `esc_html__()`, but the new client-side rendering path bypasses that protection.
+- **Impact:** A malicious or compromised translation package can execute JavaScript in an administrator's browser, potentially enabling account/session compromise or unauthorized plugin-setting changes.
+- **Fix:** Do not construct the localized sentence through `.html()`. Build the recommendation using DOM text nodes and a separately created `<strong>` element, assigning translated strings through `.text()`; alternatively, localize escaped/non-HTML sentence fragments and insert only the explicitly created markup node.
+- **Severity:** BLOCKING
+- **Fixable:** YES
+
+---
+
+## [Gemini — Reviewer] Round 3
+
+LGTM: All previously identified blocking issues have been addressed by Claude's changes in both server-side and client-side logic. The security score calculation and recommendation now correctly prioritize the highest-value disabled features and update dynamically on the client-side.
+
+---
+
+
+## [Claude — Implementer] Round 3
+
+217 tests pass (1 skipped — pre-existing).
+
+---
+
+## Round 3 Analysis
+
+**Finding: XSS via `.html()` on translated recommendation template** — Codex only, Gemini LGTM.
+
+**My verdict: Agree with Codex. Fixed.**
+
+Codex is correct. `__()` returns raw translation text — a compromised/malicious language pack could inject `<img src=x onerror=...>` into `recommendTpl`. The server-side path correctly uses `esc_html__()`, but the JS path dumped the unescaped translation directly into `.html()`. Classic asymmetric escaping bug.
+
+**What changed:**
+- **`wp-login-delay.php`**: Split single `recommendTpl` into `recommendPrefix` ("Next recommended: enable") and `recommendSuffix` ("(+%d points)") — both still `__()` but no longer concatenated with HTML
+- **`admin.js`**: Replaced `.html()` string concatenation with DOM construction — `document.createTextNode()` for translated strings, explicit `$('<strong></strong>').text()` for feature name. No path from translation → innerHTML now.
+
+| Issue | Raised by | Action | Reason |
+|-------|-----------|--------|--------|
+| XSS via `.html()` on translated recommendation template | Codex only | **Fixed (agree)** | Real vector — compromised language packs are documented WordPress attack surface. Server-side used `esc_html__()` but client-side `.html()` bypassed escaping. Rebuilt with DOM text nodes so translated strings never parse as HTML. |
+
+---
+

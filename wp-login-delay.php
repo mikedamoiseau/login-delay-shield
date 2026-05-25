@@ -99,8 +99,9 @@ function wldelay_enqueue_admin_assets( $hook ) {
             'badgeEnabled'       => __( 'Enabled', 'login-delay-shield' ),
             'badgeDisabled'      => __( 'Disabled', 'login-delay-shield' ),
             'scoreWeights'       => $score_weights,
-            /* translators: 1: feature name (HTML), 2: points value */
-            'recommendTpl'       => __( 'Next recommended: enable %1$s (+%2$d points)', 'login-delay-shield' ),
+            'recommendPrefix'    => __( 'Next recommended: enable', 'login-delay-shield' ),
+            /* translators: %d: points value */
+            'recommendSuffix'    => __( '(+%d points)', 'login-delay-shield' ),
         )
     );
 
