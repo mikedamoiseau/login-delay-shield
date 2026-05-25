@@ -1450,6 +1450,66 @@ function wldelay_track_version() {
 }
 add_action( 'plugins_loaded', 'wldelay_track_version' );
 
+/**
+ * Compute a 0–100 security health score based on enabled features.
+ *
+ * Each feature carries a weight reflecting its defensive value. Returns
+ * the score, the list of scored features, and the top disabled feature
+ * to recommend next.
+ *
+ * @param array|null $options Optional options array.
+ * @return array{score:int,max:int,features:array,recommendation:array{key:string,label:string,points:int}|null}
+ */
+function wldelay_get_security_score( $options = null ) {
+    if ( $options === null ) {
+        $options = wldelay_get_options();
+    }
+
+    $features = array(
+        'wldelay_lockout_enabled'              => array( 'label' => __( 'IP Lockout', 'login-delay-shield' ), 'points' => 20 ),
+        'wldelay_progressive_enabled'          => array( 'label' => __( 'Progressive Delay', 'login-delay-shield' ), 'points' => 15 ),
+        'wldelay_custom_login_enabled'         => array( 'label' => __( 'Custom Login URL', 'login-delay-shield' ), 'points' => 15 ),
+        'wldelay_xmlrpc_enabled'               => array( 'label' => __( 'XML-RPC Protection', 'login-delay-shield' ), 'points' => 15 ),
+        'wldelay_email_enabled'                => array( 'label' => __( 'Email Alerts', 'login-delay-shield' ), 'points' => 10 ),
+        'wldelay_whitelist_enabled'            => array( 'label' => __( 'IP Whitelist', 'login-delay-shield' ), 'points' => 5 ),
+        'wldelay_rest_enabled'                 => array( 'label' => __( 'REST API Protection', 'login-delay-shield' ), 'points' => 5 ),
+        'wldelay_application_password_enabled' => array( 'label' => __( 'Application Password Protection', 'login-delay-shield' ), 'points' => 5 ),
+        'wldelay_fail2ban_enabled'             => array( 'label' => __( 'fail2ban Logging', 'login-delay-shield' ), 'points' => 10 ),
+    );
+
+    $score          = 0;
+    $max            = 0;
+    $recommendation = null;
+    $scored         = array();
+
+    foreach ( $features as $key => $feature ) {
+        $enabled       = ! empty( $options[ $key ] );
+        $max          += $feature['points'];
+        $scored[ $key ] = array(
+            'label'   => $feature['label'],
+            'points'  => $feature['points'],
+            'enabled' => $enabled,
+        );
+
+        if ( $enabled ) {
+            $score += $feature['points'];
+        } elseif ( $recommendation === null ) {
+            $recommendation = array(
+                'key'    => $key,
+                'label'  => $feature['label'],
+                'points' => $feature['points'],
+            );
+        }
+    }
+
+    return array(
+        'score'          => $score,
+        'max'            => $max,
+        'features'       => $scored,
+        'recommendation' => $recommendation,
+    );
+}
+
 // @see http://codex.wordpress.org/Function_Reference/add_filter
 // @see https://codex.wordpress.org/Plugin_API/Filter_Reference/wp_authenticate_user
 

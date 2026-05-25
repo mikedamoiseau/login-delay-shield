@@ -215,19 +215,47 @@ class LDS_Settings_View {
 
         $total = count( $features );
 
+        $health = wldelay_get_security_score( $this->options );
+        $score  = $health['score'];
+        $max    = $health['max'];
+        $pct    = $max > 0 ? (int) round( ( $score / $max ) * 100 ) : 0;
+
+        $recommendation_html = '';
+        if ( $health['recommendation'] !== null ) {
+            $recommendation_html = sprintf(
+                '<div class="wldelay-summary-recommendation"><span class="dashicons dashicons-lightbulb" aria-hidden="true"></span> %s</div>',
+                sprintf(
+                    /* translators: 1: feature name, 2: points value */
+                    esc_html__( 'Next recommended: enable %1$s (+%2$d points)', 'login-delay-shield' ),
+                    '<strong>' . esc_html( $health['recommendation']['label'] ) . '</strong>',
+                    $health['recommendation']['points']
+                )
+            );
+        }
+
         return sprintf(
             '<div class="wldelay-summary" role="status" aria-label="%s">
-                <div class="wldelay-summary-count" aria-hidden="true"><span id="wldelay-enabled-count">%d</span>/%d</div>
+                <div class="wldelay-summary-score">
+                    <div class="wldelay-score-circle" style="--score-pct: %d" aria-hidden="true">
+                        <span class="wldelay-score-value">%d</span>
+                    </div>
+                    <div class="wldelay-score-label">%s</div>
+                </div>
                 <div class="wldelay-summary-text">
-                    <div class="wldelay-summary-title">%s</div>
+                    <div class="wldelay-summary-title">%s <span class="wldelay-summary-fraction">(%d/%d)</span></div>
                     <div class="wldelay-summary-features" aria-live="polite">%s</div>
+                    %s
                 </div>
             </div>',
             esc_attr__( 'Protection status summary', 'login-delay-shield' ),
+            $pct,
+            $pct,
+            esc_html__( 'Security Score', 'login-delay-shield' ),
+            esc_html__( 'Protection Features Enabled', 'login-delay-shield' ),
             $enabled_count,
             $total,
-            esc_html__( 'Protection Features Enabled', 'login-delay-shield' ),
-            $feature_html
+            $feature_html,
+            $recommendation_html
         );
     }
 
