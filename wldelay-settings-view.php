@@ -362,9 +362,10 @@ class LDS_Settings_View {
             $current_page = $total_pages;
         }
 
-        $snapshot_hash   = wldelay_get_telemetry_snapshot_hash( $total, $filters );
-        $previous_hash   = isset( $_GET['wldelay_log_snap'] ) ? sanitize_text_field( wp_unslash( $_GET['wldelay_log_snap'] ) ) : '';
+        $snapshot_hash    = wldelay_get_telemetry_snapshot_hash( $total, $filters );
+        $previous_hash    = isset( $_GET['wldelay_log_snap'] ) ? sanitize_text_field( wp_unslash( $_GET['wldelay_log_snap'] ) ) : '';
         $data_has_drifted = $previous_hash !== '' && $previous_hash !== $snapshot_hash;
+        $pagination_hash  = $previous_hash !== '' ? $previous_hash : $snapshot_hash;
 
         $attempts = wldelay_get_login_log_attempts(
             array(
@@ -424,7 +425,7 @@ class LDS_Settings_View {
             </div>
 
             <?php $this->render_login_log_summary( $summary ); ?>
-            <?php $this->render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters, $snapshot_hash ); ?>
+            <?php $this->render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters, $pagination_hash ); ?>
         </div>
         <?php
     }
