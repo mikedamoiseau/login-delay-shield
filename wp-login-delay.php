@@ -2096,7 +2096,58 @@ function wldelay_ip_in_range( $ip, $range ) {
 }
 
 /**
+ * Parse the whitelist into exact IPs and CIDR ranges.
+ *
+ * Result is cached per-request in $GLOBALS and invalidated when options change.
+ *
+ * @return array{exact:array<string,true>,cidr:array<int,string>}
+ */
+function wldelay_get_parsed_whitelist() {
+    if ( isset( $GLOBALS['wldelay_parsed_whitelist'] ) ) {
+        return $GLOBALS['wldelay_parsed_whitelist'];
+    }
+
+    $options = wldelay_get_options();
+    $whitelist = isset( $options['wldelay_whitelist_ips'] ) ? $options['wldelay_whitelist_ips'] : '';
+
+    $exact = array();
+    $cidr  = array();
+
+    if ( $whitelist !== '' ) {
+        foreach ( explode( "\n", $whitelist ) as $line ) {
+            $line = trim( $line );
+            if ( $line === '' ) {
+                continue;
+            }
+            if ( strpos( $line, '/' ) !== false ) {
+                $cidr[] = $line;
+            } else {
+                $exact[ $line ] = true;
+            }
+        }
+    }
+
+    $GLOBALS['wldelay_parsed_whitelist'] = array( 'exact' => $exact, 'cidr' => $cidr );
+
+    return $GLOBALS['wldelay_parsed_whitelist'];
+}
+
+/**
+ * Clear the parsed whitelist cache.
+ */
+function wldelay_clear_whitelist_cache() {
+    unset( $GLOBALS['wldelay_parsed_whitelist'] );
+}
+
+add_action( 'update_option_wldelay_options', 'wldelay_clear_whitelist_cache' );
+add_action( 'add_option_wldelay_options', 'wldelay_clear_whitelist_cache' );
+add_action( 'delete_option_wldelay_options', 'wldelay_clear_whitelist_cache' );
+
+/**
  * Check if the client IP is whitelisted
+ *
+ * Uses a parsed cache: exact IPs are checked via hash lookup (O(1)),
+ * CIDR ranges are checked only if the exact lookup misses.
  *
  * @param string|null $ip Optional IP to check. Defaults to client IP.
  * @return bool True if IP is whitelisted
@@ -2104,18 +2155,15 @@ function wldelay_ip_in_range( $ip, $range ) {
 function wldelay_is_ip_whitelisted( $ip = null ) {
     $options = wldelay_get_options();
 
-    // Whitelist must be enabled
     if ( empty( $options['wldelay_whitelist_enabled'] ) ) {
         return false;
     }
 
-    // Get whitelist IPs
     $whitelist = isset( $options['wldelay_whitelist_ips'] ) ? $options['wldelay_whitelist_ips'] : '';
     if ( empty( $whitelist ) ) {
         return false;
     }
 
-    // Get client IP if not provided
     if ( $ip === null ) {
         $ip = wldelay_get_client_ip();
     }
@@ -2123,13 +2171,13 @@ function wldelay_is_ip_whitelisted( $ip = null ) {
         return false;
     }
 
-    // Check against each whitelisted IP/range
-    $whitelist_lines = explode( "\n", $whitelist );
-    foreach ( $whitelist_lines as $range ) {
-        $range = trim( $range );
-        if ( empty( $range ) ) {
-            continue;
-        }
+    $parsed = wldelay_get_parsed_whitelist();
+
+    if ( isset( $parsed['exact'][ $ip ] ) ) {
+        return true;
+    }
+
+    foreach ( $parsed['cidr'] as $range ) {
         if ( wldelay_ip_in_range( $ip, $range ) ) {
             return true;
         }
