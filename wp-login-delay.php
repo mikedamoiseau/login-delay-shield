@@ -612,6 +612,19 @@ function wldelay_count_login_log_attempts( $filters = array() ) {
 }
 
 /**
+ * Compute a lightweight snapshot hash for telemetry pagination.
+ *
+ * @param int   $total   Total matching rows.
+ * @param array $filters Active filters.
+ * @return string 8-char hex hash.
+ */
+function wldelay_get_telemetry_snapshot_hash( $total, $filters = array() ) {
+    $filters = wldelay_sanitize_login_log_filters( $filters );
+    $payload = (string) $total . '|' . implode( '|', $filters );
+    return substr( md5( $payload ), 0, 8 );
+}
+
+/**
  * Get filtered telemetry summary data for the login log admin view.
  *
  * @param array $filters Raw or sanitized filter values.
