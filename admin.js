@@ -205,4 +205,19 @@ jQuery(document).ready(function ($) {
             _wpnonce: config.dismissNoticeNonce
         });
     });
+
+    $(document).on('click', '.wldelay-whats-new-notice .notice-dismiss', function () {
+        var config = getAdminConfig();
+        var version = $(this).closest('.wldelay-whats-new-notice').data('version');
+
+        if (!config.ajaxUrl || !config.dismissNoticeNonce) {
+            return;
+        }
+
+        $.post(config.ajaxUrl, {
+            action: 'wldelay_dismiss_whats_new_notice',
+            version: version,
+            _wpnonce: config.dismissNoticeNonce
+        });
+    });
 });
