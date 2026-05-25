@@ -1590,6 +1590,10 @@ function wldelay_get_lockout_attempt_strategy( $options = null ) {
 /**
  * Normalize username for attempt tracking keys.
  *
+ * Applies the default WordPress normalization (lowercase + sanitize_user),
+ * then passes the result through `wldelay_normalize_username` filter so
+ * plugins with custom auth backends (LDAP, email-as-login) can override.
+ *
  * @param string $username Username input.
  * @return string Normalized username.
  */
@@ -1599,7 +1603,19 @@ function wldelay_normalize_username( $username ) {
         return '';
     }
 
-    return strtolower( sanitize_user( wp_unslash( $username ), true ) );
+    $normalized = strtolower( sanitize_user( wp_unslash( $username ), true ) );
+
+    /**
+     * Filter the normalized username used for lockout and failure tracking.
+     *
+     * Allows plugins with custom authentication backends (LDAP, email-based
+     * login, SSO) to map login input to a canonical identifier before it
+     * enters the lockout/failure tracking key.
+     *
+     * @param string $normalized The default-normalized username.
+     * @param string $username   The raw username input before normalization.
+     */
+    return (string) apply_filters( 'wldelay_normalize_username', $normalized, $username );
 }
 
 /**
