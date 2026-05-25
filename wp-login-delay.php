@@ -612,6 +612,31 @@ function wldelay_count_login_log_attempts( $filters = array() ) {
 }
 
 /**
+ * Compute a lightweight snapshot hash for telemetry pagination.
+ *
+ * @param int   $total   Total matching rows.
+ * @param array $filters Active filters.
+ * @return string 8-char hex hash.
+ */
+function wldelay_get_telemetry_snapshot_hash( $total, $filters = array() ) {
+    global $wpdb;
+
+    $filters      = wldelay_sanitize_login_log_filters( $filters );
+    $table_name   = wldelay_get_log_table_name();
+    $where_parts  = wldelay_build_login_log_where_clause( $filters );
+    $where_clause = $where_parts['where'];
+    $params       = $where_parts['params'];
+
+    $sql    = "SELECT MAX(id) FROM $table_name{$where_clause}";
+    $max_id = empty( $params )
+        ? (int) $wpdb->get_var( $sql )
+        : (int) $wpdb->get_var( $wpdb->prepare( $sql, $params ) );
+
+    $payload = $total . '|' . $max_id . '|' . implode( '|', $filters );
+    return substr( md5( $payload ), 0, 8 );
+}
+
+/**
  * Get filtered telemetry summary data for the login log admin view.
  *
  * @param array $filters Raw or sanitized filter values.

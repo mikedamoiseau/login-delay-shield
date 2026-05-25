@@ -362,6 +362,11 @@ class LDS_Settings_View {
             $current_page = $total_pages;
         }
 
+        $snapshot_hash    = wldelay_get_telemetry_snapshot_hash( $total, $filters );
+        $previous_hash    = isset( $_GET['wldelay_log_snap'] ) ? sanitize_text_field( wp_unslash( $_GET['wldelay_log_snap'] ) ) : '';
+        $data_has_drifted = $previous_hash !== '' && $previous_hash !== $snapshot_hash;
+        $pagination_hash  = $previous_hash !== '' ? $previous_hash : $snapshot_hash;
+
         $attempts = wldelay_get_login_log_attempts(
             array(
                 'filters' => $filters,
@@ -373,6 +378,12 @@ class LDS_Settings_View {
         $summary = wldelay_get_login_log_summary( $filters );
         ?>
         <hr />
+        <?php if ( $data_has_drifted ) : ?>
+            <div class="notice notice-warning inline"><p>
+                <?php esc_html_e( 'New login attempts were recorded since you started browsing. Totals and page numbers may have shifted.', 'login-delay-shield' ); ?>
+                <a href="<?php echo esc_url( add_query_arg( array_merge( array( 'page' => 'login-delay-shield-admin' ), wldelay_login_log_filters_to_query_args( $filters ) ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Refresh', 'login-delay-shield' ); ?></a>
+            </p></div>
+        <?php endif; ?>
         <div class="wldelay-telemetry" aria-labelledby="wldelay-telemetry-title">
             <h3 id="wldelay-telemetry-title"><?php esc_html_e( 'Failed Login Telemetry', 'login-delay-shield' ); ?></h3>
             <p class="description"><?php esc_html_e( 'Filter failed login attempts, inspect recent patterns, and export the matching rows as CSV.', 'login-delay-shield' ); ?></p>
@@ -414,7 +425,7 @@ class LDS_Settings_View {
             </div>
 
             <?php $this->render_login_log_summary( $summary ); ?>
-            <?php $this->render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters ); ?>
+            <?php $this->render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters, $pagination_hash ); ?>
         </div>
         <?php
     }
@@ -513,7 +524,7 @@ class LDS_Settings_View {
      * @param int   $total_pages Total page count.
      * @param array $filters     Active filters.
      */
-    private function render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters ) {
+    private function render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters, $snapshot_hash = '' ) {
         ?>
         <div class="wldelay-telemetry-results">
             <h4><?php esc_html_e( 'Matching attempts', 'login-delay-shield' ); ?></h4>
@@ -551,7 +562,7 @@ class LDS_Settings_View {
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-                <?php $this->render_login_log_pagination( $current_page, $total_pages, $filters ); ?>
+                <?php $this->render_login_log_pagination( $current_page, $total_pages, $filters, $snapshot_hash ); ?>
             <?php endif; ?>
         </div>
         <?php
@@ -564,7 +575,7 @@ class LDS_Settings_View {
      * @param int   $total_pages Total page count.
      * @param array $filters Active filters.
      */
-    private function render_login_log_pagination( $current_page, $total_pages, $filters ) {
+    private function render_login_log_pagination( $current_page, $total_pages, $filters, $snapshot_hash = '' ) {
         if ( $total_pages <= 1 ) {
             return;
         }
@@ -573,6 +584,10 @@ class LDS_Settings_View {
             array( 'page' => 'login-delay-shield-admin' ),
             wldelay_login_log_filters_to_query_args( $filters )
         );
+
+        if ( $snapshot_hash !== '' ) {
+            $base_args['wldelay_log_snap'] = $snapshot_hash;
+        }
 
         echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Login log pagination', 'login-delay-shield' ) . '">';
         if ( $current_page > 1 ) {
