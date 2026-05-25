@@ -301,4 +301,54 @@ class TrendAnalyticsTest extends WP_UnitTestCase {
         $this->assertSame( 1, $summary['top_usernames'][0]['count'] );
     }
 
+    public function test_login_log_summary_includes_ranked_top_target_pairs() {
+        $this->insert_attempt( '203.0.113.10', 'alice', '2026-04-01 10:00:00' );
+        $this->insert_attempt( '203.0.113.10', 'alice', '2026-04-01 11:00:00' );
+        $this->insert_attempt( '203.0.113.10', 'alice', '2026-04-01 12:00:00' );
+        $this->insert_attempt( '203.0.113.11', 'alice', '2026-04-01 12:00:00' );
+        $this->insert_attempt( '203.0.113.11', 'alice', '2026-04-01 13:00:00' );
+        $this->insert_attempt( '203.0.113.10', 'bob', '2026-04-01 14:00:00' );
+        $this->insert_attempt( '203.0.113.10', 'bob', '2026-04-01 15:00:00' );
+
+        $summary = wldelay_get_login_log_summary( array(), 5 );
+
+        $this->assertSame( '203.0.113.10', $summary['top_target_pairs'][0]['ip_address'] );
+        $this->assertSame( 'alice', $summary['top_target_pairs'][0]['username'] );
+        $this->assertSame( 3, $summary['top_target_pairs'][0]['count'] );
+
+        // Tie on count=2 should be deterministic via ip/username ordering.
+        $this->assertSame( '203.0.113.10', $summary['top_target_pairs'][1]['ip_address'] );
+        $this->assertSame( 'bob', $summary['top_target_pairs'][1]['username'] );
+        $this->assertSame( 2, $summary['top_target_pairs'][1]['count'] );
+        $this->assertSame( '203.0.113.11', $summary['top_target_pairs'][2]['ip_address'] );
+        $this->assertSame( 'alice', $summary['top_target_pairs'][2]['username'] );
+        $this->assertSame( 2, $summary['top_target_pairs'][2]['count'] );
+    }
+
+    public function test_login_log_summary_ignores_blank_top_target_pairs() {
+        $this->insert_attempt( '203.0.113.10', '', '2026-04-01 10:00:00' );
+        $this->insert_attempt( '203.0.113.10', '   ', '2026-04-01 11:00:00' );
+        $this->insert_attempt( '203.0.113.11', 'alice', '2026-04-01 12:00:00' );
+
+        $summary = wldelay_get_login_log_summary( array(), 5 );
+
+        $this->assertCount( 1, $summary['top_target_pairs'] );
+        $this->assertSame( '203.0.113.11', $summary['top_target_pairs'][0]['ip_address'] );
+        $this->assertSame( 'alice', $summary['top_target_pairs'][0]['username'] );
+        $this->assertSame( 1, $summary['top_target_pairs'][0]['count'] );
+    }
+
+    public function test_login_log_summary_applies_source_filter_to_top_target_pairs() {
+        $this->insert_attempt( '203.0.113.10', 'alice', '2026-04-01 10:00:00', 'wp-login' );
+        $this->insert_attempt( '203.0.113.10', 'alice', '2026-04-01 11:00:00', 'rest' );
+        $this->insert_attempt( '203.0.113.10', 'alice', '2026-04-01 12:00:00', 'rest' );
+
+        $summary = wldelay_get_login_log_summary( array( 'source' => 'wp-login' ), 5 );
+
+        $this->assertCount( 1, $summary['top_target_pairs'] );
+        $this->assertSame( '203.0.113.10', $summary['top_target_pairs'][0]['ip_address'] );
+        $this->assertSame( 'alice', $summary['top_target_pairs'][0]['username'] );
+        $this->assertSame( 1, $summary['top_target_pairs'][0]['count'] );
+    }
+
 }
