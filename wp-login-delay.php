@@ -1468,7 +1468,7 @@ function wldelay_show_whats_new_notice() {
     }
 
     $previous_version = get_option( 'wldelay_previous_version', '' );
-    if ( empty( $previous_version ) ) {
+    if ( empty( $previous_version ) || version_compare( $previous_version, WLDELAY_VERSION, '>=' ) ) {
         return;
     }
 
