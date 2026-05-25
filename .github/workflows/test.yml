@@ -10,6 +10,8 @@ jobs:
   test:
     name: PHPUnit + Plugin Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # Restrict GITHUB_TOKEN to read-only access for repository contents
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,7 +28,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Run PHPUnit
+      - name: Run unit tests
+        run: ./bin/test.sh --configuration phpunit-unit.xml
+
+      - name: Run integration tests
         run: ./bin/test.sh
 
       - name: Run WP Plugin Check
