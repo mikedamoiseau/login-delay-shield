@@ -39,4 +39,4 @@ docker run --rm -i $TTY_FLAG \
     -v "$PACKAGE_DIR/$PLUGIN_SLUG":/var/www/html/wp-content/plugins/"$PLUGIN_SLUG":ro \
     -w /var/www/html \
     "$IMAGE" \
-    wp --allow-root plugin check "$PLUGIN_SLUG" "$@"
+    bash -c "wp --allow-root plugin activate plugin-check --path=/var/www/html && wp --allow-root plugin check $PLUGIN_SLUG $*"
