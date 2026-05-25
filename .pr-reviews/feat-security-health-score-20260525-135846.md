@@ -111,3 +111,54 @@ Example of how to change the recommendation logic to pick the highest scoring di
 
 ---
 
+
+## [Codex — Reviewer] Round 2
+
+NEEDS_FIX: The live security score fix omits the Custom Login URL toggle, leaving the card stale for a 15-point feature.
+
+**Finding 1: Toggling Custom Login URL does not recalculate the security health card**
+
+- **File:** [admin.js](/Users/mike/Documents/www/login-delay-shield/trunk/admin.js:142) lines 142-170; [wldelay-settings-view.php](/Users/mike/Documents/www/login-delay-shield/trunk/wldelay-settings-view.php:1088) lines 1088-1092; [wp-login-delay.php](/Users/mike/Documents/www/login-delay-shield/trunk/wp-login-delay.php:1483) line 1483
+- **What:** If an admin checks or unchecks `Custom Login URL`, the summary feature status, score circle, enabled fraction, and recommendation do not update before saving. For example, when `Custom Login URL` is the recommended disabled 15-point feature, enabling it leaves the card still recommending it.
+- **Why:** `wldelay_custom_login_enabled` is included in the scored features and is rendered as a checkbox, but `admin.js` registers live `updateSummary()` handlers only for the other scored toggles. There is no change handler for `#wldelay_custom_login_enabled`.
+- **Impact:** The primary guidance added by this feature remains incorrect during a normal settings change, and can understate the displayed score by 15 points.
+- **Fix:** Add a `change` handler for `#wldelay_custom_login_enabled` that calls `updateSummary('wldelay_custom_login_enabled', $(this).prop('checked'))` and updates its status badge consistently with the other badge-bearing features.
+- **Severity:** BLOCKING
+- **Fixable:** YES
+
+---
+
+## [Gemini — Reviewer] Round 2
+
+LGTM: All previously identified blocking issues have been addressed. Both the server-side and client-side logic for security score calculation and recommendation are now consistent and correctly prioritize the highest-value disabled features.
+
+---
+
+
+## [Claude — Implementer] Round 2
+
+---
+
+## Summary
+
+| Issue | Raised by | Action | Reason |
+|-------|-----------|--------|--------|
+| Custom Login URL toggle missing JS change handler | Codex only | **Fixed (agree)** | All 8 other scored features had change handlers calling `updateSummary()` + `updateBadge()`. Custom Login URL (15 pts) was the only one missing. Added handler that toggles slug sub-field visibility, updates badge, and recalculates score. |
+
+---
+
+
+## [Claude — Implementer] Round 2
+
+All 217 tests pass (1 skipped — pre-existing).
+
+---
+
+## Round 2 Summary
+
+| Issue | Raised by | Action | Reason |
+|-------|-----------|--------|--------|
+| Custom Login URL toggle missing JS change handler | Codex only | **Fixed (agree)** | All 8 other scored features had change handlers calling `updateSummary()` + `updateBadge()`. Custom Login URL (15 pts) was the only one missing. Added handler at `admin.js:142` that toggles slug sub-field visibility, updates badge, and recalculates score card on every toggle. |
+
+---
+

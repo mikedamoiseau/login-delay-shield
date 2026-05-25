@@ -139,6 +139,13 @@ jQuery(document).ready(function ($) {
         $('#wldelay_whitelist_enabled').on('change', toggleWhitelist);
     }
 
+    $('#wldelay_custom_login_enabled').on('change', function () {
+        var isChecked = $(this).prop('checked');
+        $('#wldelay_custom_login_slug').closest('tr').toggle(isChecked);
+        updateBadge('wldelay_custom_login_enabled', isChecked);
+        updateSummary('wldelay_custom_login_enabled', isChecked);
+    });
+
     $('#wldelay_email_enabled').on('change', function () {
         var isChecked = $(this).prop('checked');
         updateBadge('wldelay_email_enabled', isChecked);
