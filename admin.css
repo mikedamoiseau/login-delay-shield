@@ -260,11 +260,45 @@
     gap: 20px;
 }
 
-.wldelay-summary-count {
-    font-size: 32px;
-    font-weight: 600;
-    color: #2271b1;
-    line-height: 1;
+.wldelay-summary-score {
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.wldelay-score-circle {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: conic-gradient(
+        #00a32a calc(var(--score-pct) * 1%),
+        #e2e4e7 calc(var(--score-pct) * 1%)
+    );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.wldelay-score-circle::before {
+    content: '';
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #fff;
+    position: absolute;
+}
+
+.wldelay-score-value {
+    position: relative;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1d2327;
+}
+
+.wldelay-score-label {
+    font-size: 11px;
+    color: #646970;
+    margin-top: 4px;
 }
 
 .wldelay-summary-text {
@@ -274,6 +308,26 @@
 .wldelay-summary-title {
     font-weight: 600;
     margin-bottom: 4px;
+}
+
+.wldelay-summary-fraction {
+    font-weight: 400;
+    color: #646970;
+}
+
+.wldelay-summary-recommendation {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #1d2327;
+}
+
+.wldelay-summary-recommendation .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: #dba617;
+    vertical-align: middle;
+    margin-right: 4px;
 }
 
 .wldelay-summary-features {
