@@ -443,7 +443,8 @@
 }
 
 .wldelay-tooltip:hover .wldelay-tooltip-text,
-.wldelay-tooltip:focus .wldelay-tooltip-text {
+.wldelay-tooltip:focus .wldelay-tooltip-text,
+.wldelay-tooltip:focus-within .wldelay-tooltip-text {
     visibility: visible;
     opacity: 1;
 }
