@@ -334,7 +334,7 @@ function wldelay_handle_unlock_current_ip() {
     if ( function_exists( 'wp_get_current_user' ) ) {
         $current_user = wp_get_current_user();
         if ( $current_user instanceof WP_User ) {
-            $username = $current_user->user_login;
+            $username = wldelay_normalize_username( $current_user->user_login );
         }
     }
 
@@ -1612,10 +1612,16 @@ function wldelay_normalize_username( $username ) {
      * login, SSO) to map login input to a canonical identifier before it
      * enters the lockout/failure tracking key.
      *
+     * Returning an empty string is treated as invalid and falls back to the
+     * default normalization. Callbacks must be idempotent — the filter fires
+     * exactly once per raw input, but callers must not depend on that changing.
+     *
      * @param string $normalized The default-normalized username.
      * @param string $username   The raw username input before normalization.
      */
-    return (string) apply_filters( 'wldelay_normalize_username', $normalized, $username );
+    $filtered = (string) apply_filters( 'wldelay_normalize_username', $normalized, $username );
+
+    return $filtered !== '' ? $filtered : $normalized;
 }
 
 /**
@@ -1628,10 +1634,9 @@ function wldelay_normalize_username( $username ) {
  */
 function wldelay_get_attempt_identifier( $ip, $username = '', $options = null ) {
     $strategy = wldelay_get_lockout_attempt_strategy( $options );
-    $normalized_username = wldelay_normalize_username( $username );
 
-    if ( $strategy === 'ip_username' && $normalized_username !== '' ) {
-        return $ip . '|' . $normalized_username;
+    if ( $strategy === 'ip_username' && $username !== '' ) {
+        return $ip . '|' . $username;
     }
 
     return $ip;
@@ -2382,6 +2387,8 @@ function wldelay_block_xmlrpc_auth( $user, $username, $password ) {
         return $user;
     }
 
+    $username = wldelay_normalize_username( $username );
+
     // Check if XMLRPC auth should be completely blocked
     if ( ! empty( $options['wldelay_xmlrpc_block'] ) ) {
         // Log the blocked attempt (only if this is a real auth attempt with username)
@@ -2553,8 +2560,6 @@ function wldelay_track_failed_attempt( $username, $source = null ) {
     if ( empty( $ip ) ) {
         return 0;
     }
-
-    $username = wldelay_normalize_username( $username );
     $options = wldelay_get_options();
     $email_enabled = ! empty( $options['wldelay_email_enabled'] );
     $lockout_enabled = ! empty( $options['wldelay_lockout_enabled'] );
