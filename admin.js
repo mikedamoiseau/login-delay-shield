@@ -42,7 +42,43 @@ jQuery(document).ready(function ($) {
             $icon.removeClass('dashicons-yes').addClass('dashicons-no-alt');
         }
 
-        $('#wldelay-enabled-count').text($('.wldelay-summary-features .wldelay-feature-on').length);
+        var enabledCount = $('.wldelay-summary-features .wldelay-feature-on').length;
+        var totalCount = $('.wldelay-summary-features span[data-feature]').length;
+        $('.wldelay-summary-fraction').text('(' + enabledCount + '/' + totalCount + ')');
+
+        var config = getAdminConfig();
+        var weights = config.scoreWeights || {};
+        var score = 0;
+        var max = 0;
+        var bestRec = null;
+
+        $.each(weights, function (key, w) {
+            max += w.points;
+            var on = $('.wldelay-summary-features span[data-feature="' + key + '"]').hasClass('wldelay-feature-on');
+            if (on) {
+                score += w.points;
+            } else if (!bestRec || w.points > bestRec.points) {
+                bestRec = { label: w.label, points: w.points };
+            }
+        });
+
+        var pct = max > 0 ? Math.round((score / max) * 100) : 0;
+        $('.wldelay-score-value').text(pct);
+        $('.wldelay-score-circle').css('--score-pct', pct);
+
+        var $rec = $('.wldelay-summary-recommendation');
+        if (bestRec && config.recommendTpl) {
+            var text = config.recommendTpl
+                .replace('%1$s', '<strong>' + bestRec.label + '</strong>')
+                .replace('%2$d', bestRec.points);
+            if (!$rec.length) {
+                $rec = $('<div class="wldelay-summary-recommendation"></div>');
+                $('.wldelay-summary-features').after($rec);
+            }
+            $rec.html('<span class="dashicons dashicons-lightbulb" aria-hidden="true"></span> ' + text);
+        } else {
+            $rec.remove();
+        }
     }
 
     function toggleRandomDelay() {
