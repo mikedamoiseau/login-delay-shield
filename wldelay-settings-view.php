@@ -31,20 +31,30 @@ class LDS_Settings_View {
      * @param string $text The tooltip text to display
      * @return string HTML for the tooltip
      */
-    private function tooltip( $text ) {
+    private function tooltip( $text, $help_url = '' ) {
         self::$tooltip_counter++;
         $tooltip_id = 'wldelay-tooltip-' . self::$tooltip_counter;
+
+        $learn_more = '';
+        if ( $help_url !== '' ) {
+            $learn_more = sprintf(
+                ' <a href="%s" class="wldelay-tooltip-learn-more" target="_blank" rel="noopener noreferrer">%s <span class="dashicons dashicons-external" aria-hidden="true"></span></a>',
+                esc_url( $help_url ),
+                esc_html__( 'Learn more', 'login-delay-shield' )
+            );
+        }
 
         return sprintf(
             '<span class="wldelay-tooltip" tabindex="0" aria-describedby="%s">' .
             '<span class="dashicons dashicons-editor-help" aria-hidden="true"></span>' .
             '<span class="screen-reader-text">%s</span>' .
-            '<span id="%s" class="wldelay-tooltip-text" role="tooltip">%s</span>' .
+            '<span id="%s" class="wldelay-tooltip-text" role="tooltip">%s%s</span>' .
             '</span>',
             esc_attr( $tooltip_id ),
             esc_html__( 'Help', 'login-delay-shield' ),
             esc_attr( $tooltip_id ),
-            esc_html( $text )
+            esc_html( $text ),
+            $learn_more
         );
     }
 

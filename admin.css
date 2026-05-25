@@ -443,7 +443,8 @@
 }
 
 .wldelay-tooltip:hover .wldelay-tooltip-text,
-.wldelay-tooltip:focus .wldelay-tooltip-text {
+.wldelay-tooltip:focus .wldelay-tooltip-text,
+.wldelay-tooltip:focus-within .wldelay-tooltip-text {
     visibility: visible;
     opacity: 1;
 }
@@ -461,6 +462,28 @@
 .wldelay-tooltip:focus-visible {
     outline: 2px solid #2271b1;
     outline-offset: 2px;
+}
+
+.wldelay-tooltip-learn-more {
+    display: block;
+    margin-top: 6px;
+    color: #72aee6;
+    text-decoration: none;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.wldelay-tooltip-learn-more:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.wldelay-tooltip-learn-more .dashicons {
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+    vertical-align: middle;
+    color: inherit;
 }
 
 /* Adjust tooltip position for right side of screen */
