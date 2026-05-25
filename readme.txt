@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.2.4
-Stable tag: 2.2.4
+Version: 2.3.0
+Stable tag: 2.3.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -156,6 +156,21 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.3.0 =
+Performance, UX, architecture, and CI improvements.
+
+**New Features:**
+* Security Health Score — 0-100 score card on the settings page showing protection posture with "next recommended" guidance.
+* "What's New" banner — dismissible notice after plugin upgrade highlighting new features.
+* Referral card — "Leave a review" and "Get support" links in the dashboard widget.
+* Contextual help links — tooltip system now supports optional "Learn more" URLs linking to documentation.
+* Pluggable username normalization — `wldelay_normalize_username` filter hook for LDAP, email-as-login, and SSO backends.
+* CI/CD test pipeline — GitHub Actions workflow running PHPUnit and wp plugin check on every push and PR.
+
+**Performance:**
+* Whitelist IP validation optimization — exact IPs checked via O(1) hash lookup; CIDR ranges iterated only on miss. Cached per-request.
+* Telemetry pagination drift detection — snapshot hash warns when data changes between pages during active attacks.
 
 = 2.2.4 =
 Top targeted usernames in login telemetry and hardening.

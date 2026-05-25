@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.2.4' );
+define( 'WLDELAY_VERSION', '2.3.0' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
@@ -9,7 +9,7 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC protection, custom login URL, and email alerts.
-Version: 2.2.4
+Version: 2.3.0
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
@@ -1535,6 +1535,11 @@ add_action( 'admin_notices', 'wldelay_show_whats_new_notice' );
  */
 function wldelay_get_version_highlights( $version ) {
     $highlights = array(
+        '2.3.0' => array(
+            __( 'Security Health Score — see your protection posture at a glance.', 'login-delay-shield' ),
+            __( 'Whitelist IP lookups are now cached for faster login checks.', 'login-delay-shield' ),
+            __( 'CI/CD pipeline — tests run automatically on every code change.', 'login-delay-shield' ),
+        ),
         '2.2.4' => array(
             __( 'Top targeted usernames in login telemetry.', 'login-delay-shield' ),
             __( 'Faster database queries with username index.', 'login-delay-shield' ),
