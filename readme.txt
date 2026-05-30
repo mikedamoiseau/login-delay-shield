@@ -20,6 +20,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 
 **Features:**
 
+* **Security Setup Wizard** — Choose Conservative, Balanced, or Aggressive protection profiles from the settings page
 * **Login delay** — Fixed or random delay on failed login attempts (1-10 seconds)
 * **Progressive delay** — Delay increases with each consecutive failed attempt from the same IP
 * **IP lockout** — Temporarily block IP addresses after too many failed attempts
@@ -56,6 +57,10 @@ When a bot attempts a brute-force attack, it tries thousands of passwords as fas
 = Where are the plugin settings? =
 
 Go to `Settings` > `Login Delay Shield`
+
+= What are protection profiles? =
+
+Protection profiles are guided presets in the Security Setup Wizard. Applying a profile updates the main delay, progressive delay, lockout, email alert, and authentication endpoint settings, while still leaving every individual control editable.
 
 = What is progressive delay? =
 
@@ -149,7 +154,7 @@ The plugin automatically uses your site's language setting. Want to help transla
 
 == Screenshots ==
 
-1. Settings page with delay configuration options.
+1. Settings page with Security Setup Wizard and delay configuration options.
 2. Email notification and IP lockout settings.
 3. IP whitelist and XML-RPC protection settings.
 4. Dashboard widget showing recent failed login attempts.

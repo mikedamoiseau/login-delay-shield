@@ -14,6 +14,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 
 ### Features
 
+- **Security Setup Wizard** — Choose Conservative, Balanced, or Aggressive protection profiles from the settings page
 - **Login delay** — Fixed or random delay on failed login attempts (1-10 seconds)
 - **Progressive delay** — Delay increases with each consecutive failed attempt from the same IP
 - **IP lockout** — Temporarily block IP addresses after too many failed attempts
@@ -42,6 +43,12 @@ A brute-force attack works by systematically trying passwords until finding the 
 
 Settings are available under **Settings > Login Delay Shield**.
 
+The Security Setup Wizard at the top of the settings page lets you apply a protection profile quickly:
+
+- **Conservative** — Core throttling with gentler thresholds for low-friction sites
+- **Balanced** — Recommended defaults for most WordPress sites
+- **Aggressive** — Stricter lockouts and XML-RPC authentication blocking for sites under frequent attack
+
 ## FAQ
 
 ### How does this plugin protect my site?
@@ -55,6 +62,10 @@ Progressive delay increases the wait time with each consecutive failed attempt f
 ### How does IP lockout work?
 
 After a configurable number of failed attempts (default: 10), login attempts are temporarily blocked. You can choose whether attempts are counted by `IP only` or by `IP + username` (recommended for shared office/mobile IPs). Lockout duration is configurable (default: 60 minutes).
+
+### What are protection profiles?
+
+Protection profiles are guided presets in the Security Setup Wizard. Applying a profile updates the main delay, progressive delay, lockout, email alert, and authentication endpoint settings, while still leaving every individual control editable.
 
 ### How do I whitelist my own IP?
 
