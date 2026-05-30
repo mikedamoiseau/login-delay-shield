@@ -244,7 +244,7 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertStringContainsString( 'value="conservative"', $output );
         $this->assertStringContainsString( 'value="balanced"', $output );
         $this->assertStringContainsString( 'value="aggressive"', $output );
-        $this->assertStringContainsString( 'checked="checked"', $output );
+        $this->assertMatchesRegularExpression( '/value="balanced"[^>]+checked=[\'"]checked[\'"]/s', $output );
         $this->assertStringContainsString( 'name="wldelay_options[wldelay_profile_action]"', $output );
         $this->assertStringContainsString( 'Apply selected profile', $output );
     }
