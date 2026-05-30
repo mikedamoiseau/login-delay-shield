@@ -21,6 +21,28 @@ class SettingsTest extends WP_UnitTestCase {
     }
 
     /**
+     * Render the settings page with the admin request URI WordPress expects.
+     *
+     * @return string Rendered settings page HTML.
+     */
+    private function render_settings_page() {
+        $previous_request_uri = isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : null;
+        $_SERVER['REQUEST_URI'] = '/wp-admin/options-general.php?page=login-delay-shield-admin';
+
+        ob_start();
+        $this->settings->create_admin_page();
+        $output = ob_get_clean();
+
+        if ( $previous_request_uri === null ) {
+            unset( $_SERVER['REQUEST_URI'] );
+        } else {
+            $_SERVER['REQUEST_URI'] = $previous_request_uri;
+        }
+
+        return $output;
+    }
+
+    /**
      * Test that settings page is registered.
      */
     public function test_settings_page_registered() {
@@ -214,9 +236,7 @@ class SettingsTest extends WP_UnitTestCase {
             )
         );
 
-        ob_start();
-        $this->settings->create_admin_page();
-        $output = ob_get_clean();
+        $output = $this->render_settings_page();
 
         $this->assertStringContainsString( 'Security Setup Wizard', $output );
         $this->assertStringContainsString( 'Protection Profiles', $output );
@@ -233,9 +253,7 @@ class SettingsTest extends WP_UnitTestCase {
      * Test setup wizard summarizes profile effects for users.
      */
     public function test_setup_wizard_displays_profile_effects() {
-        ob_start();
-        $this->settings->create_admin_page();
-        $output = ob_get_clean();
+        $output = $this->render_settings_page();
 
         $this->assertStringContainsString( 'Lockout after 7 failed attempts', $output );
         $this->assertStringContainsString( 'Blocks XML-RPC authentication', $output );
@@ -253,9 +271,7 @@ class SettingsTest extends WP_UnitTestCase {
             )
         );
 
-        ob_start();
-        $this->settings->create_admin_page();
-        $output = ob_get_clean();
+        $output = $this->render_settings_page();
 
         $this->assertStringContainsString( 'Current profile: Aggressive', $output );
     }
