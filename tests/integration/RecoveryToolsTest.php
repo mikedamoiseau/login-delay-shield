@@ -95,6 +95,27 @@ class RecoveryToolsTest extends WP_UnitTestCase {
         $this->assertFalse( get_transient( $fails_key ) );
     }
 
+    public function test_delete_lockout_for_ip_removes_password_reset_keys_when_username_provided() {
+        $ip = '192.168.50.25';
+        $username = 'admin';
+        $pair_options = [ 'wldelay_lockout_attempt_strategy' => 'ip_username' ];
+
+        $lockout_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $pair_options );
+        $fails_key = wldelay_get_password_reset_failure_transient_key( $ip, $username, $pair_options );
+
+        set_transient( $lockout_key, time(), 10 * MINUTE_IN_SECONDS );
+        set_transient( $fails_key, 3, HOUR_IN_SECONDS );
+
+        wldelay_register_transient_key( $lockout_key );
+        wldelay_register_transient_key( $fails_key );
+
+        $deleted = wldelay_delete_lockout_for_ip( $ip, $username );
+
+        $this->assertSame( 2, $deleted );
+        $this->assertFalse( get_transient( $lockout_key ) );
+        $this->assertFalse( get_transient( $fails_key ) );
+    }
+
     public function test_flush_lockout_transients_removes_lockouts_and_failure_counters() {
         $ip_one = '192.168.50.30';
         $ip_two = '192.168.50.31';

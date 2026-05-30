@@ -360,6 +360,14 @@ class LDS_Settings {
             'wldelay_xmlrpc_section_id'
         );
 
+        add_settings_field(
+            'wldelay_password_reset_enabled',
+            esc_html__( 'Enable password reset protection', 'login-delay-shield' ),
+            array( $this->view, 'password_reset_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_xmlrpc_section_id'
+        );
+
         // Custom Login URL section
         add_settings_section(
             'wldelay_custom_login_section_id',
@@ -506,6 +514,7 @@ class LDS_Settings {
         $new_input['wldelay_xmlrpc_block'] = ! empty( $input['wldelay_xmlrpc_block'] );
         $new_input['wldelay_rest_enabled'] = ! empty( $input['wldelay_rest_enabled'] );
         $new_input['wldelay_application_password_enabled'] = ! empty( $input['wldelay_application_password_enabled'] );
+        $new_input['wldelay_password_reset_enabled'] = ! empty( $input['wldelay_password_reset_enabled'] );
 
         // Custom Login URL settings
         $new_input['wldelay_custom_login_enabled'] = ! empty( $input['wldelay_custom_login_enabled'] );
