@@ -2045,6 +2045,8 @@ function wldelay_get_login_source_label( $source ) {
             return __( 'REST API', 'login-delay-shield' );
         case 'application-password':
             return __( 'Application Password', 'login-delay-shield' );
+        case 'password-reset':
+            return __( 'Password Reset', 'login-delay-shield' );
         case 'wp-login':
         default:
             return __( 'Login', 'login-delay-shield' );
@@ -2752,6 +2754,51 @@ function wldelay_handle_application_password_auth( $user, $username, $password )
     return $user;
 }
 add_filter( 'authenticate', 'wldelay_handle_application_password_auth', 25, 3 );
+
+/**
+ * Get username from current password reset request.
+ *
+ * @return string Normalized username or empty string.
+ */
+function wldelay_get_password_reset_username() {
+    if ( isset( $_POST['user_login'] ) ) {
+        return wldelay_normalize_username( $_POST['user_login'] );
+    }
+
+    return '';
+}
+
+/**
+ * Apply delay and telemetry to password reset submissions.
+ *
+ * @param WP_Error $errors Password reset validation errors.
+ */
+function wldelay_handle_password_reset_request( $errors ) {
+    $options = wldelay_get_options();
+    if ( empty( $options['wldelay_password_reset_enabled'] ) ) {
+        return;
+    }
+
+    if ( wldelay_is_ip_whitelisted() ) {
+        return;
+    }
+
+    $ip = wldelay_get_client_ip();
+    if ( empty( $ip ) ) {
+        return;
+    }
+
+    $username      = wldelay_get_password_reset_username();
+    $failure_count = wldelay_get_failure_count( null, $username );
+    $delay         = wldelay_get_delay_value( $failure_count );
+
+    wldelay_log_failed_attempt( $ip, $username, 'password-reset' );
+
+    if ( $delay > 0 ) {
+        sleep( $delay );
+    }
+}
+add_action( 'lostpassword_post', 'wldelay_handle_password_reset_request' );
 
 /**
  * Track a failed login attempt for counters, notifications, and lockout.
