@@ -401,7 +401,18 @@ class LDS_Settings {
      */
     public function sanitize( $input )
     {
+        $profile_id = isset( $input['wldelay_protection_profile'] )
+            ? wldelay_sanitize_protection_profile_id( $input['wldelay_protection_profile'] )
+            : '';
+
+        if ( isset( $input['wldelay_profile_action'] ) && $input['wldelay_profile_action'] === 'apply' && $profile_id !== '' ) {
+            $profiles = wldelay_get_protection_profiles();
+            $input    = array_merge( $input, $profiles[ $profile_id ]['settings'] );
+        }
+
         $new_input = array();
+        $new_input['wldelay_protection_profile'] = $profile_id;
+
         if( isset( $input['wldelay_delay'] ) ) {
             $delay = absint( $input['wldelay_delay'] );
             $delay = max( 0, min( 10, $delay ) );

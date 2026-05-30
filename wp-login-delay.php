@@ -1633,6 +1633,110 @@ function wldelay_track_version() {
 add_action( 'plugins_loaded', 'wldelay_track_version' );
 
 /**
+ * Return guided setup protection profiles.
+ *
+ * @return array<string,array{label:string,tagline:string,description:string,settings:array<string,mixed>}>
+ */
+function wldelay_get_protection_profiles() {
+    return array(
+        'conservative' => array(
+            'label'       => __( 'Conservative', 'login-delay-shield' ),
+            'tagline'     => __( 'Low friction', 'login-delay-shield' ),
+            'description' => __( 'Adds core throttling with gentler thresholds for sites that prioritize fewer support requests.', 'login-delay-shield' ),
+            'settings'    => array(
+                'wldelay_delay'                         => 1,
+                'wldelay_delay_random'                  => false,
+                'wldelay_delay_random_min'              => 1,
+                'wldelay_delay_random_max'              => 3,
+                'wldelay_progressive_enabled'           => true,
+                'wldelay_progressive_increment'         => 1,
+                'wldelay_progressive_max'               => 15,
+                'wldelay_lockout_enabled'               => true,
+                'wldelay_lockout_threshold'             => 10,
+                'wldelay_lockout_duration'              => 30,
+                'wldelay_lockout_attempt_strategy'      => 'ip',
+                'wldelay_email_enabled'                 => true,
+                'wldelay_email_threshold'               => 10,
+                'wldelay_email_cooldown'                => 10,
+                'wldelay_xmlrpc_enabled'                => true,
+                'wldelay_xmlrpc_block'                  => false,
+                'wldelay_rest_enabled'                  => true,
+                'wldelay_application_password_enabled'  => false,
+                'wldelay_password_reset_enabled'        => true,
+                'wldelay_log_retention_days'            => 30,
+            ),
+        ),
+        'balanced'     => array(
+            'label'       => __( 'Balanced', 'login-delay-shield' ),
+            'tagline'     => __( 'Recommended', 'login-delay-shield' ),
+            'description' => __( 'Turns on the main protections with thresholds that fit most WordPress sites.', 'login-delay-shield' ),
+            'settings'    => array(
+                'wldelay_delay'                         => 2,
+                'wldelay_delay_random'                  => true,
+                'wldelay_delay_random_min'              => 1,
+                'wldelay_delay_random_max'              => 4,
+                'wldelay_progressive_enabled'           => true,
+                'wldelay_progressive_increment'         => 1,
+                'wldelay_progressive_max'               => 30,
+                'wldelay_lockout_enabled'               => true,
+                'wldelay_lockout_threshold'             => 7,
+                'wldelay_lockout_duration'              => 60,
+                'wldelay_lockout_attempt_strategy'      => 'ip',
+                'wldelay_email_enabled'                 => true,
+                'wldelay_email_threshold'               => 5,
+                'wldelay_email_cooldown'                => 5,
+                'wldelay_xmlrpc_enabled'                => true,
+                'wldelay_xmlrpc_block'                  => false,
+                'wldelay_rest_enabled'                  => true,
+                'wldelay_application_password_enabled'  => true,
+                'wldelay_password_reset_enabled'        => true,
+                'wldelay_log_retention_days'            => 30,
+            ),
+        ),
+        'aggressive'   => array(
+            'label'       => __( 'Aggressive', 'login-delay-shield' ),
+            'tagline'     => __( 'Maximum protection', 'login-delay-shield' ),
+            'description' => __( 'Uses stricter lockouts and blocks XML-RPC authentication for sites under frequent attack.', 'login-delay-shield' ),
+            'settings'    => array(
+                'wldelay_delay'                         => 3,
+                'wldelay_delay_random'                  => true,
+                'wldelay_delay_random_min'              => 2,
+                'wldelay_delay_random_max'              => 6,
+                'wldelay_progressive_enabled'           => true,
+                'wldelay_progressive_increment'         => 2,
+                'wldelay_progressive_max'               => 45,
+                'wldelay_lockout_enabled'               => true,
+                'wldelay_lockout_threshold'             => 5,
+                'wldelay_lockout_duration'              => 120,
+                'wldelay_lockout_attempt_strategy'      => 'ip_username',
+                'wldelay_email_enabled'                 => true,
+                'wldelay_email_threshold'               => 3,
+                'wldelay_email_cooldown'                => 5,
+                'wldelay_xmlrpc_enabled'                => true,
+                'wldelay_xmlrpc_block'                  => true,
+                'wldelay_rest_enabled'                  => true,
+                'wldelay_application_password_enabled'  => true,
+                'wldelay_password_reset_enabled'        => true,
+                'wldelay_log_retention_days'            => 90,
+            ),
+        ),
+    );
+}
+
+/**
+ * Validate a protection profile ID.
+ *
+ * @param string $profile_id Raw profile ID.
+ * @return string Valid profile ID, or empty string.
+ */
+function wldelay_sanitize_protection_profile_id( $profile_id ) {
+    $profile_id = preg_replace( '/[^a-z0-9_-]/', '', strtolower( (string) $profile_id ) );
+    $profiles   = wldelay_get_protection_profiles();
+
+    return isset( $profiles[ $profile_id ] ) ? $profile_id : '';
+}
+
+/**
  * Compute a 0–100 security health score based on enabled features.
  *
  * Each feature carries a weight reflecting its defensive value. Returns

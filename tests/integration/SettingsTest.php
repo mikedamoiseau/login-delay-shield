@@ -127,6 +127,83 @@ class SettingsTest extends WP_UnitTestCase {
     }
 
     /**
+     * Test protection profiles expose the guided setup choices.
+     */
+    public function test_protection_profiles_are_available() {
+        $profiles = wldelay_get_protection_profiles();
+
+        $this->assertArrayHasKey( 'conservative', $profiles );
+        $this->assertArrayHasKey( 'balanced', $profiles );
+        $this->assertArrayHasKey( 'aggressive', $profiles );
+        $this->assertSame( 'Balanced', $profiles['balanced']['label'] );
+        $this->assertTrue( $profiles['balanced']['settings']['wldelay_lockout_enabled'] );
+        $this->assertTrue( $profiles['balanced']['settings']['wldelay_progressive_enabled'] );
+        $this->assertTrue( $profiles['balanced']['settings']['wldelay_rest_enabled'] );
+        $this->assertTrue( $profiles['balanced']['settings']['wldelay_password_reset_enabled'] );
+    }
+
+    /**
+     * Test applying a protection profile rewrites the matching settings.
+     */
+    public function test_balanced_protection_profile_applies_recommended_settings() {
+        $result = $this->settings->sanitize(
+            array(
+                'wldelay_profile_action'     => 'apply',
+                'wldelay_protection_profile' => 'balanced',
+            )
+        );
+
+        $this->assertSame( 'balanced', $result['wldelay_protection_profile'] );
+        $this->assertSame( 2, $result['wldelay_delay'] );
+        $this->assertTrue( $result['wldelay_delay_random'] );
+        $this->assertTrue( $result['wldelay_progressive_enabled'] );
+        $this->assertTrue( $result['wldelay_lockout_enabled'] );
+        $this->assertSame( 7, $result['wldelay_lockout_threshold'] );
+        $this->assertSame( 60, $result['wldelay_lockout_duration'] );
+        $this->assertTrue( $result['wldelay_email_enabled'] );
+        $this->assertTrue( $result['wldelay_xmlrpc_enabled'] );
+        $this->assertFalse( $result['wldelay_xmlrpc_block'] );
+        $this->assertTrue( $result['wldelay_rest_enabled'] );
+        $this->assertTrue( $result['wldelay_application_password_enabled'] );
+        $this->assertTrue( $result['wldelay_password_reset_enabled'] );
+    }
+
+    /**
+     * Test aggressive profile makes the high-friction XML-RPC choice explicit.
+     */
+    public function test_aggressive_protection_profile_blocks_xmlrpc_authentication() {
+        $result = $this->settings->sanitize(
+            array(
+                'wldelay_profile_action'     => 'apply',
+                'wldelay_protection_profile' => 'aggressive',
+            )
+        );
+
+        $this->assertSame( 'aggressive', $result['wldelay_protection_profile'] );
+        $this->assertTrue( $result['wldelay_xmlrpc_enabled'] );
+        $this->assertTrue( $result['wldelay_xmlrpc_block'] );
+        $this->assertSame( 5, $result['wldelay_lockout_threshold'] );
+    }
+
+    /**
+     * Test invalid profile input cannot apply unexpected settings.
+     */
+    public function test_invalid_protection_profile_does_not_apply_profile_settings() {
+        $result = $this->settings->sanitize(
+            array(
+                'wldelay_profile_action'     => 'apply',
+                'wldelay_protection_profile' => 'unknown',
+                'wldelay_delay'              => 4,
+            )
+        );
+
+        $this->assertSame( '', $result['wldelay_protection_profile'] );
+        $this->assertSame( 4, $result['wldelay_delay'] );
+        $this->assertFalse( $result['wldelay_lockout_enabled'] );
+        $this->assertFalse( $result['wldelay_progressive_enabled'] );
+    }
+
+    /**
      * Test that delay value is bounded.
      */
     public function test_delay_value_bounded() {
