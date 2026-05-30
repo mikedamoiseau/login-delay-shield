@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.3.1
-Stable tag: 2.3.1
+Version: 2.3.2
+Stable tag: 2.3.2
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -161,6 +161,21 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.3.2 =
+Password reset protection.
+
+**New Features:**
+* Added optional password reset protection that applies delay, lockout, whitelist bypass, and telemetry logging to password reset submissions.
+* Added password reset attempts as a distinct telemetry source (`password-reset`).
+* Added password reset protection to the settings page, feature summary, and Security Health Score.
+
+**Security:**
+* Password reset throttling uses isolated counters and lockouts so reset-form abuse cannot lock a user out of normal login.
+* Password reset attempts do not trigger failed-login email alerts.
+
+**Improvements:**
+* Admin recovery tools now clear password-reset-specific throttling keys.
 
 = 2.3.1 =
 Patch release with CI fixes and new telemetry feature.
