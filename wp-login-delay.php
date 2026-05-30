@@ -2789,13 +2789,35 @@ function wldelay_handle_password_reset_request( $errors ) {
     }
 
     $username      = wldelay_get_password_reset_username();
+    if ( ! empty( $options['wldelay_lockout_enabled'] ) && wldelay_is_ip_locked( null, $username ) ) {
+        if ( is_wp_error( $errors ) ) {
+            $errors->add(
+                'wldelay_password_reset_locked',
+                wldelay_get_lockout_error_message( null, $username )
+            );
+        }
+        return;
+    }
+
     $failure_count = wldelay_get_failure_count( null, $username );
     $delay         = wldelay_get_delay_value( $failure_count );
 
     wldelay_log_failed_attempt( $ip, $username, 'password-reset' );
+    $failed_attempts = wldelay_track_failed_attempt( $username, 'password-reset' );
 
     if ( $delay > 0 ) {
         sleep( $delay );
+    }
+
+    $locked_after_attempt = ! empty( $options['wldelay_lockout_enabled'] )
+        && $failed_attempts > 0
+        && wldelay_is_ip_locked( null, $username );
+
+    if ( $locked_after_attempt && is_wp_error( $errors ) ) {
+        $errors->add(
+            'wldelay_password_reset_locked',
+            wldelay_get_lockout_error_message( null, $username )
+        );
     }
 }
 add_action( 'lostpassword_post', 'wldelay_handle_password_reset_request' );
