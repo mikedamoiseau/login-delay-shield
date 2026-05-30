@@ -2800,7 +2800,7 @@ add_filter( 'authenticate', 'wldelay_handle_application_password_auth', 25, 3 );
  */
 function wldelay_get_password_reset_username() {
     if ( isset( $_POST['user_login'] ) ) {
-        return wldelay_normalize_username( wp_unslash( $_POST['user_login'] ) );
+        return wldelay_normalize_username( $_POST['user_login'] );
     }
 
     return '';
