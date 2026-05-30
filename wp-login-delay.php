@@ -252,8 +252,10 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
 
     $deleted = 0;
 
-    $lockout_ip_key = wldelay_get_lockout_transient_key( $ip, '' );
-    $fails_ip_key   = wldelay_get_failure_transient_key( $ip, '' );
+    $lockout_ip_key       = wldelay_get_lockout_transient_key( $ip, '' );
+    $fails_ip_key         = wldelay_get_failure_transient_key( $ip, '' );
+    $reset_lockout_ip_key = wldelay_get_password_reset_lockout_transient_key( $ip, '' );
+    $reset_fails_ip_key   = wldelay_get_password_reset_failure_transient_key( $ip, '' );
 
     if ( delete_transient( $lockout_ip_key ) ) {
         $deleted++;
@@ -264,6 +266,16 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
         $deleted++;
     }
     wldelay_unregister_transient_key( $fails_ip_key );
+
+    if ( delete_transient( $reset_lockout_ip_key ) ) {
+        $deleted++;
+    }
+    wldelay_unregister_transient_key( $reset_lockout_ip_key );
+
+    if ( delete_transient( $reset_fails_ip_key ) ) {
+        $deleted++;
+    }
+    wldelay_unregister_transient_key( $reset_fails_ip_key );
 
     if ( ! empty( $username ) ) {
         $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
@@ -279,6 +291,18 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
             $deleted++;
         }
         wldelay_unregister_transient_key( $fails_pair_key );
+
+        $reset_lockout_pair_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $pair_options );
+        if ( $reset_lockout_pair_key !== $reset_lockout_ip_key && delete_transient( $reset_lockout_pair_key ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_key( $reset_lockout_pair_key );
+
+        $reset_fails_pair_key = wldelay_get_password_reset_failure_transient_key( $ip, $username, $pair_options );
+        if ( $reset_fails_pair_key !== $reset_fails_ip_key && delete_transient( $reset_fails_pair_key ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_key( $reset_fails_pair_key );
     }
 
     return $deleted;
@@ -297,7 +321,12 @@ function wldelay_flush_lockout_transients() {
     $registry = get_option( wldelay_get_transient_registry_option_name(), array() );
     if ( is_array( $registry ) ) {
         foreach ( $registry as $transient_name ) {
-            if ( strpos( $transient_name, 'wldelay_lockout_' ) !== 0 && strpos( $transient_name, 'wldelay_fails_' ) !== 0 ) {
+            if (
+                strpos( $transient_name, 'wldelay_lockout_' ) !== 0
+                && strpos( $transient_name, 'wldelay_fails_' ) !== 0
+                && strpos( $transient_name, 'wldelay_reset_lockout_' ) !== 0
+                && strpos( $transient_name, 'wldelay_reset_fails_' ) !== 0
+            ) {
                 continue;
             }
 
@@ -308,14 +337,18 @@ function wldelay_flush_lockout_transients() {
     }
 
     // Fallback cleanup for DB-backed transients not present in the registry.
-    $option_name_like_lockouts = $wpdb->esc_like( '_transient_wldelay_lockout_' ) . '%';
-    $option_name_like_fails    = $wpdb->esc_like( '_transient_wldelay_fails_' ) . '%';
+    $option_name_like_lockouts       = $wpdb->esc_like( '_transient_wldelay_lockout_' ) . '%';
+    $option_name_like_fails          = $wpdb->esc_like( '_transient_wldelay_fails_' ) . '%';
+    $option_name_like_reset_lockouts = $wpdb->esc_like( '_transient_wldelay_reset_lockout_' ) . '%';
+    $option_name_like_reset_fails    = $wpdb->esc_like( '_transient_wldelay_reset_fails_' ) . '%';
 
     $option_names = $wpdb->get_col(
         $wpdb->prepare(
-            "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+            "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
             $option_name_like_lockouts,
-            $option_name_like_fails
+            $option_name_like_fails,
+            $option_name_like_reset_lockouts,
+            $option_name_like_reset_fails
         )
     );
 
@@ -2767,10 +2800,184 @@ add_filter( 'authenticate', 'wldelay_handle_application_password_auth', 25, 3 );
  */
 function wldelay_get_password_reset_username() {
     if ( isset( $_POST['user_login'] ) ) {
-        return wldelay_normalize_username( $_POST['user_login'] );
+        return wldelay_normalize_username( wp_unslash( $_POST['user_login'] ) );
     }
 
     return '';
+}
+
+/**
+ * Get transient key used for password reset failed-attempt counter.
+ *
+ * @param string $ip IP address.
+ * @param string $username Username attempted.
+ * @param array|null $options Optional options array.
+ * @return string Transient key.
+ */
+function wldelay_get_password_reset_failure_transient_key( $ip, $username = '', $options = null ) {
+    return 'wldelay_reset_fails_' . md5( wldelay_get_attempt_identifier( $ip, $username, $options ) );
+}
+
+/**
+ * Get transient key used for password reset lockouts.
+ *
+ * @param string $ip IP address.
+ * @param string $username Username attempted.
+ * @param array|null $options Optional options array.
+ * @return string Transient key.
+ */
+function wldelay_get_password_reset_lockout_transient_key( $ip, $username = '', $options = null ) {
+    return 'wldelay_reset_lockout_' . md5( wldelay_get_attempt_identifier( $ip, $username, $options ) );
+}
+
+/**
+ * Get the current password reset failure count.
+ *
+ * @param string|null $ip Optional IP. Defaults to current client IP.
+ * @param string $username Optional username for IP+username strategy.
+ * @return int Number of failed password reset attempts.
+ */
+function wldelay_get_password_reset_failure_count( $ip = null, $username = '' ) {
+    if ( $ip === null ) {
+        $ip = wldelay_get_client_ip();
+    }
+    if ( empty( $ip ) ) {
+        return 0;
+    }
+
+    $transient_key = wldelay_get_password_reset_failure_transient_key( $ip, $username );
+    $failed_attempts = get_transient( $transient_key );
+
+    return ( false === $failed_attempts ) ? 0 : (int) $failed_attempts;
+}
+
+/**
+ * Check if the current IP/username is locked for password reset submissions.
+ *
+ * @param string|null $ip Optional IP. Defaults to current client IP.
+ * @param string $username Optional username for IP+username strategy.
+ * @return bool True if locked.
+ */
+function wldelay_is_password_reset_locked( $ip = null, $username = '' ) {
+    if ( $ip === null ) {
+        $ip = wldelay_get_client_ip();
+    }
+    if ( empty( $ip ) ) {
+        return false;
+    }
+
+    $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
+
+    return get_transient( $transient_key ) !== false;
+}
+
+/**
+ * Lock a specific IP/username combination for password reset submissions.
+ *
+ * @param string $ip IP address.
+ * @param string $username Optional username for IP+username strategy.
+ */
+function wldelay_lock_password_reset( $ip, $username = '' ) {
+    $options = wldelay_get_options();
+    $lockout_duration = wldelay_get_lockout_duration_seconds( $options );
+    $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $options );
+    set_transient( $transient_key, time(), $lockout_duration );
+    wldelay_register_transient_key( $transient_key );
+    wldelay_write_fail2ban_log( 'lockout', $ip, $username, 'password-reset' );
+}
+
+/**
+ * Get remaining password reset lockout time in seconds.
+ *
+ * @param string|null $ip Optional IP. Defaults to current client IP.
+ * @param string $username Optional username.
+ * @return int Remaining seconds. 0 if not locked.
+ */
+function wldelay_get_password_reset_lockout_remaining_seconds( $ip = null, $username = '' ) {
+    if ( $ip === null ) {
+        $ip = wldelay_get_client_ip();
+    }
+    if ( empty( $ip ) ) {
+        return 0;
+    }
+
+    $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
+    $locked_at = get_transient( $transient_key );
+    if ( false === $locked_at ) {
+        return 0;
+    }
+
+    $lockout_duration = wldelay_get_lockout_duration_seconds();
+    if ( is_numeric( $locked_at ) ) {
+        $remaining = $lockout_duration - ( time() - (int) $locked_at );
+        return max( 1, (int) $remaining );
+    }
+
+    return $lockout_duration;
+}
+
+/**
+ * Build password reset lockout error message.
+ *
+ * @param string|null $ip Optional IP.
+ * @param string $username Optional username.
+ * @return string Error message.
+ */
+function wldelay_get_password_reset_lockout_error_message( $ip = null, $username = '' ) {
+    $remaining = wldelay_get_password_reset_lockout_remaining_seconds( $ip, $username );
+    if ( $remaining > 0 ) {
+        $time_text = human_time_diff( time(), time() + $remaining );
+        return sprintf(
+            /* translators: %s: remaining lockout duration, e.g. "2 minutes" */
+            __( 'Too many password reset attempts. Please try again in %s.', 'login-delay-shield' ),
+            $time_text
+        );
+    }
+
+    return __( 'Too many password reset attempts. Please try again later.', 'login-delay-shield' );
+}
+
+/**
+ * Track a password reset attempt for reset-specific counters and lockout.
+ *
+ * @param string $username Username attempted.
+ * @return int Updated failure count for the current reset tracking key. 0 if tracking is skipped.
+ */
+function wldelay_track_password_reset_attempt( $username ) {
+    $ip = wldelay_get_client_ip();
+    if ( empty( $ip ) ) {
+        return 0;
+    }
+
+    $options = wldelay_get_options();
+    $lockout_enabled = ! empty( $options['wldelay_lockout_enabled'] );
+    $progressive_enabled = ! empty( $options['wldelay_progressive_enabled'] );
+
+    if ( ! $lockout_enabled && ! $progressive_enabled ) {
+        return 0;
+    }
+
+    $transient_key = wldelay_get_password_reset_failure_transient_key( $ip, $username, $options );
+    $failed_attempts = get_transient( $transient_key );
+    if ( false === $failed_attempts ) {
+        $failed_attempts = 0;
+    }
+
+    $failed_attempts++;
+    set_transient( $transient_key, $failed_attempts, HOUR_IN_SECONDS );
+    wldelay_register_transient_key( $transient_key );
+
+    if ( $lockout_enabled ) {
+        $lockout_threshold = isset( $options['wldelay_lockout_threshold'] )
+            ? (int) $options['wldelay_lockout_threshold']
+            : LDS_Settings::_DEFAULT_LOCKOUT_THRESHOLD;
+
+        if ( $failed_attempts >= $lockout_threshold ) {
+            wldelay_lock_password_reset( $ip, $username );
+        }
+    }
+
+    return $failed_attempts;
 }
 
 /**
@@ -2794,21 +3001,21 @@ function wldelay_handle_password_reset_request( $errors ) {
     }
 
     $username      = wldelay_get_password_reset_username();
-    if ( ! empty( $options['wldelay_lockout_enabled'] ) && wldelay_is_ip_locked( null, $username ) ) {
+    if ( ! empty( $options['wldelay_lockout_enabled'] ) && wldelay_is_password_reset_locked( null, $username ) ) {
         if ( is_wp_error( $errors ) ) {
             $errors->add(
                 'wldelay_password_reset_locked',
-                wldelay_get_lockout_error_message( null, $username )
+                wldelay_get_password_reset_lockout_error_message( null, $username )
             );
         }
         return;
     }
 
-    $failure_count = wldelay_get_failure_count( null, $username );
+    $failure_count = wldelay_get_password_reset_failure_count( null, $username );
     $delay         = wldelay_get_delay_value( $failure_count );
 
+    $failed_attempts = wldelay_track_password_reset_attempt( $username );
     wldelay_log_failed_attempt( $ip, $username, 'password-reset' );
-    $failed_attempts = wldelay_track_failed_attempt( $username, 'password-reset' );
 
     if ( $delay > 0 ) {
         sleep( $delay );
@@ -2816,12 +3023,12 @@ function wldelay_handle_password_reset_request( $errors ) {
 
     $locked_after_attempt = ! empty( $options['wldelay_lockout_enabled'] )
         && $failed_attempts > 0
-        && wldelay_is_ip_locked( null, $username );
+        && wldelay_is_password_reset_locked( null, $username );
 
     if ( $locked_after_attempt && is_wp_error( $errors ) ) {
         $errors->add(
             'wldelay_password_reset_locked',
-            wldelay_get_lockout_error_message( null, $username )
+            wldelay_get_password_reset_lockout_error_message( null, $username )
         );
     }
 }

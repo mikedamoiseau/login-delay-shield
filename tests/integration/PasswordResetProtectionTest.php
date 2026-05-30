@@ -4,8 +4,16 @@
  */
 
 class PasswordResetProtectionTest extends WP_UnitTestCase {
+    /**
+     * @var array<int,array>
+     */
+    private $sent_emails = array();
+
     public function setUp(): void {
         parent::setUp();
+
+        $this->sent_emails = array();
+        add_filter( 'wp_mail', array( $this, 'capture_email' ) );
 
         $_SERVER['REMOTE_ADDR'] = '192.0.2.44';
         $_POST['user_login']    = 'AdminUser';
@@ -19,12 +27,18 @@ class PasswordResetProtectionTest extends WP_UnitTestCase {
     }
 
     public function tearDown(): void {
+        remove_filter( 'wp_mail', array( $this, 'capture_email' ) );
         unset( $_SERVER['REMOTE_ADDR'], $_POST['user_login'] );
 
         delete_option( WLDELAY_OPTION_NAME );
         wldelay_clear_options_cache();
 
         parent::tearDown();
+    }
+
+    public function capture_email( $args ) {
+        $this->sent_emails[] = $args;
+        return $args;
     }
 
     public function test_password_reset_handler_is_registered() {
@@ -89,7 +103,8 @@ class PasswordResetProtectionTest extends WP_UnitTestCase {
         $this->assertFalse( $first_errors->has_errors(), 'First reset attempt should not be blocked before threshold.' );
         $this->assertTrue( $second_errors->has_errors(), 'Threshold reset attempt should be blocked.' );
         $this->assertContains( 'wldelay_password_reset_locked', $second_errors->get_error_codes() );
-        $this->assertTrue( wldelay_is_ip_locked( '192.0.2.44', 'adminuser' ) );
+        $this->assertTrue( wldelay_is_password_reset_locked( '192.0.2.44', 'adminuser' ) );
+        $this->assertFalse( wldelay_is_ip_locked( '192.0.2.44', 'adminuser' ), 'Password reset lockouts should not block normal login.' );
 
         $message = implode( ' ', $second_errors->get_error_messages() );
         $this->assertStringContainsString( 'try again', strtolower( $message ) );
@@ -110,7 +125,7 @@ class PasswordResetProtectionTest extends WP_UnitTestCase {
             )
         );
         wldelay_clear_options_cache();
-        wldelay_lock_ip( '192.0.2.44', 'adminuser', 'password-reset' );
+        wldelay_lock_password_reset( '192.0.2.44', 'adminuser' );
 
         $errors = new WP_Error();
         wldelay_handle_password_reset_request( $errors );
@@ -147,5 +162,53 @@ class PasswordResetProtectionTest extends WP_UnitTestCase {
         $this->assertFalse( $errors->has_errors() );
         $this->assertLessThan( 0.5, $elapsed, 'Whitelisted reset submissions should not be delayed.' );
         $this->assertSame( 0, $count );
+    }
+
+    public function test_password_reset_attempts_do_not_send_failed_login_email_alerts() {
+        update_option(
+            WLDELAY_OPTION_NAME,
+            array(
+                'wldelay_delay'                  => 0,
+                'wldelay_delay_random'           => false,
+                'wldelay_password_reset_enabled' => true,
+                'wldelay_email_enabled'          => true,
+                'wldelay_email_threshold'        => 2,
+            )
+        );
+        wldelay_clear_options_cache();
+
+        wldelay_handle_password_reset_request( new WP_Error() );
+        wldelay_handle_password_reset_request( new WP_Error() );
+
+        $this->assertCount( 0, $this->sent_emails );
+    }
+
+    public function test_password_reset_progressive_delay_uses_separate_reset_counter() {
+        update_option(
+            WLDELAY_OPTION_NAME,
+            array(
+                'wldelay_delay'                  => 0,
+                'wldelay_delay_random'           => false,
+                'wldelay_password_reset_enabled' => true,
+                'wldelay_progressive_enabled'    => true,
+                'wldelay_progressive_increment'  => 1,
+                'wldelay_progressive_max'        => 5,
+            )
+        );
+        wldelay_clear_options_cache();
+
+        wldelay_track_failed_attempt( 'adminuser' );
+
+        $start = microtime( true );
+        wldelay_handle_password_reset_request( new WP_Error() );
+        $elapsed = microtime( true ) - $start;
+
+        $this->assertLessThan( 0.5, $elapsed, 'Login failures should not increase the first password reset delay.' );
+
+        $start = microtime( true );
+        wldelay_handle_password_reset_request( new WP_Error() );
+        $elapsed = microtime( true ) - $start;
+
+        $this->assertGreaterThanOrEqual( 0.9, $elapsed, 'Password reset attempts should still increase their own progressive delay.' );
     }
 }
