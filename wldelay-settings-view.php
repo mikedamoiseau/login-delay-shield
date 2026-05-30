@@ -215,6 +215,15 @@ class LDS_Settings_View {
                     <h2 id="wldelay-setup-wizard-title"><?php esc_html_e( 'Security Setup Wizard', 'login-delay-shield' ); ?></h2>
                     <p class="description"><?php esc_html_e( 'Choose a protection profile to quickly configure the main security controls. You can still adjust every setting below.', 'login-delay-shield' ); ?></p>
                 </div>
+                <span class="wldelay-current-profile" aria-live="polite">
+                    <?php
+                    printf(
+                        /* translators: %s: selected protection profile label */
+                        esc_html__( 'Current profile: %s', 'login-delay-shield' ),
+                        esc_html( $profiles[ $selected ]['label'] )
+                    );
+                    ?>
+                </span>
             </div>
 
             <fieldset class="wldelay-profile-fieldset" aria-describedby="wldelay-profile-help">

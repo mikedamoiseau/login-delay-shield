@@ -243,6 +243,24 @@ class SettingsTest extends WP_UnitTestCase {
     }
 
     /**
+     * Test setup wizard displays the current selected profile.
+     */
+    public function test_setup_wizard_displays_current_profile_badge() {
+        update_option(
+            'wldelay_options',
+            array(
+                'wldelay_protection_profile' => 'aggressive',
+            )
+        );
+
+        ob_start();
+        $this->settings->create_admin_page();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString( 'Current profile: Aggressive', $output );
+    }
+
+    /**
      * Test that delay value is bounded.
      */
     public function test_delay_value_bounded() {
