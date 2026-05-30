@@ -25,6 +25,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 - **fail2ban logging (optional)** — Write fail2ban-compatible failed-login and lockout lines to a safe log file
 - **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 - **REST/API auth protection (optional)** — Apply delay/lockout checks to REST and application-password authentication paths
+- **Password reset protection** — Apply delays, lockouts, and logging to password reset submissions without revealing account existence
 - **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 - **Recovery tools** — Admin unlock action and WP-CLI commands to flush lockouts
 - **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support
@@ -62,6 +63,10 @@ Enable the IP whitelist feature and add your IP address (or a range using CIDR n
 ### Should I block XML-RPC?
 
 If you don't use the WordPress mobile app or remote publishing tools like Windows Live Writer, blocking XML-RPC authentication removes a common attack vector. You can also choose to just apply delays without blocking it entirely.
+
+### Should I protect password reset requests?
+
+Yes, for most sites. Password reset protection applies the same delay and lockout behavior used for login attempts, logs the source as `password-reset`, and keeps messages generic so the form does not reveal whether a username or email exists.
 
 ### How do I use fail2ban logging?
 

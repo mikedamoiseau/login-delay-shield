@@ -73,6 +73,7 @@ class SettingsTest extends WP_UnitTestCase {
             'wldelay_email_address' => 'test@example.com',
             'wldelay_rest_enabled' => true,
             'wldelay_application_password_enabled' => true,
+            'wldelay_password_reset_enabled' => true,
             'wldelay_fail2ban_enabled' => true,
             'wldelay_fail2ban_log_path' => 'security/fail2ban.log',
             'wldelay_fail2ban_include_lockouts' => true,
@@ -89,6 +90,7 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertEquals( 'test@example.com', $result['wldelay_email_address'] );
         $this->assertTrue( $result['wldelay_rest_enabled'] );
         $this->assertTrue( $result['wldelay_application_password_enabled'] );
+        $this->assertTrue( $result['wldelay_password_reset_enabled'] );
         $this->assertTrue( $result['wldelay_fail2ban_enabled'] );
         $this->assertMatchesRegularExpression(
             '#/login-delay-shield-fail2ban-[A-Za-z0-9]{16}/security/fail2ban\.log$#',
@@ -113,6 +115,15 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertEquals( 1, LDS_Settings::_DEFAULT_RANDOM_MIN );
         $this->assertEquals( 5, LDS_Settings::_DEFAULT_RANDOM_MAX );
         $this->assertEquals( 5, LDS_Settings::_DEFAULT_EMAIL_THRESHOLD );
+    }
+
+    /**
+     * Test security health score remains a 0-100 scale.
+     */
+    public function test_security_health_score_max_is_100() {
+        $health = wldelay_get_security_score( array() );
+
+        $this->assertSame( 100, $health['max'] );
     }
 
     /**
@@ -233,6 +244,7 @@ class SettingsTest extends WP_UnitTestCase {
         // Check auth protection section fields
         $this->assertArrayHasKey( 'wldelay_rest_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
         $this->assertArrayHasKey( 'wldelay_application_password_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
+        $this->assertArrayHasKey( 'wldelay_password_reset_enabled', $wp_settings_fields[ $page ]['wldelay_xmlrpc_section_id'] );
 
         // Check fail2ban logging fields
         $this->assertArrayHasKey( 'wldelay_fail2ban_enabled', $wp_settings_fields[ $page ]['wldelay_log_section_id'] );

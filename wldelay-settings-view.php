@@ -193,6 +193,7 @@ class LDS_Settings_View {
             'wldelay_xmlrpc_enabled' => __( 'XML-RPC Protection', 'login-delay-shield' ),
             'wldelay_rest_enabled' => __( 'REST API Protection', 'login-delay-shield' ),
             'wldelay_application_password_enabled' => __( 'Application Password Protection', 'login-delay-shield' ),
+            'wldelay_password_reset_enabled' => __( 'Password Reset Protection', 'login-delay-shield' ),
             'wldelay_custom_login_enabled' => __( 'Custom Login URL', 'login-delay-shield' ),
             'wldelay_fail2ban_enabled' => __( 'fail2ban Logging', 'login-delay-shield' ),
         );
@@ -477,7 +478,7 @@ class LDS_Settings_View {
      * @return array<int,string>
      */
     private function get_login_log_source_options( $summary, $filters ) {
-        $sources = array( 'wp-login', 'xmlrpc', 'rest', 'application-password' );
+        $sources = array( 'wp-login', 'xmlrpc', 'rest', 'application-password', 'password-reset' );
 
         if ( ! empty( $summary['source_counts'] ) && is_array( $summary['source_counts'] ) ) {
             foreach ( $summary['source_counts'] as $source_count ) {
@@ -1138,5 +1139,17 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Apply delay and lockout checks to application-password authentication attempts.', 'login-delay-shield' ) );
         echo '<p id="wldelay_application_password_enabled_desc" class="description">' . esc_html__( 'Protect failed application-password attempts and log them separately.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Password reset protection callback.
+     */
+    public function password_reset_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_password_reset_enabled" name="wldelay_options[wldelay_password_reset_enabled]" value="1" %s aria-describedby="wldelay_password_reset_enabled_desc" />',
+            ! empty( $this->options['wldelay_password_reset_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'Apply delay, lockout checks, and logging to password reset submissions without revealing whether an account exists.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_password_reset_enabled_desc" class="description">' . esc_html__( 'Protect password reset requests with the same delay and lockout behavior.', 'login-delay-shield' ) . '</p>';
     }
 }

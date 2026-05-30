@@ -8,7 +8,7 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 /*
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
-Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC protection, custom login URL, and email alerts.
+Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC/password-reset protection, custom login URL, and email alerts.
 Version: 2.3.1
 Author: Mike
 Author URI: https://damoiseau.me
@@ -1614,11 +1614,12 @@ function wldelay_get_security_score( $options = null ) {
         'wldelay_lockout_enabled'              => array( 'label' => __( 'IP Lockout', 'login-delay-shield' ), 'points' => 20 ),
         'wldelay_progressive_enabled'          => array( 'label' => __( 'Progressive Delay', 'login-delay-shield' ), 'points' => 15 ),
         'wldelay_custom_login_enabled'         => array( 'label' => __( 'Custom Login URL', 'login-delay-shield' ), 'points' => 15 ),
-        'wldelay_xmlrpc_enabled'               => array( 'label' => __( 'XML-RPC Protection', 'login-delay-shield' ), 'points' => 15 ),
+        'wldelay_xmlrpc_enabled'               => array( 'label' => __( 'XML-RPC Protection', 'login-delay-shield' ), 'points' => 10 ),
         'wldelay_email_enabled'                => array( 'label' => __( 'Email Alerts', 'login-delay-shield' ), 'points' => 10 ),
         'wldelay_whitelist_enabled'            => array( 'label' => __( 'IP Whitelist', 'login-delay-shield' ), 'points' => 5 ),
         'wldelay_rest_enabled'                 => array( 'label' => __( 'REST API Protection', 'login-delay-shield' ), 'points' => 5 ),
         'wldelay_application_password_enabled' => array( 'label' => __( 'Application Password Protection', 'login-delay-shield' ), 'points' => 5 ),
+        'wldelay_password_reset_enabled'       => array( 'label' => __( 'Password Reset Protection', 'login-delay-shield' ), 'points' => 5 ),
         'wldelay_fail2ban_enabled'             => array( 'label' => __( 'fail2ban Logging', 'login-delay-shield' ), 'points' => 10 ),
     );
 
@@ -1672,6 +1673,10 @@ function wldelay_get_options() {
 
         if ( ! array_key_exists( 'wldelay_application_password_enabled', $options ) ) {
             $options['wldelay_application_password_enabled'] = false;
+        }
+
+        if ( ! array_key_exists( 'wldelay_password_reset_enabled', $options ) ) {
+            $options['wldelay_password_reset_enabled'] = false;
         }
 
         if ( ! array_key_exists( 'wldelay_fail2ban_enabled', $options ) ) {
