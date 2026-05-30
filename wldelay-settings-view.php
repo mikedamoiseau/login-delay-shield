@@ -75,6 +75,8 @@ class LDS_Settings_View {
             <form method="post" action="options.php">
                 <?php settings_fields( 'wldelay_option_group' ); ?>
 
+                <?php $this->render_setup_wizard(); ?>
+
                 <div class="wldelay-card">
                     <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-delay-body">
                         <span class="dashicons dashicons-clock" aria-hidden="true"></span>
@@ -178,6 +180,85 @@ class LDS_Settings_View {
                 <?php submit_button(); ?>
             </form>
         </div>
+        <?php
+    }
+
+    /**
+     * Render the guided setup wizard with protection profiles.
+     */
+    private function render_setup_wizard() {
+        $profiles        = wldelay_get_protection_profiles();
+        $selected        = isset( $this->options['wldelay_protection_profile'] ) ? wldelay_sanitize_protection_profile_id( $this->options['wldelay_protection_profile'] ) : '';
+        $selected        = $selected !== '' ? $selected : 'balanced';
+        $profile_effects = array(
+            'conservative' => array(
+                __( 'Lockout after 10 failed attempts', 'login-delay-shield' ),
+                __( 'Progressive delay up to 15 seconds', 'login-delay-shield' ),
+                __( 'Password reset protection', 'login-delay-shield' ),
+            ),
+            'balanced'     => array(
+                __( 'Lockout after 7 failed attempts', 'login-delay-shield' ),
+                __( 'Protects REST API and application passwords', 'login-delay-shield' ),
+                __( 'Password reset protection', 'login-delay-shield' ),
+            ),
+            'aggressive'   => array(
+                __( 'Lockout after 5 failed attempts', 'login-delay-shield' ),
+                __( 'Blocks XML-RPC authentication', 'login-delay-shield' ),
+                __( 'Longer progressive delay window', 'login-delay-shield' ),
+            ),
+        );
+        ?>
+        <section class="wldelay-setup-wizard" aria-labelledby="wldelay-setup-wizard-title">
+            <div class="wldelay-setup-wizard-header">
+                <span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
+                <div>
+                    <h2 id="wldelay-setup-wizard-title"><?php esc_html_e( 'Security Setup Wizard', 'login-delay-shield' ); ?></h2>
+                    <p class="description"><?php esc_html_e( 'Choose a protection profile to quickly configure the main security controls. You can still adjust every setting below.', 'login-delay-shield' ); ?></p>
+                </div>
+            </div>
+
+            <fieldset class="wldelay-profile-fieldset" aria-describedby="wldelay-profile-help">
+                <legend><?php esc_html_e( 'Protection Profiles', 'login-delay-shield' ); ?></legend>
+                <p id="wldelay-profile-help" class="description"><?php esc_html_e( 'Profiles update delay, progressive delay, lockout, email alert, and authentication endpoint settings.', 'login-delay-shield' ); ?></p>
+
+                <div class="wldelay-profile-grid">
+                    <?php foreach ( $profiles as $profile_id => $profile ) : ?>
+                        <?php $input_id = 'wldelay_profile_' . $profile_id; ?>
+                        <label class="wldelay-profile-option" for="<?php echo esc_attr( $input_id ); ?>">
+                            <input
+                                type="radio"
+                                id="<?php echo esc_attr( $input_id ); ?>"
+                                name="wldelay_options[wldelay_protection_profile]"
+                                value="<?php echo esc_attr( $profile_id ); ?>"
+                                <?php checked( $selected, $profile_id ); ?>
+                            />
+                            <span class="wldelay-profile-content">
+                                <span class="wldelay-profile-title">
+                                    <?php echo esc_html( $profile['label'] ); ?>
+                                    <span class="wldelay-profile-tagline"><?php echo esc_html( $profile['tagline'] ); ?></span>
+                                </span>
+                                <span class="wldelay-profile-description"><?php echo esc_html( $profile['description'] ); ?></span>
+                                <span class="wldelay-profile-effects">
+                                    <?php foreach ( $profile_effects[ $profile_id ] as $effect ) : ?>
+                                        <span>
+                                            <span class="dashicons dashicons-yes-alt" aria-hidden="true"></span>
+                                            <?php echo esc_html( $effect ); ?>
+                                        </span>
+                                    <?php endforeach; ?>
+                                </span>
+                            </span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </fieldset>
+
+            <p class="wldelay-profile-actions">
+                <button type="submit" class="button button-primary" name="wldelay_options[wldelay_profile_action]" value="apply">
+                    <?php esc_html_e( 'Apply selected profile', 'login-delay-shield' ); ?>
+                </button>
+                <span class="description"><?php esc_html_e( 'Applying a profile overwrites matching settings below, then saves the page.', 'login-delay-shield' ); ?></span>
+            </p>
+        </section>
         <?php
     }
 

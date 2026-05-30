@@ -204,6 +204,45 @@ class SettingsTest extends WP_UnitTestCase {
     }
 
     /**
+     * Test setup wizard renders visible protection profile controls.
+     */
+    public function test_setup_wizard_renders_protection_profiles() {
+        update_option(
+            'wldelay_options',
+            array(
+                'wldelay_protection_profile' => 'balanced',
+            )
+        );
+
+        ob_start();
+        $this->settings->create_admin_page();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString( 'Security Setup Wizard', $output );
+        $this->assertStringContainsString( 'Protection Profiles', $output );
+        $this->assertStringContainsString( 'name="wldelay_options[wldelay_protection_profile]"', $output );
+        $this->assertStringContainsString( 'value="conservative"', $output );
+        $this->assertStringContainsString( 'value="balanced"', $output );
+        $this->assertStringContainsString( 'value="aggressive"', $output );
+        $this->assertStringContainsString( 'checked="checked"', $output );
+        $this->assertStringContainsString( 'name="wldelay_options[wldelay_profile_action]"', $output );
+        $this->assertStringContainsString( 'Apply selected profile', $output );
+    }
+
+    /**
+     * Test setup wizard summarizes profile effects for users.
+     */
+    public function test_setup_wizard_displays_profile_effects() {
+        ob_start();
+        $this->settings->create_admin_page();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString( 'Lockout after 7 failed attempts', $output );
+        $this->assertStringContainsString( 'Blocks XML-RPC authentication', $output );
+        $this->assertStringContainsString( 'Password reset protection', $output );
+    }
+
+    /**
      * Test that delay value is bounded.
      */
     public function test_delay_value_bounded() {
