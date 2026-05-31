@@ -122,6 +122,14 @@ English, Arabic, Chinese (Simplified), Czech, Dutch, French, German, Indonesian,
 
 ## Changelog
 
+### 2.3.3
+
+- Added a Security Setup Wizard with Conservative, Balanced, and Aggressive protection profiles that configure delay, lockout, alerts, and authentication endpoints in one step while keeping every control editable.
+- Protection profiles no longer overwrite the log retention period, preventing unintended deletion of existing failed-login logs.
+- The current-profile badge now reflects the actual stored configuration and shows "Custom" after manual edits.
+- The Aggressive profile counts lockouts by IP rather than IP + username, closing a password-spray gap.
+- Pressing Enter in a settings field no longer applies a profile over manual edits.
+
 ### 2.1.6
 
 - Added a lightweight 7-day failed-login trends panel to the dashboard widget.

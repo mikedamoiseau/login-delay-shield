@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 6.9
-Version: 2.3.2
-Stable tag: 2.3.2
+Version: 2.3.3
+Stable tag: 2.3.3
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -166,6 +166,20 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.3.3 =
+Security Setup Wizard.
+
+**New Features:**
+* Added a Security Setup Wizard with Conservative, Balanced, and Aggressive protection profiles. Applying a profile configures delay, progressive delay, lockout, email alerts, and authentication endpoint settings in one step while keeping every individual control editable.
+
+**Bug Fixes:**
+* Protection profiles no longer overwrite the log retention period, preventing unintended deletion of existing failed-login logs.
+* The current-profile badge now reflects the actual stored configuration and shows "Custom" after manual edits.
+* Pressing Enter in a settings field no longer applies a profile over manual edits; the Save Changes button now handles implicit form submission.
+
+**Security:**
+* The Aggressive profile counts lockouts by IP rather than IP + username, closing a password-spray gap where a single IP could try multiple usernames without locking out.
 
 = 2.3.2 =
 Password reset protection.
