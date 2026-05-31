@@ -205,6 +205,9 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertTrue( $result['wldelay_xmlrpc_enabled'] );
         $this->assertTrue( $result['wldelay_xmlrpc_block'] );
         $this->assertSame( 5, $result['wldelay_lockout_threshold'] );
+        // IP-wide counting must stay; ip_username would let password spraying
+        // evade the threshold by spreading attempts across usernames.
+        $this->assertSame( 'ip', $result['wldelay_lockout_attempt_strategy'] );
     }
 
     /**
@@ -215,6 +218,27 @@ class SettingsTest extends WP_UnitTestCase {
             array(
                 'wldelay_profile_action'     => 'apply',
                 'wldelay_protection_profile' => 'unknown',
+                'wldelay_delay'              => 4,
+            )
+        );
+
+        $this->assertSame( '', $result['wldelay_protection_profile'] );
+        $this->assertSame( 4, $result['wldelay_delay'] );
+        $this->assertFalse( $result['wldelay_lockout_enabled'] );
+        $this->assertFalse( $result['wldelay_progressive_enabled'] );
+    }
+
+    /**
+     * Test a normal save (no apply action) never applies the selected profile.
+     *
+     * Mirrors an implicit Enter-key submit: the profile radio carries a value
+     * but the apply-action field is empty, so manual settings must survive.
+     */
+    public function test_normal_save_does_not_apply_selected_profile() {
+        $result = $this->settings->sanitize(
+            array(
+                'wldelay_profile_action'     => '',
+                'wldelay_protection_profile' => 'balanced',
                 'wldelay_delay'              => 4,
             )
         );

@@ -1706,7 +1706,7 @@ function wldelay_get_protection_profiles() {
                 'wldelay_lockout_enabled'               => true,
                 'wldelay_lockout_threshold'             => 5,
                 'wldelay_lockout_duration'              => 120,
-                'wldelay_lockout_attempt_strategy'      => 'ip_username',
+                'wldelay_lockout_attempt_strategy'      => 'ip',
                 'wldelay_email_enabled'                 => true,
                 'wldelay_email_threshold'               => 3,
                 'wldelay_email_cooldown'                => 5,

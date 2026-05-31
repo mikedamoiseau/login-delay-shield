@@ -265,7 +265,9 @@ class LDS_Settings_View {
             </fieldset>
 
             <p class="wldelay-profile-actions">
-                <button type="submit" class="button button-primary" name="wldelay_options[wldelay_profile_action]" value="apply">
+                <?php // Action carried by a hidden field so an implicit Enter-key submit from any settings field cannot apply a profile; the apply button sets it only on an explicit click. ?>
+                <input type="hidden" name="wldelay_options[wldelay_profile_action]" id="wldelay-profile-action" value="" />
+                <button type="button" class="button button-primary wldelay-apply-profile" data-profile-action="apply">
                     <?php esc_html_e( 'Apply selected profile', 'login-delay-shield' ); ?>
                 </button>
                 <span class="description"><?php esc_html_e( 'Applying a profile overwrites matching settings below, then saves the page.', 'login-delay-shield' ); ?></span>

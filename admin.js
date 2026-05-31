@@ -179,6 +179,15 @@ jQuery(document).ready(function ($) {
         updateSummary('wldelay_application_password_enabled', $(this).prop('checked'));
     });
 
+    // Apply a protection profile only on an explicit button click. The action
+    // travels in a hidden field, so pressing Enter in a settings text field
+    // submits via the standard Save Changes button without applying a profile.
+    $('.wldelay-apply-profile').on('click', function () {
+        var action = $(this).data('profileAction') || 'apply';
+        $('#wldelay-profile-action').val(action);
+        $(this).closest('form').trigger('submit');
+    });
+
     $('.wldelay-card-header').on('click', function (e) {
         if ($(e.target).is('input, label')) {
             return;
