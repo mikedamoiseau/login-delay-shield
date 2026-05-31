@@ -188,8 +188,11 @@ class LDS_Settings_View {
      */
     private function render_setup_wizard() {
         $profiles        = wldelay_get_protection_profiles();
-        $selected        = isset( $this->options['wldelay_protection_profile'] ) ? wldelay_sanitize_protection_profile_id( $this->options['wldelay_protection_profile'] ) : '';
-        $selected        = $selected !== '' ? $selected : 'balanced';
+        // Active profile actually stored (empty when settings were edited manually).
+        $active_profile  = isset( $this->options['wldelay_protection_profile'] ) ? wldelay_sanitize_protection_profile_id( $this->options['wldelay_protection_profile'] ) : '';
+        // Radio pre-selection: fall back to balanced as a suggested starting point.
+        $selected        = $active_profile !== '' ? $active_profile : 'balanced';
+        $current_label   = $active_profile !== '' ? $profiles[ $active_profile ]['label'] : __( 'Custom', 'login-delay-shield' );
         $profile_effects = array(
             'conservative' => array(
                 __( 'Lockout after 10 failed attempts', 'login-delay-shield' ),
@@ -220,7 +223,7 @@ class LDS_Settings_View {
                     printf(
                         /* translators: %s: selected protection profile label */
                         esc_html__( 'Current profile: %s', 'login-delay-shield' ),
-                        esc_html( $profiles[ $selected ]['label'] )
+                        esc_html( $current_label )
                     );
                     ?>
                 </span>

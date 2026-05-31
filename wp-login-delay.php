@@ -1663,7 +1663,6 @@ function wldelay_get_protection_profiles() {
                 'wldelay_rest_enabled'                  => true,
                 'wldelay_application_password_enabled'  => false,
                 'wldelay_password_reset_enabled'        => true,
-                'wldelay_log_retention_days'            => 30,
             ),
         ),
         'balanced'     => array(
@@ -1690,7 +1689,6 @@ function wldelay_get_protection_profiles() {
                 'wldelay_rest_enabled'                  => true,
                 'wldelay_application_password_enabled'  => true,
                 'wldelay_password_reset_enabled'        => true,
-                'wldelay_log_retention_days'            => 30,
             ),
         ),
         'aggressive'   => array(
@@ -1717,7 +1715,6 @@ function wldelay_get_protection_profiles() {
                 'wldelay_rest_enabled'                  => true,
                 'wldelay_application_password_enabled'  => true,
                 'wldelay_password_reset_enabled'        => true,
-                'wldelay_log_retention_days'            => 90,
             ),
         ),
     );

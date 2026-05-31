@@ -405,13 +405,20 @@ class LDS_Settings {
             ? wldelay_sanitize_protection_profile_id( $input['wldelay_protection_profile'] )
             : '';
 
-        if ( isset( $input['wldelay_profile_action'] ) && $input['wldelay_profile_action'] === 'apply' && $profile_id !== '' ) {
+        // Only treat the selected profile as active when the user explicitly applies
+        // it. A normal "Save Changes" submit carries the radio value but no apply
+        // action, so it must not silently mark a profile as the active one.
+        $applying_profile = isset( $input['wldelay_profile_action'] )
+            && $input['wldelay_profile_action'] === 'apply'
+            && $profile_id !== '';
+
+        if ( $applying_profile ) {
             $profiles = wldelay_get_protection_profiles();
             $input    = array_merge( $input, $profiles[ $profile_id ]['settings'] );
         }
 
         $new_input = array();
-        $new_input['wldelay_protection_profile'] = $profile_id;
+        $new_input['wldelay_protection_profile'] = $applying_profile ? $profile_id : '';
 
         if( isset( $input['wldelay_delay'] ) ) {
             $delay = absint( $input['wldelay_delay'] );
