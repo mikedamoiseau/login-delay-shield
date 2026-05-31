@@ -6,6 +6,16 @@
 class DashboardWidgetTest extends WP_UnitTestCase {
 
     /**
+     * Set up before each test.
+     */
+    public function setUp(): void {
+        parent::setUp();
+
+        $admin_id = $this->factory->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $admin_id );
+    }
+
+    /**
      * Clean up after each test.
      */
     public function tearDown(): void {
@@ -29,6 +39,19 @@ class DashboardWidgetTest extends WP_UnitTestCase {
             has_action( 'wp_dashboard_setup', 'wldelay_add_dashboard_widget' ),
             'wldelay_add_dashboard_widget should be hooked to wp_dashboard_setup'
         );
+    }
+
+    /**
+     * Test that dashboard widget telemetry requires administrator capability.
+     */
+    public function test_widget_requires_manage_options_capability() {
+        wp_set_current_user( 0 );
+
+        ob_start();
+        wldelay_dashboard_widget_content();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString( 'You do not have permission to view Login Delay Shield telemetry.', $output );
     }
 
     /**
@@ -68,6 +91,7 @@ class DashboardWidgetTest extends WP_UnitTestCase {
         $this->assertStringContainsString( 'Daily activity', $output );
         $this->assertStringContainsString( 'Top sources', $output );
         $this->assertStringContainsString( 'Top IPs', $output );
+        $this->assertStringContainsString( 'Top usernames', $output );
     }
 
     /**
@@ -279,6 +303,36 @@ class DashboardWidgetTest extends WP_UnitTestCase {
         $this->assertSame( 2, $trends['top_ips'][0]['count'] );
         $this->assertSame( 'wp-login', $trends['source_counts'][0]['source'] );
         $this->assertSame( 2, $trends['source_counts'][0]['count'] );
+        $this->assertSame( 'first-user', $trends['top_usernames'][0]['username'] );
+        $this->assertSame( 1, $trends['top_usernames'][0]['count'] );
+    }
+
+    /**
+     * Test failed login trend aggregation excludes blank usernames.
+     */
+    public function test_get_failed_login_trends_excludes_blank_usernames() {
+        global $wpdb;
+
+        wldelay_create_log_table();
+        $table_name = wldelay_get_log_table_name();
+
+        foreach ( array( 'target-user', 'target-user', '', '   ' ) as $username ) {
+            $wpdb->insert(
+                $table_name,
+                array(
+                    'ip_address'   => '203.0.113.20',
+                    'username'     => $username,
+                    'attempted_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - HOUR_IN_SECONDS ),
+                    'source'       => 'wp-login',
+                )
+            );
+        }
+
+        $trends = wldelay_get_failed_login_trends( 7 );
+
+        $this->assertCount( 1, $trends['top_usernames'] );
+        $this->assertSame( 'target-user', $trends['top_usernames'][0]['username'] );
+        $this->assertSame( 2, $trends['top_usernames'][0]['count'] );
     }
 
     /**
