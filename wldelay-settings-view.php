@@ -68,6 +68,7 @@ class LDS_Settings_View {
 
             <?php echo $this->render_summary_box(); ?>
             <?php $this->render_2fa_health_notice(); ?>
+            <?php $this->render_enumeration_hardening_notice(); ?>
             <?php $this->render_object_cache_notice(); ?>
 
             <form id="wldelay-telemetry-filter-form" method="get" action="<?php echo esc_url( admin_url( 'options-general.php' ) ); ?>"></form>
@@ -456,6 +457,26 @@ class LDS_Settings_View {
             <span>
                 <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
                 <?php esc_html_e( 'No detected common 2FA plugin. If you use a custom or must-use solution, verify administrator 2FA coverage manually.', 'login-delay-shield' ); ?>
+            </span>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render a coherence/validator warning when username-enumeration hardening
+     * is enabled, reminding the admin that login and password-reset feedback
+     * becomes intentionally generic.
+     */
+    private function render_enumeration_hardening_notice() {
+        if ( empty( $this->options['wldelay_enumeration_hardening_enabled'] ) ) {
+            return;
+        }
+        ?>
+        <div class="wldelay-health-notice" role="note">
+            <span class="dashicons dashicons-shield" aria-hidden="true"></span>
+            <span>
+                <strong><?php esc_html_e( 'Enumeration hardening active:', 'login-delay-shield' ); ?></strong>
+                <?php esc_html_e( 'Login failures now show one generic error and the password-reset screen no longer confirms whether an account exists. Verify your support and account-recovery guidance reflects this before relying on it.', 'login-delay-shield' ); ?>
             </span>
         </div>
         <?php
@@ -1246,5 +1267,18 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Apply delay, lockout checks, and logging to password reset submissions without revealing whether an account exists.', 'login-delay-shield' ) );
         echo '<p id="wldelay_password_reset_enabled_desc" class="description">' . esc_html__( 'Protect password reset requests with the same delay and lockout behavior.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Username enumeration hardening callback.
+     */
+    public function enumeration_hardening_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_enumeration_hardening_enabled" name="wldelay_options[wldelay_enumeration_hardening_enabled]" value="1" %s aria-describedby="wldelay_enumeration_hardening_enabled_desc wldelay_enumeration_hardening_enabled_note" />',
+            ! empty( $this->options['wldelay_enumeration_hardening_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'Hides which usernames exist: failed logins all show one generic error, ?author=N enumeration is blocked, and the public REST users listing is restricted. This starves the reconnaissance stage that precedes password-spray attacks.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_enumeration_hardening_enabled_desc" class="description">' . esc_html__( 'Return a single generic login error for both unknown usernames and wrong passwords, block author-archive enumeration, and restrict unauthenticated REST user listings.', 'login-delay-shield' ) . '</p>';
+        echo '<p id="wldelay_enumeration_hardening_enabled_note" class="description wldelay-enumeration-note"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> ' . esc_html__( 'Heads up: legitimate users will no longer be told whether they mistyped their username or their password, and login/password-reset screens become less specific. Make sure your support flow accounts for this before enabling.', 'login-delay-shield' ) . '</p>';
     }
 }
