@@ -43,6 +43,7 @@ add_action( 'plugins_loaded', 'wldelay_load_textdomain' );
  * @see http://codex.wordpress.org/Settings_API
  */
 require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
+require_once dirname( __FILE__ ) . '/wldelay-features.php';
 require_once dirname( __FILE__ ) . '/wldelay-async.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
@@ -1933,33 +1934,14 @@ function wldelay_get_options() {
             $options = array();
         }
 
-        // Security feature defaults must stay opt-in.
-        if ( ! array_key_exists( 'wldelay_rest_enabled', $options ) ) {
-            $options['wldelay_rest_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_application_password_enabled', $options ) ) {
-            $options['wldelay_application_password_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_password_reset_enabled', $options ) ) {
-            $options['wldelay_password_reset_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_enumeration_hardening_enabled', $options ) ) {
-            $options['wldelay_enumeration_hardening_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_fail2ban_enabled', $options ) ) {
-            $options['wldelay_fail2ban_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_fail2ban_log_path', $options ) ) {
-            $options['wldelay_fail2ban_log_path'] = '';
-        }
-
-        if ( ! array_key_exists( 'wldelay_fail2ban_include_lockouts', $options ) ) {
-            $options['wldelay_fail2ban_include_lockouts'] = LDS_Settings::_DEFAULT_FAIL2BAN_INCLUDE_LOCKOUTS;
+        // Materialise the opt-in security feature defaults from the declarative
+        // registry (F-2-2). Only registry keys flagged for injection are filled,
+        // and only when absent, exactly like the array_key_exists guards this
+        // replaced — so the cached option shape and every default stay identical.
+        foreach ( WLDelay_Features::injected_defaults() as $registry_key => $registry_default ) {
+            if ( ! array_key_exists( $registry_key, $options ) ) {
+                $options[ $registry_key ] = $registry_default;
+            }
         }
 
         $GLOBALS['wldelay_options_cache'] = $options;

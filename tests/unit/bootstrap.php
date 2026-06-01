@@ -49,3 +49,6 @@ require_once dirname( dirname( __DIR__ ) ) . '/wldelay-settings.php';
 
 // Load the persistence contract for pure-logic unit tests (key derivation).
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-persistence.php';
+
+// Load the declarative feature/defaults registry (F-2-2).
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-features.php';
