@@ -185,4 +185,48 @@ class FixtureTest extends WP_UnitTestCase {
         // Durable store is empty too.
         $this->assertEmpty( wldelay_get_persistence_store()->get_active_lockouts() );
     }
+
+    /**
+     * A password-reset lockout locks ONLY the password-reset path: it must not
+     * leak onto the normal login path. Guards the fixture's type-aware
+     * transient-key selection — a login transient here would falsely report
+     * wldelay_is_ip_locked() == true for an impossible production state.
+     */
+    public function test_password_reset_lockout_does_not_lock_login_path() {
+        WLDelay_Test_Fixture::make()
+            ->with_current_ip( self::TEST_IP )
+            ->with_lockout( self::TEST_IP, '', 900, 'password-reset' )
+            ->apply();
+
+        $this->assertTrue(
+            wldelay_is_password_reset_locked( self::TEST_IP ),
+            'password-reset fixture must lock the password-reset path'
+        );
+        $this->assertFalse(
+            wldelay_is_ip_locked( self::TEST_IP ),
+            'password-reset fixture must NOT lock the normal login path'
+        );
+    }
+
+    /**
+     * Seeding failed attempts from a different IP must not change the fixture's
+     * declared current IP. with_current_ip(A)->with_failed_attempt(B) must leave
+     * the simulated request originating from A, not B.
+     */
+    public function test_failed_attempt_does_not_override_current_ip() {
+        $current = '198.51.100.10';
+        $attempt = '198.51.100.20';
+
+        WLDelay_Test_Fixture::make()
+            ->with_current_ip( $current )
+            ->with_failed_attempt( $attempt, 'someuser', 2 )
+            ->apply();
+
+        // The declared current IP wins for the final request.
+        $this->assertSame( $current, $_SERVER['REMOTE_ADDR'] );
+        $this->assertSame( $current, wldelay_get_client_ip() );
+
+        // The attempts were still recorded against the attempt IP.
+        $this->assertEquals( 2, wldelay_get_failure_count( $attempt ) );
+    }
 }

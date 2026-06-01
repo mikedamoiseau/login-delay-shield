@@ -425,9 +425,32 @@ function wldelay_flush_lockout_transients() {
 
     update_option( wldelay_get_transient_registry_option_name(), array(), false );
 
+    $store = wldelay_get_persistence_store();
+
+    // Delete the exact lockout transient each durable row recorded BEFORE
+    // dropping the rows. The registry + options-table sweep above cannot reach
+    // a cache-only transient (Redis/Memcached object cache) whose registry
+    // entry was lost to the non-atomic read-modify-write in
+    // wldelay_register_transient_key(): the options-table LIKE finds nothing,
+    // so without this the orphaned transient would keep a user locked until it
+    // expired — even though flush reported success. The durable rows hold the
+    // verbatim transient_key, so deleting through it reaches the object cache
+    // regardless of registry state (mirrors wldelay_delete_lockout_for_ip).
+    // A high limit ensures the safety net covers every active row, not just the
+    // default page; deleting an already-expired transient is harmless.
+    foreach ( $store->get_active_lockouts( PHP_INT_MAX ) as $row ) {
+        if ( empty( $row['transient_key'] ) ) {
+            continue;
+        }
+        if ( delete_transient( $row['transient_key'] ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_key( $row['transient_key'] );
+    }
+
     // Clear the durable store (F-2-1) as well so a global flush truly removes
     // every lockout, not just the transient fast-path.
-    $deleted += wldelay_get_persistence_store()->clear_all();
+    $deleted += $store->clear_all();
 
     return $deleted;
 }

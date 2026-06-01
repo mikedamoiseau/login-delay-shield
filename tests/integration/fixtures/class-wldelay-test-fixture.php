@@ -226,12 +226,23 @@ class WLDelay_Test_Fixture {
             // Temporarily pin the duration option so wldelay_lock_ip uses the
             // requested duration, then restore it so the lock does not leak a
             // duration into later assertions.
+            //
+            // Production login lockouts are MINUTE-granular: wldelay_lock_ip()
+            // reads wldelay_lockout_duration (minutes) via
+            // wldelay_get_lockout_duration_seconds(), so a sub-minute login
+            // lockout is not state production can create. The seconds duration
+            // is therefore quantised to whole minutes here. Round UP (ceil) so
+            // the materialised lockout is never SHORTER than requested — a
+            // round-to-nearest could expire before the caller's duration and
+            // make an expiry/boundary test exercise the wrong state. Callers
+            // needing exact-second control should use a non-login type, whose
+            // branch below honours the raw seconds.
             $options          = wldelay_get_options();
             $previous_minutes = isset( $options['wldelay_lockout_duration'] )
                 ? $options['wldelay_lockout_duration']
                 : null;
 
-            $options['wldelay_lockout_duration'] = max( 1, (int) round( $duration / MINUTE_IN_SECONDS ) );
+            $options['wldelay_lockout_duration'] = max( 1, (int) ceil( $duration / MINUTE_IN_SECONDS ) );
             update_option( WLDELAY_OPTION_NAME, $options );
             wldelay_clear_options_cache();
 
@@ -249,7 +260,13 @@ class WLDelay_Test_Fixture {
         }
 
         // Non-login lockout: mirror wldelay_lock_ip's transient + durable write.
-        $transient_key = wldelay_get_lockout_transient_key( $ip, $username );
+        // Select the transient-key builder by type so a password-reset fixture
+        // sets the reset transient (wldelay_reset_lockout_*) production uses —
+        // not the login transient, which would falsely lock the normal login
+        // path while leaving the real reset path untouched.
+        $transient_key = ( 'password-reset' === $type )
+            ? wldelay_get_password_reset_lockout_transient_key( $ip, $username )
+            : wldelay_get_lockout_transient_key( $ip, $username );
         set_transient( $transient_key, time(), $duration );
         wldelay_register_transient_key( $transient_key );
 
@@ -279,6 +296,14 @@ class WLDelay_Test_Fixture {
             return;
         }
 
+        // track_failed_attempt() reads the client IP from REMOTE_ADDR, so the
+        // attempt IP must be active for the loop. Save and restore the prior
+        // value so seeding attempts from one IP never silently overrides the
+        // fixture's declared with_current_ip() — otherwise the simulated
+        // request would end up originating from the last attempt's IP.
+        $had_remote_addr  = array_key_exists( 'REMOTE_ADDR', $_SERVER );
+        $previous_remote  = $had_remote_addr ? $_SERVER['REMOTE_ADDR'] : null;
+
         $_SERVER['REMOTE_ADDR'] = $attempt['ip'];
 
         $options  = wldelay_get_options();
@@ -302,12 +327,18 @@ class WLDelay_Test_Fixture {
 
             update_option( WLDELAY_OPTION_NAME, $restore );
             wldelay_clear_options_cache();
-
-            return;
+        } else {
+            for ( $i = 0; $i < $attempt['count']; $i++ ) {
+                wldelay_track_failed_attempt( $attempt['username'] );
+            }
         }
 
-        for ( $i = 0; $i < $attempt['count']; $i++ ) {
-            wldelay_track_failed_attempt( $attempt['username'] );
+        // Restore the IP the fixture declared (or remove the key if there was
+        // none) so the final simulated request reflects with_current_ip().
+        if ( $had_remote_addr ) {
+            $_SERVER['REMOTE_ADDR'] = $previous_remote;
+        } else {
+            unset( $_SERVER['REMOTE_ADDR'] );
         }
     }
 
