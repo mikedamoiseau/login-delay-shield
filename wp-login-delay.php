@@ -8,10 +8,12 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 // Schema version for the plugin-owned tables. Bumped whenever the DB schema
 // changes (F-2-1: gen 2 added the lockout table; gen 3 widened its username
 // column to varchar(255) and replaced the unused (ip_address, username) index
-// with an IP-only index). Kept separate from WLDELAY_VERSION so a schema
-// upgrade fires on existing installs without depending on a user-facing
+// with an IP-only index; gen 4 added the transient_key column so IP-level
+// recovery can delete the exact lockout transient without reconstructing it
+// from the truncated username column). Kept separate from WLDELAY_VERSION so a
+// schema upgrade fires on existing installs without depending on a user-facing
 // release version bump.
-define( 'WLDELAY_DB_VERSION', '3' );
+define( 'WLDELAY_DB_VERSION', '4' );
 
 /*
 Plugin Name: Login Delay Shield
@@ -322,19 +324,31 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     // IP-keyed deletions above (md5("ip")) never match it, so the user stays
     // locked on the transient fast-path until it expires — even after the
     // durable row is gone. The durable rows are the IP→username index the
-    // transient registry lacks (the registry stores only opaque md5 hashes):
-    // each row records the effective username + type the transient was keyed
-    // under, so we reconstruct and clear those transients here, before removing
-    // the rows. The canonical key builders are reused (with ip_username forced)
-    // so the derived key matches exactly what wldelay_lock_ip() set.
+    // transient registry lacks (the registry stores only opaque md5 hashes).
+    //
+    // Each gen-4 row records the EXACT transient name set at lock time, so we
+    // delete that verbatim. This is length-proof: reconstructing the key from
+    // the stored username would miss a canonical identifier longer than the
+    // varchar(255) username column (the column is clamped, but the transient is
+    // keyed on the full identifier) — the very bug this column closes. Legacy
+    // gen-3 rows carry no transient_key, so for those we fall back to
+    // reconstructing the key from the stored username/type (exact for
+    // identifiers within the column width), reusing the canonical builders with
+    // ip_username forced so the derived key matches what wldelay_lock_ip() set.
     $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
     foreach ( $store->get_lockouts_for_ip( $ip ) as $row ) {
-        $row_username = isset( $row['username'] ) ? (string) $row['username'] : '';
-        $row_type     = isset( $row['lockout_type'] ) ? (string) $row['lockout_type'] : 'login';
+        $stored_key = isset( $row['transient_key'] ) ? (string) $row['transient_key'] : '';
 
-        $transient_name = ( 'password-reset' === $row_type )
-            ? wldelay_get_password_reset_lockout_transient_key( $ip, $row_username, $pair_options )
-            : wldelay_get_lockout_transient_key( $ip, $row_username, $pair_options );
+        if ( '' !== $stored_key ) {
+            $transient_name = $stored_key;
+        } else {
+            $row_username = isset( $row['username'] ) ? (string) $row['username'] : '';
+            $row_type     = isset( $row['lockout_type'] ) ? (string) $row['lockout_type'] : 'login';
+
+            $transient_name = ( 'password-reset' === $row_type )
+                ? wldelay_get_password_reset_lockout_transient_key( $ip, $row_username, $pair_options )
+                : wldelay_get_lockout_transient_key( $ip, $row_username, $pair_options );
+        }
 
         if ( delete_transient( $transient_name ) ) {
             $deleted++;
@@ -1379,11 +1393,12 @@ function wldelay_create_log_table() {
  * call to the log-table helper.
  *
  * The schema version is recorded only after both tables are confirmed to
- * exist AND the gen-3 username widening has actually taken effect, so a failed
- * or interrupted CREATE — or an ALTER that could not widen the column (e.g. a
- * 767-byte index-limit failure on old MySQL) — leaves the stored version
- * untouched and wldelay_maybe_upgrade_db() retries on the next request instead
- * of masking a half-applied schema (F-2-1).
+ * exist AND the gen-3 username widening has actually taken effect AND the gen-4
+ * transient_key column is present, so a failed or interrupted CREATE — or an
+ * ALTER that could not widen the column (e.g. a 767-byte index-limit failure on
+ * old MySQL) or add the column — leaves the stored version untouched and
+ * wldelay_maybe_upgrade_db() retries on the next request instead of masking a
+ * half-applied schema (F-2-1).
  */
 function wldelay_create_tables() {
     global $wpdb;
@@ -1397,7 +1412,12 @@ function wldelay_create_tables() {
     $log_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
     $lockout_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $lockout_table ) ) === $lockout_table;
 
-    if ( $log_exists && $lockout_exists && wldelay_lockout_username_is_widened() ) {
+    if (
+        $log_exists
+        && $lockout_exists
+        && wldelay_lockout_username_is_widened()
+        && wldelay_lockout_has_transient_key_column()
+    ) {
         update_option( 'wldelay_db_version', WLDELAY_DB_VERSION );
     }
 }
@@ -2774,7 +2794,8 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
         wldelay_get_effective_lockout_username( $username, $options ),
         $lockout_duration,
         'login',
-        $source
+        $source,
+        $transient_key
     );
 
     if ( ! $persisted ) {
@@ -3197,7 +3218,8 @@ function wldelay_lock_password_reset( $ip, $username = '' ) {
         wldelay_get_effective_lockout_username( $username, $options ),
         $lockout_duration,
         'password-reset',
-        'password-reset'
+        'password-reset',
+        $transient_key
     );
 
     if ( ! $persisted ) {

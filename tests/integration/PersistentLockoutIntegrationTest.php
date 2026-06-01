@@ -196,6 +196,45 @@ class PersistentLockoutIntegrationTest extends WP_UnitTestCase {
     }
 
     /**
+     * IP-only recovery clears the username-scoped transient even when the
+     * canonical identifier is longer than the varchar(255) username column
+     * (LDAP DN / SSO). The durable row stores a TRUNCATED forensic username, so
+     * reconstructing the transient key from it would hash a different value and
+     * miss the live transient (keyed on the full identifier) — leaving the user
+     * locked until expiry. Recovery instead deletes the exact transient_key the
+     * row recorded at lock time. Asserted WITHOUT evicting the transient first
+     * (F-2-1).
+     */
+    public function test_ip_only_recovery_clears_transient_for_username_over_255_chars() {
+        update_option( 'wldelay_options', [
+            'wldelay_lockout_enabled'          => true,
+            'wldelay_lockout_duration'         => 30,
+            'wldelay_lockout_attempt_strategy' => 'ip_username',
+        ] );
+        wldelay_clear_options_cache();
+
+        // 300-char identifier, well past the varchar(255) forensic column.
+        $long_username = str_repeat( 'd', 280 ) . '@ldap.example.com';
+        $this->assertGreaterThan( 255, strlen( $long_username ) );
+
+        // Lock under the long username — sets the transient keyed on the FULL
+        // identifier and a durable row whose username column is truncated to 255.
+        wldelay_lock_ip( self::TEST_IP, $long_username );
+        $this->assertTrue( wldelay_is_ip_locked( self::TEST_IP, $long_username ) );
+
+        // IP-only recovery — no username supplied.
+        $removed = wldelay_delete_lockout_for_ip( self::TEST_IP );
+
+        // No transient eviction, no runtime-cache reset: recovery itself must
+        // have removed the transient fast-path entry via the stored key.
+        $this->assertGreaterThanOrEqual( 1, $removed );
+        $this->assertFalse(
+            wldelay_is_ip_locked( self::TEST_IP, $long_username ),
+            'IP-only recovery must clear the transient for an identifier longer than the username column'
+        );
+    }
+
+    /**
      * Flushing all lockouts empties the persistent store too.
      */
     public function test_flush_lockouts_clears_persistent_store() {

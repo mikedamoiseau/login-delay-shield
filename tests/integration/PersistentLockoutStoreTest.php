@@ -59,6 +59,7 @@ class PersistentLockoutStoreTest extends WP_UnitTestCase {
         $this->assertContains( 'username', $names );
         $this->assertContains( 'lockout_type', $names );
         $this->assertContains( 'source', $names );
+        $this->assertContains( 'transient_key', $names );
         $this->assertContains( 'created_at', $names );
         $this->assertContains( 'expires_at', $names );
     }
