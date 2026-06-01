@@ -57,6 +57,10 @@ class EnumerationHardeningTest extends WP_UnitTestCase {
         $this->assertNotFalse( has_filter( 'rest_endpoints', 'wldelay_restrict_rest_user_endpoints' ) );
     }
 
+    public function test_sitemap_provider_filter_registered() {
+        $this->assertNotFalse( has_filter( 'wp_sitemaps_add_provider', 'wldelay_remove_users_sitemap_provider' ) );
+    }
+
     /* --------------------------------------------------------------------- */
     /* Guard 1: generic login errors                                         */
     /* --------------------------------------------------------------------- */
@@ -209,6 +213,43 @@ class EnumerationHardeningTest extends WP_UnitTestCase {
         $response = rest_do_request( $request );
 
         $this->assertEquals( 200, $response->get_status() );
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* Guard 4: public users XML sitemap                                     */
+    /* --------------------------------------------------------------------- */
+
+    public function test_users_sitemap_provider_removed_when_enabled() {
+        $this->enable();
+
+        // The guard only inspects the provider name, so a sentinel object
+        // stands in for the real WP_Sitemaps_Users provider.
+        $provider = new stdClass();
+        $result   = wldelay_remove_users_sitemap_provider( $provider, 'users' );
+
+        // A non-WP_Sitemaps_Provider return makes core skip registration.
+        $this->assertFalse( $result );
+    }
+
+    public function test_users_sitemap_provider_kept_when_disabled() {
+        $this->disable();
+
+        $provider = new stdClass();
+        $result   = wldelay_remove_users_sitemap_provider( $provider, 'users' );
+
+        // Core default preserved: the provider passes through untouched.
+        $this->assertSame( $provider, $result );
+    }
+
+    public function test_non_users_sitemap_provider_kept_when_enabled() {
+        $this->enable();
+
+        // Posts/pages/taxonomies sitemaps are not enumeration vectors and must
+        // survive when hardening is on.
+        $provider = new stdClass();
+        $result   = wldelay_remove_users_sitemap_provider( $provider, 'posts' );
+
+        $this->assertSame( $provider, $result );
     }
 
     /* --------------------------------------------------------------------- */

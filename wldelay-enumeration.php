@@ -17,6 +17,10 @@
  *      route (the latter is publicly readable for authors with published
  *      posts, so it leaks names/slugs on its own). Hooked on `rest_endpoints`
  *      (runs once when routes are built).
+ *   4. Removes WordPress core's public `users` XML sitemap provider
+ *      (`/wp-sitemap-users-1.xml`), which lists author-archive URLs — the same
+ *      slugs the author/REST guards withhold — for any author with published
+ *      posts. Hooked on `wp_sitemaps_add_provider`.
  *
  * Whitelist interaction: these guards are GLOBAL recon defenses, not per-IP
  * access controls. Generic login errors are site-wide UX; the author and REST
@@ -219,10 +223,42 @@ function wldelay_restrict_rest_user_endpoints( $endpoints ) {
     return $endpoints;
 }
 
+/**
+ * Remove the public `users` XML sitemap provider.
+ *
+ * WordPress core (5.5+) publishes a users sitemap at `/wp-sitemap-users-1.xml`
+ * listing the author-archive URL — and therefore the public slug — of every
+ * user with at least one published, REST-visible post. That is the same
+ * identifier the author-archive and REST single-user guards withhold, so
+ * leaving the sitemap in place keeps usernames enumerable through a third
+ * public channel. Returning anything that is not a `WP_Sitemaps_Provider`
+ * makes core skip registering the provider.
+ *
+ * The sitemap is an inherently public, crawler-facing resource (there is no
+ * per-user variant), so it is removed unconditionally while hardening is
+ * active rather than gated on a capability check.
+ *
+ * @param mixed  $provider The sitemap provider instance (or other value).
+ * @param string $name     The provider name.
+ * @return mixed
+ */
+function wldelay_remove_users_sitemap_provider( $provider, $name ) {
+    if ( ! wldelay_enumeration_hardening_is_active() ) {
+        return $provider;
+    }
+
+    if ( 'users' === $name ) {
+        return false;
+    }
+
+    return $provider;
+}
+
 // Register guards only in a real WordPress runtime. The unit-test bootstrap
 // loads this file without WordPress (no add_action), so guard the hooks.
 if ( function_exists( 'add_filter' ) ) {
     add_filter( 'login_errors', 'wldelay_filter_login_errors', 20 );
     add_action( 'template_redirect', 'wldelay_block_author_enumeration', 0 );
     add_filter( 'rest_endpoints', 'wldelay_restrict_rest_user_endpoints', 20 );
+    add_filter( 'wp_sitemaps_add_provider', 'wldelay_remove_users_sitemap_provider', 20, 2 );
 }
