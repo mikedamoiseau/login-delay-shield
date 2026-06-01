@@ -5,6 +5,16 @@ define( 'WLDELAY_VERSION', '2.3.4' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
+// Schema version for the plugin-owned tables. Bumped whenever the DB schema
+// changes (F-2-1: gen 2 added the lockout table; gen 3 widened its username
+// column to varchar(255) and replaced the unused (ip_address, username) index
+// with an IP-only index; gen 4 added the transient_key column so IP-level
+// recovery can delete the exact lockout transient without reconstructing it
+// from the truncated username column). Kept separate from WLDELAY_VERSION so a
+// schema upgrade fires on existing installs without depending on a user-facing
+// release version bump.
+define( 'WLDELAY_DB_VERSION', '4' );
+
 /*
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
@@ -32,6 +42,7 @@ add_action( 'plugins_loaded', 'wldelay_load_textdomain' );
  * Settings
  * @see http://codex.wordpress.org/Settings_API
  */
+require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 if( is_admin() ) {
@@ -305,6 +316,55 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
         wldelay_unregister_transient_key( $reset_fails_pair_key );
     }
 
+    $store = wldelay_get_persistence_store();
+
+    // Clear username-scoped lockout transients that IP-only recovery cannot
+    // derive on its own (F-2-1). Under the ip_username strategy the lockout
+    // transient is keyed on md5("ip|username"); with no username supplied the
+    // IP-keyed deletions above (md5("ip")) never match it, so the user stays
+    // locked on the transient fast-path until it expires — even after the
+    // durable row is gone. The durable rows are the IP→username index the
+    // transient registry lacks (the registry stores only opaque md5 hashes).
+    //
+    // Each gen-4 row records the EXACT transient name set at lock time, so we
+    // delete that verbatim. This is length-proof: reconstructing the key from
+    // the stored username would miss a canonical identifier longer than the
+    // varchar(255) username column (the column is clamped, but the transient is
+    // keyed on the full identifier) — the very bug this column closes. Legacy
+    // gen-3 rows carry no transient_key, so for those we fall back to
+    // reconstructing the key from the stored username/type (exact for
+    // identifiers within the column width), reusing the canonical builders with
+    // ip_username forced so the derived key matches what wldelay_lock_ip() set.
+    $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
+    foreach ( $store->get_lockouts_for_ip( $ip ) as $row ) {
+        $stored_key = isset( $row['transient_key'] ) ? (string) $row['transient_key'] : '';
+
+        if ( '' !== $stored_key ) {
+            $transient_name = $stored_key;
+        } else {
+            $row_username = isset( $row['username'] ) ? (string) $row['username'] : '';
+            $row_type     = isset( $row['lockout_type'] ) ? (string) $row['lockout_type'] : 'login';
+
+            $transient_name = ( 'password-reset' === $row_type )
+                ? wldelay_get_password_reset_lockout_transient_key( $ip, $row_username, $pair_options )
+                : wldelay_get_lockout_transient_key( $ip, $row_username, $pair_options );
+        }
+
+        if ( delete_transient( $transient_name ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_key( $transient_name );
+    }
+
+    // Clear the durable store (F-2-1) by IP so recovery removes every lockout
+    // for the address regardless of username, type, or strategy. Keying on the
+    // (ip, username) hash alone would miss rows stored under the ip_username
+    // strategy when IP-level recovery (admin unlock / WP-CLI unlock-ip) supplies
+    // no username — see remove_lockouts_for_ip(). Count these removals too, so
+    // recovery reports success when the transient was evicted but the durable
+    // row was still in force.
+    $deleted += $store->remove_lockouts_for_ip( $ip );
+
     return $deleted;
 }
 
@@ -360,6 +420,10 @@ function wldelay_flush_lockout_transients() {
     }
 
     update_option( wldelay_get_transient_registry_option_name(), array(), false );
+
+    // Clear the durable store (F-2-1) as well so a global flush truly removes
+    // every lockout, not just the transient fast-path.
+    $deleted += wldelay_get_persistence_store()->clear_all();
 
     return $deleted;
 }
@@ -1317,11 +1381,48 @@ function wldelay_create_log_table() {
 
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
     dbDelta( $sql );
-
-    update_option( 'wldelay_db_version', WLDELAY_VERSION );
 }
 
-register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_log_table' );
+/**
+ * Create every plugin-owned table.
+ *
+ * Used on activation and on the DB upgrade path so the log table and the
+ * durable lockout store (F-2-1) are provisioned together behind one schema
+ * version. Kept separate from wldelay_create_log_table() so creating the
+ * lockout table (DDL, which implicitly commits) is not triggered on every
+ * call to the log-table helper.
+ *
+ * The schema version is recorded only after both tables are confirmed to
+ * exist AND the gen-3 username widening has actually taken effect AND the gen-4
+ * transient_key column is present, so a failed or interrupted CREATE — or an
+ * ALTER that could not widen the column (e.g. a 767-byte index-limit failure on
+ * old MySQL) or add the column — leaves the stored version untouched and
+ * wldelay_maybe_upgrade_db() retries on the next request instead of masking a
+ * half-applied schema (F-2-1).
+ */
+function wldelay_create_tables() {
+    global $wpdb;
+
+    wldelay_create_log_table();
+    wldelay_create_lockout_table();
+
+    $log_table     = wldelay_get_log_table_name();
+    $lockout_table = wldelay_get_lockout_table_name();
+
+    $log_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
+    $lockout_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $lockout_table ) ) === $lockout_table;
+
+    if (
+        $log_exists
+        && $lockout_exists
+        && wldelay_lockout_username_is_widened()
+        && wldelay_lockout_has_transient_key_column()
+    ) {
+        update_option( 'wldelay_db_version', WLDELAY_DB_VERSION );
+    }
+}
+
+register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_tables' );
 
 // ==========================================================================
 // Trend Analytics Queries
@@ -1431,6 +1532,13 @@ register_deactivation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_unschedule_cleanup' );
 function wldelay_cleanup_old_logs() {
     global $wpdb;
 
+    // Purge expired rows from the durable lockout store (F-2-1) first, before
+    // any retention-based early return. Lockout rows are bounded by their own
+    // expiry rather than the log retention setting, so they must be reaped even
+    // when logs are kept forever (retention = 0) — otherwise a rotating-IP
+    // attack grows the lockout table without bound.
+    wldelay_get_persistence_store()->purge_expired();
+
     $options = get_option( WLDELAY_OPTION_NAME );
     $retention_days = isset( $options['wldelay_log_retention_days'] )
         ? (int) $options['wldelay_log_retention_days']
@@ -1474,8 +1582,8 @@ add_action( 'wldelay_cleanup_logs', 'wldelay_cleanup_old_logs' );
  */
 function wldelay_maybe_upgrade_db() {
     $installed_version = get_option( 'wldelay_db_version' );
-    if ( $installed_version !== WLDELAY_VERSION ) {
-        wldelay_create_log_table();
+    if ( $installed_version !== WLDELAY_DB_VERSION ) {
+        wldelay_create_tables();
     }
 }
 add_action( 'plugins_loaded', 'wldelay_maybe_upgrade_db' );
@@ -2019,6 +2127,22 @@ function wldelay_get_lockout_transient_key( $ip, $username = '', $options = null
 }
 
 /**
+ * Get the effective username used for persistent-store lockout keys.
+ *
+ * Mirrors the transient keying: under the IP-only strategy the username is
+ * dropped so the transient fast-path and the durable store agree on identity.
+ *
+ * @param string     $username Username attempted.
+ * @param array|null $options  Optional options array.
+ * @return string Effective username ('' under the IP-only strategy).
+ */
+function wldelay_get_effective_lockout_username( $username = '', $options = null ) {
+    $strategy = wldelay_get_lockout_attempt_strategy( $options );
+
+    return ( $strategy === 'ip_username' ) ? (string) $username : '';
+}
+
+/**
  * Get username from current login request.
  *
  * @return string Normalized username or empty string.
@@ -2069,7 +2193,16 @@ function wldelay_get_lockout_remaining_seconds( $ip = null, $username = '' ) {
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username );
     $locked_at = get_transient( $transient_key );
     if ( false === $locked_at ) {
-        return 0;
+        // Durable fallback (F-2-1): derive the countdown from the persistent
+        // store when the transient has been evicted. Called through the
+        // interface so any filtered backend supplies the countdown too.
+        $remaining = wldelay_get_persistence_store()->get_remaining_seconds(
+            $ip,
+            wldelay_get_effective_lockout_username( $username ),
+            'login'
+        );
+
+        return max( 0, (int) $remaining );
     }
 
     $lockout_duration = wldelay_get_lockout_duration_seconds();
@@ -2604,7 +2737,18 @@ function wldelay_is_ip_locked( $ip = null, $username = '' ) {
 
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username );
 
-    return get_transient( $transient_key ) !== false;
+    // Hot-path fast read: the transient (object cache) answers most requests.
+    if ( get_transient( $transient_key ) !== false ) {
+        return true;
+    }
+
+    // Durable fallback (F-2-1): the transient may have been evicted while the
+    // lockout is still in force — the DB-backed store is authoritative.
+    return wldelay_get_persistence_store()->is_locked(
+        $ip,
+        wldelay_get_effective_lockout_username( $username ),
+        'login'
+    );
 }
 
 /**
@@ -2641,7 +2785,72 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
     wldelay_register_transient_key( $transient_key );
+
+    // Persist to the durable store (F-2-1) so the lockout survives transient /
+    // object-cache eviction and can be enumerated. The transient above remains
+    // the hot-path fast read; this is the authoritative fallback.
+    $persisted = wldelay_get_persistence_store()->add_lockout(
+        $ip,
+        wldelay_get_effective_lockout_username( $username, $options ),
+        $lockout_duration,
+        'login',
+        $source,
+        $transient_key
+    );
+
+    if ( ! $persisted ) {
+        wldelay_note_persistence_failure( $ip, 'login' );
+    }
+
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, $source );
+}
+
+/**
+ * Surface a durable lockout-write failure (F-2-1).
+ *
+ * When the persistent store cannot record a lockout (missing table mid-upgrade,
+ * or a DB error), the lockout is protected only by the transient fast-path and
+ * will NOT survive object-cache eviction. Both reviewers flagged that this
+ * degradation was silent.
+ *
+ * Policy is fail-open by design: the transient lockout still applies and login
+ * is NOT blocked on a persistence error — failing closed would lock out
+ * legitimate users during any DB hiccup. This helper makes the degraded state
+ * observable without changing that policy: it fires an action so monitoring can
+ * alert, and ALWAYS writes an operator log line (not gated behind WP_DEBUG, so
+ * production sites — where WP_DEBUG is normally off — still surface the degraded
+ * security state). The log is rate-limited to one line per type per 5 minutes so
+ * a sustained DB/store outage cannot flood the error log. Whether to adopt a
+ * fail-closed policy instead is a security-vs-availability decision left to the
+ * site owner.
+ *
+ * @param string $ip   IP address whose durable lockout write failed.
+ * @param string $type Lockout type ('login' or 'password-reset').
+ */
+function wldelay_note_persistence_failure( $ip, $type ) {
+    /**
+     * Fires when a lockout could not be written to the durable store.
+     *
+     * @param string $ip   IP address whose durable lockout write failed.
+     * @param string $type Lockout type ('login' or 'password-reset').
+     */
+    do_action( 'wldelay_persistence_write_failed', $ip, $type );
+
+    // Rate-limit the operator log to one line per type per 5 minutes. The guard
+    // is best-effort: if the transient store is itself the failure, set_transient
+    // may not stick and we log on every failure — acceptable during an outage.
+    $throttle_key = 'wldelay_persist_fail_logged_' . md5( (string) $type );
+    if ( false === get_transient( $throttle_key ) ) {
+        set_transient( $throttle_key, 1, 5 * MINUTE_IN_SECONDS );
+
+        error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            sprintf(
+                'WP Login Delay: durable lockout write failed for %s (%s); lockout is transient-only until the store recovers.',
+                $ip,
+                $type
+            )
+        );
+    }
 }
 
 /**
@@ -2977,7 +3186,16 @@ function wldelay_is_password_reset_locked( $ip = null, $username = '' ) {
 
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
 
-    return get_transient( $transient_key ) !== false;
+    if ( get_transient( $transient_key ) !== false ) {
+        return true;
+    }
+
+    // Durable fallback (F-2-1).
+    return wldelay_get_persistence_store()->is_locked(
+        $ip,
+        wldelay_get_effective_lockout_username( $username ),
+        'password-reset'
+    );
 }
 
 /**
@@ -2992,6 +3210,22 @@ function wldelay_lock_password_reset( $ip, $username = '' ) {
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
     wldelay_register_transient_key( $transient_key );
+
+    // Persist to the durable store (F-2-1) under the password-reset type so it
+    // is isolated from login lockouts but equally survives cache eviction.
+    $persisted = wldelay_get_persistence_store()->add_lockout(
+        $ip,
+        wldelay_get_effective_lockout_username( $username, $options ),
+        $lockout_duration,
+        'password-reset',
+        'password-reset',
+        $transient_key
+    );
+
+    if ( ! $persisted ) {
+        wldelay_note_persistence_failure( $ip, 'password-reset' );
+    }
+
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, 'password-reset' );
 }
 
@@ -3013,7 +3247,15 @@ function wldelay_get_password_reset_lockout_remaining_seconds( $ip = null, $user
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
     $locked_at = get_transient( $transient_key );
     if ( false === $locked_at ) {
-        return 0;
+        // Durable fallback (F-2-1). Called through the interface so any
+        // filtered backend supplies the countdown too.
+        $remaining = wldelay_get_persistence_store()->get_remaining_seconds(
+            $ip,
+            wldelay_get_effective_lockout_username( $username ),
+            'password-reset'
+        );
+
+        return max( 0, (int) $remaining );
     }
 
     $lockout_duration = wldelay_get_lockout_duration_seconds();

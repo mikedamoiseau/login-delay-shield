@@ -21,7 +21,13 @@ class CrossSourceLockoutTest extends WP_UnitTestCase {
         parent::setUp();
 
         wldelay_create_log_table();
+        wldelay_create_lockout_table();
         $this->truncate_log_table();
+        // truncate_log_table() issues TRUNCATE (implicit commit) which ends the
+        // test transaction, so the durable lockout store (F-2-1) must be
+        // cleared explicitly here and in tearDown — it will not roll back.
+        $this->truncate_lockout_table();
+        wldelay_reset_persistence_runtime_cache();
 
         $_SERVER['REMOTE_ADDR'] = self::TEST_IP;
         unset( $_SERVER['REQUEST_URI'], $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'] );
@@ -54,6 +60,8 @@ class CrossSourceLockoutTest extends WP_UnitTestCase {
         delete_option( 'wldelay_options' );
         wldelay_clear_options_cache();
         $this->truncate_log_table();
+        $this->truncate_lockout_table();
+        wldelay_reset_persistence_runtime_cache();
 
         parent::tearDown();
     }
@@ -215,6 +223,15 @@ class CrossSourceLockoutTest extends WP_UnitTestCase {
     private function truncate_log_table() {
         global $wpdb;
         $table_name = wldelay_get_log_table_name();
+        $wpdb->query( "TRUNCATE TABLE $table_name" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+    }
+
+    /**
+     * Truncate the persistent lockout table between tests (F-2-1).
+     */
+    private function truncate_lockout_table() {
+        global $wpdb;
+        $table_name = wldelay_get_lockout_table_name();
         $wpdb->query( "TRUNCATE TABLE $table_name" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
     }
 }
