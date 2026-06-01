@@ -1234,6 +1234,23 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 
             $deleted = wldelay_delete_lockout_for_ip( $ip );
 
+            // Record the CLI unlock in the audit trail (F-2-7). Logged on every
+            // invocation, not only on a hit, so the privileged action itself is
+            // auditable — a compromised shell clearing lockouts must leave a
+            // forensic record, same as the web admin unlock handler.
+            if ( function_exists( 'wldelay_audit_log' ) ) {
+                wldelay_audit_log(
+                    'lockout_cleared',
+                    array(
+                        'object'    => $ip,
+                        'new_value' => array(
+                            'removed_rows' => (int) $deleted,
+                            'source'       => 'wp-cli',
+                        ),
+                    )
+                );
+            }
+
             if ( $deleted > 0 ) {
                 WP_CLI::success(
                     sprintf(
@@ -1271,6 +1288,22 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
          */
         public function flush_lockouts() {
             $deleted = wldelay_flush_lockout_transients();
+
+            // Audit the bulk clear under a distinct action so a wholesale flush
+            // is never mistaken for a single-IP unlock in the forensic trail
+            // (F-2-7). Includes the removed count and the CLI source.
+            if ( function_exists( 'wldelay_audit_log' ) ) {
+                wldelay_audit_log(
+                    'lockouts_flushed',
+                    array(
+                        'object'    => 'all',
+                        'new_value' => array(
+                            'removed_rows' => (int) $deleted,
+                            'source'       => 'wp-cli',
+                        ),
+                    )
+                );
+            }
 
             WP_CLI::success(
                 sprintf(

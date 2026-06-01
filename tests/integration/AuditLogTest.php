@@ -85,11 +85,10 @@ class AuditLogTest extends WP_UnitTestCase {
             'new_value' => array( 'wldelay_delay' => array( 'old' => 3, 'new' => 5 ) ),
         ) );
 
-        // Nothing written until the deferred queue flushes.
+        // Audit writes are synchronous (a compliance trail must not be lossy),
+        // so the row is present immediately — no queue flush required.
         $table = wldelay_get_audit_table_name();
-        $this->assertSame( 0, (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ) );
-
-        $this->flush();
+        $this->assertSame( 1, (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ) );
 
         $row = $wpdb->get_row( "SELECT * FROM $table ORDER BY id DESC LIMIT 1" );
         $this->assertNotNull( $row );
@@ -231,5 +230,112 @@ class AuditLogTest extends WP_UnitTestCase {
 
         $detail = json_decode( $row->new_value, true );
         $this->assertSame( 1, $detail['removed_rows'] );
+    }
+
+    /**
+     * Audit writes are synchronous, so two identical actions in the same second
+     * each produce their own row instead of collapsing to one. Guards against
+     * the deferred-queue dedupe (id + args hash, second-resolution timestamp)
+     * that would silently drop a repeated action (review fix).
+     */
+    public function test_identical_rapid_actions_are_each_recorded() {
+        global $wpdb;
+        $table = wldelay_get_audit_table_name();
+
+        wldelay_audit_log( 'settings_changed', array(
+            'object'    => 'wldelay_delay',
+            'new_value' => array( 'wldelay_delay' => array( 'old' => 3, 'new' => 5 ) ),
+        ) );
+        wldelay_audit_log( 'settings_changed', array(
+            'object'    => 'wldelay_delay',
+            'new_value' => array( 'wldelay_delay' => array( 'old' => 3, 'new' => 5 ) ),
+        ) );
+
+        $this->assertSame(
+            2,
+            (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ),
+            'Two identical actions must each be recorded, not deduplicated'
+        );
+    }
+
+    /**
+     * A failed INSERT returns false and is not silently swallowed. With the
+     * table dropped the write cannot succeed, exercising the failure path
+     * (review fix — surfaces invisible audit gaps).
+     */
+    public function test_write_row_failure_returns_false() {
+        global $wpdb;
+
+        $table = wldelay_get_audit_table_name();
+
+        // Force the audit INSERT to fail deterministically by mangling it into
+        // invalid SQL via the `query` filter. (DROP TABLE does not persist
+        // inside the per-test transaction in this harness, so a missing table
+        // cannot be relied on to trigger the failure path.)
+        $break = static function ( $query ) use ( $table ) {
+            if ( 0 === stripos( ltrim( $query ), 'INSERT' ) && false !== strpos( $query, $table ) ) {
+                return 'INSERT INTO'; // Syntax error -> $wpdb->query returns false.
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        $suppress = $wpdb->suppress_errors( true );
+        $result   = wldelay_audit_write_row( array(
+            'action'     => 'settings_changed',
+            'actor_id'   => 1,
+            'created_at' => current_time( 'mysql', true ),
+        ) );
+        $wpdb->suppress_errors( $suppress );
+
+        remove_filter( 'query', $break );
+
+        $this->assertFalse( $result, 'A failed audit INSERT must return false' );
+
+        // The mangled write must not have left a row behind.
+        $this->assertSame( 0, (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ) );
+    }
+
+    /**
+     * A non-numeric actor filter matches only by login and must NOT return
+     * system rows (actor_id 0). Guards the OR actor_id = 0 fold-in (review fix).
+     */
+    public function test_text_actor_filter_excludes_system_rows() {
+        // One human actor row + several system rows (actor_id 0).
+        wldelay_audit_write_row( array(
+            'action'      => 'settings_changed',
+            'actor_id'    => 7,
+            'actor_login' => 'alice',
+            'created_at'  => current_time( 'mysql', true ),
+        ) );
+        for ( $i = 0; $i < 3; $i++ ) {
+            wldelay_audit_write_row( array(
+                'action'      => 'lockout_cleared',
+                'actor_id'    => 0,
+                'actor_login' => '',
+                'created_at'  => current_time( 'mysql', true ),
+            ) );
+        }
+
+        // Text search for "alice" must return only her row, not the 3 system rows.
+        $this->assertSame( 1, wldelay_count_audit_log( array( 'actor' => 'alice' ) ) );
+        $rows = wldelay_query_audit_log( array( 'actor' => 'alice' ), 1, 25 );
+        $this->assertCount( 1, $rows );
+        $this->assertSame( 'alice', $rows[0]->actor_login );
+
+        // A numeric actor filter still matches the exact id.
+        $this->assertSame( 1, wldelay_count_audit_log( array( 'actor' => '7' ) ) );
+    }
+
+    /**
+     * The bulk-flush action carries its own label so it is distinguishable from
+     * a single-IP unlock in the trail (review fix — CLI flush-lockouts).
+     */
+    public function test_lockouts_flushed_action_has_distinct_label() {
+        $flushed = wldelay_get_audit_action_label( 'lockouts_flushed' );
+        $cleared = wldelay_get_audit_action_label( 'lockout_cleared' );
+
+        $this->assertNotSame( 'lockouts_flushed', $flushed, 'Bulk-flush action should have a human label' );
+        $this->assertNotSame( $flushed, $cleared, 'Bulk flush must be distinct from single-IP unlock' );
     }
 }

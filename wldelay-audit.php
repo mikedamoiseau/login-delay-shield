@@ -12,14 +12,15 @@
  * monitoring of security-relevant events), GDPR Art. 32 (security of processing),
  * and PCI-DSS Req. 10 (track and monitor access to system components).
  *
- * RELIABILITY: audit WRITES are routed through the F-4-9 deferred task queue
- * (wldelay-async.php) so the INSERT stays off the request critical path. That
- * queue is best-effort — work still queued when the process exits is dropped
- * (see the reliability contract in wldelay-async.php). For admin-rate actions
- * (a handful per session, never in a hot loop) that trade-off is acceptable: the
- * actions are low-frequency and the writes coalesce/flush on shutdown. If a
- * future capture point is high-frequency or loss-sensitive, write it
- * synchronously via wldelay_audit_write_row() instead of deferring.
+ * RELIABILITY: audit WRITES are SYNCHRONOUS — wldelay_audit_log() inserts the
+ * row inline on the action path (wldelay_audit_write_row). A compliance trail
+ * must not be lossy, and the F-4-9 deferred queue is best-effort (queued work is
+ * dropped when the process exits) and coalesces identical (id+args) enqueues,
+ * which would collapse two identical actions in the same second to one row —
+ * both unacceptable here. Admin/security actions are low-frequency (a handful
+ * per session, never in a hot loop), so the inline INSERT adds no meaningful
+ * latency. A failed INSERT is logged (never silently swallowed) so a gap in the
+ * trail is detectable.
  *
  * @package login-delay-shield
  */
@@ -135,13 +136,15 @@ function wldelay_audit_log( $action, array $args = array() ) {
         'created_at'  => current_time( 'mysql', true ),
     );
 
-    if ( function_exists( 'wldelay_defer_task' ) ) {
-        wldelay_defer_task( WLDELAY_AUDIT_TASK_ID, array( 'row' => $row ) );
-    } else {
-        // No async layer (should not happen in production) — write synchronously
-        // so the action is never silently dropped.
-        wldelay_audit_write_row( $row );
-    }
+    // Write synchronously. A compliance trail must not be lossy: the F-4-9
+    // deferred queue is best-effort (work still queued when the process exits is
+    // dropped) and coalesces identical (id+args) enqueues, so two identical
+    // actions within the same second would collapse to one row. Both are
+    // unacceptable for an audit log, so the INSERT runs inline on the action
+    // path rather than being deferred. Admin/security actions are low-frequency
+    // (a handful per session, never in a hot loop), so the synchronous write
+    // adds no meaningful latency.
+    wldelay_audit_write_row( $row );
 }
 
 /**
@@ -208,7 +211,24 @@ function wldelay_audit_write_row( array $row ) {
 
     $result = $wpdb->insert( $table_name, $data, $formats );
 
-    return false === $result ? false : (int) $wpdb->insert_id;
+    if ( false === $result ) {
+        // A swallowed audit INSERT is an invisible gap in the compliance trail
+        // (table outage, schema failure, strict-mode rejection). Surface it on
+        // the operator log so the gap is detectable rather than silent. Not
+        // gated on WP_DEBUG: production sites (WP_DEBUG off) must still see a
+        // failed audit write. Mirrors wldelay_note_persistence_failure().
+        error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            sprintf(
+                'WP Login Delay: audit-log write failed for action "%s" (%s) — entry not recorded.',
+                isset( $data['action'] ) ? $data['action'] : '',
+                is_object( $wpdb ) && isset( $wpdb->last_error ) ? $wpdb->last_error : 'unknown error'
+            )
+        );
+
+        return false;
+    }
+
+    return (int) $wpdb->insert_id;
 }
 
 // Register the deferred audit-write handler at boot so any request can enqueue a
@@ -324,10 +344,18 @@ function wldelay_build_audit_where_clause( $filters ) {
     }
 
     if ( $filters['actor'] !== '' ) {
-        // Match either the login or the numeric actor id.
-        $where[]  = '( actor_login LIKE %s OR actor_id = %d )';
-        $params[] = '%' . $wpdb->esc_like( $filters['actor'] ) . '%';
-        $params[] = ctype_digit( $filters['actor'] ) ? (int) $filters['actor'] : 0;
+        if ( ctype_digit( $filters['actor'] ) ) {
+            // Numeric input: match either the login or the exact actor id.
+            $where[]  = '( actor_login LIKE %s OR actor_id = %d )';
+            $params[] = '%' . $wpdb->esc_like( $filters['actor'] ) . '%';
+            $params[] = (int) $filters['actor'];
+        } else {
+            // Non-numeric input: login match ONLY. Folding in `actor_id = 0`
+            // here would return every system-generated row (actor_id 0) on any
+            // text search, producing misleading forensic results and counts.
+            $where[]  = 'actor_login LIKE %s';
+            $params[] = '%' . $wpdb->esc_like( $filters['actor'] ) . '%';
+        }
     }
 
     if ( $filters['from'] !== '' ) {
@@ -437,6 +465,7 @@ function wldelay_get_audit_action_label( $action ) {
     $labels = array(
         'settings_changed'  => __( 'Settings changed', 'login-delay-shield' ),
         'lockout_cleared'   => __( 'Lockout cleared', 'login-delay-shield' ),
+        'lockouts_flushed'  => __( 'All lockouts flushed', 'login-delay-shield' ),
         'whitelist_changed' => __( 'Whitelist changed', 'login-delay-shield' ),
     );
 
