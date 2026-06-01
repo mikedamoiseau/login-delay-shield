@@ -30,6 +30,7 @@ zip -qr "$OUT_ZIP" \
     wldelay-enumeration.php \
     wldelay-fail2ban.php \
     wldelay-features.php \
+    wldelay-migration.php \
     wldelay-persistence.php \
     wldelay-settings.php \
     wldelay-settings-view.php \

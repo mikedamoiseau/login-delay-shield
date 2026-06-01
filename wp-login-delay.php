@@ -44,6 +44,7 @@ add_action( 'plugins_loaded', 'wldelay_load_textdomain' );
  */
 require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
 require_once dirname( __FILE__ ) . '/wldelay-features.php';
+require_once dirname( __FILE__ ) . '/wldelay-migration.php';
 require_once dirname( __FILE__ ) . '/wldelay-async.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
@@ -1427,6 +1428,21 @@ function wldelay_create_tables() {
 
 register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_tables' );
 
+/**
+ * Stamp a fresh activation at the latest settings version so a brand-new
+ * install never replays historical settings migrations (F-2-6).
+ *
+ * Only stamps when the version was never recorded: re-activating an existing
+ * install (which may legitimately be behind) must not skip its pending
+ * migrations — the plugins_loaded runner handles those on the next load.
+ */
+function wldelay_stamp_settings_version_on_activation() {
+    if ( false === get_option( WLDELAY_SETTINGS_VERSION_OPTION, false ) ) {
+        update_option( WLDELAY_SETTINGS_VERSION_OPTION, WLDELAY_SETTINGS_VERSION );
+    }
+}
+register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_stamp_settings_version_on_activation' );
+
 // ==========================================================================
 // Trend Analytics Queries
 // ==========================================================================
@@ -1604,6 +1620,21 @@ function wldelay_maybe_upgrade_db() {
     }
 }
 add_action( 'plugins_loaded', 'wldelay_maybe_upgrade_db' );
+
+/**
+ * Run pending settings (options-array) migrations.
+ *
+ * Distinct from the DB schema upgrade above: this transforms the stored
+ * wldelay_options array via the ordered WLDelay_Migration registry (F-2-6).
+ * Hooked at priority 11 so it runs after wldelay_maybe_upgrade_db (priority 10)
+ * yet still on plugins_loaded — before any admin/front-end code reads settings.
+ * The runner early-returns cheaply when already current, so the per-request
+ * cost on a migrated install is a single get_option() comparison.
+ */
+function wldelay_maybe_migrate_settings() {
+    WLDelay_Migration::run();
+}
+add_action( 'plugins_loaded', 'wldelay_maybe_migrate_settings', 11 );
 
 /**
  * Show upgrade notice for name change
