@@ -45,6 +45,7 @@ add_action( 'plugins_loaded', 'wldelay_load_textdomain' );
 require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
+require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
 if( is_admin() ) {
     $wldelay_settings_page = new LDS_Settings();
 }
@@ -1870,7 +1871,8 @@ function wldelay_get_security_score( $options = null ) {
         'wldelay_rest_enabled'                 => array( 'label' => __( 'REST API Protection', 'login-delay-shield' ), 'points' => 5 ),
         'wldelay_application_password_enabled' => array( 'label' => __( 'Application Password Protection', 'login-delay-shield' ), 'points' => 5 ),
         'wldelay_password_reset_enabled'       => array( 'label' => __( 'Password Reset Protection', 'login-delay-shield' ), 'points' => 5 ),
-        'wldelay_fail2ban_enabled'             => array( 'label' => __( 'fail2ban Logging', 'login-delay-shield' ), 'points' => 10 ),
+        'wldelay_enumeration_hardening_enabled' => array( 'label' => __( 'Username Enumeration Hardening', 'login-delay-shield' ), 'points' => 5 ),
+        'wldelay_fail2ban_enabled'             => array( 'label' => __( 'fail2ban Logging', 'login-delay-shield' ), 'points' => 5 ),
     );
 
     $score          = 0;
@@ -1927,6 +1929,10 @@ function wldelay_get_options() {
 
         if ( ! array_key_exists( 'wldelay_password_reset_enabled', $options ) ) {
             $options['wldelay_password_reset_enabled'] = false;
+        }
+
+        if ( ! array_key_exists( 'wldelay_enumeration_hardening_enabled', $options ) ) {
+            $options['wldelay_enumeration_hardening_enabled'] = false;
         }
 
         if ( ! array_key_exists( 'wldelay_fail2ban_enabled', $options ) ) {
