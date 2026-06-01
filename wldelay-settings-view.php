@@ -72,6 +72,7 @@ class LDS_Settings_View {
             <?php $this->render_object_cache_notice(); ?>
 
             <form id="wldelay-telemetry-filter-form" method="get" action="<?php echo esc_url( admin_url( 'options-general.php' ) ); ?>"></form>
+            <form id="wldelay-audit-filter-form" method="get" action="<?php echo esc_url( admin_url( 'options-general.php' ) ); ?>"></form>
 
             <form method="post" action="options.php">
                 <?php settings_fields( 'wldelay_option_group' ); ?>
@@ -148,6 +149,18 @@ class LDS_Settings_View {
                             <p class="description"><?php esc_html_e( 'Failed login attempts are logged and displayed in the dashboard widget.', 'login-delay-shield' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_log_section_id' ); ?>
                             <?php $this->render_login_log_telemetry(); ?>
+                        </div>
+                    </div>
+
+                    <div class="wldelay-card">
+                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-audit-body">
+                            <span class="dashicons dashicons-shield" aria-hidden="true"></span>
+                            <?php esc_html_e( 'Audit Log', 'login-delay-shield' ); ?>
+                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                        </h2>
+                        <div id="wldelay-audit-body" class="wldelay-card-body">
+                            <p class="description"><?php esc_html_e( 'A read-only record of sensitive administrative actions — settings changes, manual unlocks, and whitelist edits — for compliance and forensic review.', 'login-delay-shield' ); ?></p>
+                            <?php $this->render_audit_log(); ?>
                         </div>
                     </div>
 
@@ -773,6 +786,220 @@ class LDS_Settings_View {
         );
         if ( $current_page < $total_pages ) {
             echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_log_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'login-delay-shield' ) . '</a>';
+        }
+        echo '</nav>';
+    }
+
+    /**
+     * Render the read-only audit-log view: filters, table, and pagination.
+     *
+     * Surfaces the F-2-7 admin/security action trail. Read-only by design — no
+     * edit or delete controls. All output is escaped; the underlying query
+     * functions sanitize the request filters internally.
+     */
+    private function render_audit_log() {
+        $filters      = wldelay_get_audit_filters_from_request();
+        $per_page     = 25;
+        $current_page = isset( $_GET['wldelay_audit_page'] ) ? max( 1, absint( wp_unslash( $_GET['wldelay_audit_page'] ) ) ) : 1;
+        $total        = wldelay_count_audit_log( $filters );
+        $total_pages  = max( 1, (int) ceil( $total / $per_page ) );
+
+        if ( $current_page > $total_pages ) {
+            $current_page = $total_pages;
+        }
+
+        $entries        = wldelay_query_audit_log( $filters, $current_page, $per_page );
+        $action_options = wldelay_get_audit_action_options();
+        ?>
+        <div class="wldelay-audit" aria-labelledby="wldelay-audit-title">
+            <h3 id="wldelay-audit-title" class="screen-reader-text"><?php esc_html_e( 'Audit log entries', 'login-delay-shield' ); ?></h3>
+
+            <div class="wldelay-telemetry-filters">
+                <input form="wldelay-audit-filter-form" type="hidden" name="page" value="login-delay-shield-admin" />
+                <div class="wldelay-filter-grid">
+                    <label for="wldelay_audit_action">
+                        <?php esc_html_e( 'Action', 'login-delay-shield' ); ?>
+                        <select id="wldelay_audit_action" name="wldelay_audit_action" form="wldelay-audit-filter-form">
+                            <option value=""><?php esc_html_e( 'All actions', 'login-delay-shield' ); ?></option>
+                            <?php foreach ( $action_options as $action_key ) : ?>
+                                <option value="<?php echo esc_attr( $action_key ); ?>" <?php selected( $filters['action'], $action_key ); ?>><?php echo esc_html( wldelay_get_audit_action_label( $action_key ) ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label for="wldelay_audit_actor">
+                        <?php esc_html_e( 'Actor', 'login-delay-shield' ); ?>
+                        <input id="wldelay_audit_actor" name="wldelay_audit_actor" form="wldelay-audit-filter-form" type="text" value="<?php echo esc_attr( $filters['actor'] ); ?>" placeholder="<?php echo esc_attr__( 'Login or user ID', 'login-delay-shield' ); ?>" />
+                    </label>
+                    <label for="wldelay_audit_from">
+                        <?php esc_html_e( 'From', 'login-delay-shield' ); ?>
+                        <input id="wldelay_audit_from" name="wldelay_audit_from" form="wldelay-audit-filter-form" type="date" value="<?php echo esc_attr( $filters['from'] ); ?>" />
+                    </label>
+                    <label for="wldelay_audit_to">
+                        <?php esc_html_e( 'To', 'login-delay-shield' ); ?>
+                        <input id="wldelay_audit_to" name="wldelay_audit_to" form="wldelay-audit-filter-form" type="date" value="<?php echo esc_attr( $filters['to'] ); ?>" />
+                    </label>
+                </div>
+                <p class="wldelay-telemetry-actions">
+                    <button type="submit" form="wldelay-audit-filter-form" class="button button-primary"><?php esc_html_e( 'Apply filters', 'login-delay-shield' ); ?></button>
+                    <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=login-delay-shield-admin' ) ); ?>"><?php esc_html_e( 'Reset', 'login-delay-shield' ); ?></a>
+                </p>
+            </div>
+
+            <div class="wldelay-telemetry-results">
+                <p class="description">
+                    <?php
+                    printf(
+                        /* translators: %s: number of matching audit log entries */
+                        esc_html__( '%s matching audit entries.', 'login-delay-shield' ),
+                        esc_html( number_format_i18n( $total ) )
+                    );
+                    ?>
+                </p>
+                <?php if ( empty( $entries ) ) : ?>
+                    <p class="wldelay-empty-state"><?php esc_html_e( 'No audit entries match the current filters.', 'login-delay-shield' ); ?></p>
+                <?php else : ?>
+                    <table class="widefat striped wldelay-audit-table">
+                        <caption class="screen-reader-text"><?php esc_html_e( 'Audit log of administrative and security actions', 'login-delay-shield' ); ?></caption>
+                        <thead>
+                            <tr>
+                                <th scope="col"><?php esc_html_e( 'Time', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Actor', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Action', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Object', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Details', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'IP address', 'login-delay-shield' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $entries as $entry ) : ?>
+                                <?php
+                                $actor = '' !== (string) $entry->actor_login
+                                    ? (string) $entry->actor_login
+                                    : ( (int) $entry->actor_id > 0
+                                        ? sprintf( /* translators: %d: user ID */ __( 'User #%d', 'login-delay-shield' ), (int) $entry->actor_id )
+                                        : __( 'System', 'login-delay-shield' ) );
+                                ?>
+                                <tr>
+                                    <td><?php echo esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $entry->created_at ) ); ?></td>
+                                    <td><?php echo esc_html( $actor ); ?></td>
+                                    <td><?php echo esc_html( wldelay_get_audit_action_label( $entry->action ) ); ?></td>
+                                    <td><?php echo esc_html( (string) $entry->object ); ?></td>
+                                    <td><?php echo esc_html( $this->format_audit_detail( $entry ) ); ?></td>
+                                    <td><?php echo esc_html( (string) $entry->ip_address ); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php $this->render_audit_pagination( $current_page, $total_pages, $filters ); ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Build a compact, human-readable detail string for an audit row.
+     *
+     * Renders the changed-key diff (settings_changed) or the structured
+     * new_value payload as `key: old -> new` / `key: value` fragments. Always
+     * returns plain text; the caller escapes it.
+     *
+     * @param object $entry Audit row.
+     * @return string
+     */
+    private function format_audit_detail( $entry ) {
+        $new = isset( $entry->new_value ) && '' !== (string) $entry->new_value
+            ? json_decode( (string) $entry->new_value, true )
+            : null;
+
+        if ( ! is_array( $new ) ) {
+            return isset( $entry->new_value ) ? (string) $entry->new_value : '';
+        }
+
+        $fragments = array();
+        foreach ( $new as $key => $value ) {
+            if ( is_array( $value ) && array_key_exists( 'old', $value ) && array_key_exists( 'new', $value ) ) {
+                $fragments[] = sprintf(
+                    '%s: %s -> %s',
+                    $key,
+                    $this->scalarize_audit_value( $value['old'] ),
+                    $this->scalarize_audit_value( $value['new'] )
+                );
+            } else {
+                $fragments[] = sprintf( '%s: %s', $key, $this->scalarize_audit_value( $value ) );
+            }
+        }
+
+        return implode( '; ', $fragments );
+    }
+
+    /**
+     * Flatten an audit value to a short display string.
+     *
+     * @param mixed $value Raw value from the decoded diff.
+     * @return string
+     */
+    private function scalarize_audit_value( $value ) {
+        if ( null === $value ) {
+            return '∅';
+        }
+        if ( is_bool( $value ) ) {
+            return $value ? 'true' : 'false';
+        }
+        if ( is_array( $value ) ) {
+            $encoded = wp_json_encode( $value );
+            return false === $encoded ? '' : $encoded;
+        }
+        return (string) $value;
+    }
+
+    /**
+     * Render audit-log pagination links.
+     *
+     * @param int   $current_page Current page number.
+     * @param int   $total_pages  Total page count.
+     * @param array $filters      Active filters.
+     */
+    private function render_audit_pagination( $current_page, $total_pages, $filters ) {
+        if ( $total_pages <= 1 ) {
+            return;
+        }
+
+        $query_args = array();
+        $key_map    = array(
+            'action' => 'wldelay_audit_action',
+            'actor'  => 'wldelay_audit_actor',
+            'from'   => 'wldelay_audit_from',
+            'to'     => 'wldelay_audit_to',
+        );
+        foreach ( $key_map as $short => $long ) {
+            if ( isset( $filters[ $short ] ) && '' !== $filters[ $short ] ) {
+                $query_args[ $long ] = $filters[ $short ];
+            }
+        }
+
+        $base_args = array_merge(
+            array( 'page' => 'login-delay-shield-admin' ),
+            $query_args
+        );
+
+        echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Audit log pagination', 'login-delay-shield' ) . '">';
+        if ( $current_page > 1 ) {
+            echo '<a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_audit_page' => $current_page - 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Previous', 'login-delay-shield' ) . '</a> ';
+        }
+        printf(
+            '<span class="wldelay-pagination-status">%s</span>',
+            esc_html(
+                sprintf(
+                    /* translators: 1: current page, 2: total pages */
+                    __( 'Page %1$d of %2$d', 'login-delay-shield' ),
+                    $current_page,
+                    $total_pages
+                )
+            )
+        );
+        if ( $current_page < $total_pages ) {
+            echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_audit_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'login-delay-shield' ) . '</a>';
         }
         echo '</nav>';
     }

@@ -13,7 +13,7 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 // from the truncated username column). Kept separate from WLDELAY_VERSION so a
 // schema upgrade fires on existing installs without depending on a user-facing
 // release version bump.
-define( 'WLDELAY_DB_VERSION', '4' );
+define( 'WLDELAY_DB_VERSION', '5' );
 
 /*
 Plugin Name: Login Delay Shield
@@ -49,6 +49,7 @@ require_once dirname( __FILE__ ) . '/wldelay-async.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
+require_once dirname( __FILE__ ) . '/wldelay-audit.php';
 if( is_admin() ) {
     $wldelay_settings_page = new LDS_Settings();
 }
@@ -683,6 +684,12 @@ function wldelay_handle_unlock_current_ip() {
     }
 
     $deleted = wldelay_delete_lockout_for_ip( $ip, $username );
+
+    // Record the manual unlock in the audit trail (F-2-7). Logged on every
+    // attempt, not only on a hit, so the action itself is auditable.
+    if ( function_exists( 'wldelay_audit_lockout_cleared' ) ) {
+        wldelay_audit_lockout_cleared( $ip, $username, (int) $deleted );
+    }
 
     $redirect_url = add_query_arg(
         array(
@@ -1639,16 +1646,20 @@ function wldelay_create_tables() {
 
     wldelay_create_log_table();
     wldelay_create_lockout_table();
+    wldelay_create_audit_table();
 
     $log_table     = wldelay_get_log_table_name();
     $lockout_table = wldelay_get_lockout_table_name();
+    $audit_table   = wldelay_get_audit_table_name();
 
     $log_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
     $lockout_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $lockout_table ) ) === $lockout_table;
+    $audit_exists   = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $audit_table ) ) === $audit_table;
 
     if (
         $log_exists
         && $lockout_exists
+        && $audit_exists
         && wldelay_lockout_username_is_widened()
         && wldelay_lockout_has_transient_key_column()
     ) {

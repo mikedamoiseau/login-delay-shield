@@ -107,6 +107,10 @@ function wldelay_uninstall_cleanup_site() {
     $lockout_table = $wpdb->prefix . 'wldelay_lockouts';
     $wpdb->query( "DROP TABLE IF EXISTS `{$lockout_table}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.SchemaChange
 
+    // Drop the admin/security action audit-log table (F-2-7).
+    $audit_table = $wpdb->prefix . 'wldelay_audit_log';
+    $wpdb->query( "DROP TABLE IF EXISTS `{$audit_table}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.SchemaChange
+
     // Clear plugin-owned scheduled cron events (F-4-9 async backstop + the
     // daily log-cleanup event) so no orphan hooks linger after deletion.
     $async_cron = wp_next_scheduled( 'wldelay_async_cron' );

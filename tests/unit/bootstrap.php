@@ -52,3 +52,8 @@ require_once dirname( dirname( __DIR__ ) ) . '/wldelay-persistence.php';
 
 // Load the declarative feature/defaults registry (F-2-2).
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-features.php';
+
+// Load the audit module for pure-logic unit tests (settings-diff builder).
+// Its top-level hook registration is guarded by function_exists/defined so it
+// stays inert without a WP runtime.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-audit.php';
