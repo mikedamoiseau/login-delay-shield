@@ -10,63 +10,36 @@ class LockoutTest extends WP_UnitTestCase {
      */
     public function setUp(): void {
         parent::setUp();
+        wldelay_create_lockout_table();
 
-        // Clear any existing options to ensure clean slate
-        delete_option( 'wldelay_options' );
+        // Single declarative reset replaces the hand-rolled option + transient
+        // cleanup this suite used to repeat; the fixture clears every lockout /
+        // failure transient (registry + DB fallback) and the durable store.
+        WLDelay_Test_Fixture::reset();
 
-        // Clear all IP-related SERVER variables to ensure consistent IP detection
-        unset( $_SERVER['HTTP_CLIENT_IP'], $_SERVER['HTTP_X_FORWARDED_FOR'] );
-
-        // Set up a test IP
+        // Pin the shared test IP every test relies on.
         $_SERVER['REMOTE_ADDR'] = '192.168.1.100';
-
-        // Clear any existing transients for this IP
-        $this->clear_test_ip_transients();
-
-        // Clear options cache
-        wldelay_clear_options_cache();
     }
 
     /**
      * Tear down after each test.
      */
     public function tearDown(): void {
-        unset( $_SERVER['REMOTE_ADDR'] );
-        unset( $_POST['log'] );
-        $this->clear_test_ip_transients();
-        delete_option( 'wldelay_options' );
-        wldelay_clear_options_cache();
+        WLDelay_Test_Fixture::reset();
         parent::tearDown();
-    }
-
-    /**
-     * Clear transients used by lockout/failure tracking in tests.
-     */
-    private function clear_test_ip_transients() {
-        $ip = '192.168.1.100';
-        $pair_options = [ 'wldelay_lockout_attempt_strategy' => 'ip_username' ];
-
-        delete_transient( wldelay_get_failure_transient_key( $ip ) );
-        delete_transient( wldelay_get_lockout_transient_key( $ip ) );
-
-        delete_transient( wldelay_get_failure_transient_key( $ip, 'alice', $pair_options ) );
-        delete_transient( wldelay_get_failure_transient_key( $ip, 'bob', $pair_options ) );
-        delete_transient( wldelay_get_failure_transient_key( $ip, 'testuser', $pair_options ) );
-        delete_transient( wldelay_get_lockout_transient_key( $ip, 'alice', $pair_options ) );
-        delete_transient( wldelay_get_lockout_transient_key( $ip, 'bob', $pair_options ) );
-        delete_transient( wldelay_get_lockout_transient_key( $ip, 'testuser', $pair_options ) );
     }
 
     /**
      * Test that lockout is not triggered below threshold.
      */
     public function test_lockout_not_triggered_below_threshold() {
-        update_option( 'wldelay_options', [
-            'wldelay_lockout_enabled' => true,
-            'wldelay_lockout_threshold' => 5,
-            'wldelay_lockout_duration' => 60,
-        ] );
-        wldelay_clear_options_cache();
+        WLDelay_Test_Fixture::make()
+            ->with_options( [
+                'wldelay_lockout_enabled'   => true,
+                'wldelay_lockout_threshold' => 5,
+                'wldelay_lockout_duration'  => 60,
+            ] )
+            ->apply();
 
         // Simulate 4 failed attempts (below threshold of 5)
         for ( $i = 0; $i < 4; $i++ ) {
@@ -80,12 +53,13 @@ class LockoutTest extends WP_UnitTestCase {
      * Test that lockout is triggered at threshold.
      */
     public function test_lockout_triggered_at_threshold() {
-        update_option( 'wldelay_options', [
-            'wldelay_lockout_enabled' => true,
-            'wldelay_lockout_threshold' => 3,
-            'wldelay_lockout_duration' => 60,
-        ] );
-        wldelay_clear_options_cache();
+        WLDelay_Test_Fixture::make()
+            ->with_options( [
+                'wldelay_lockout_enabled'   => true,
+                'wldelay_lockout_threshold' => 3,
+                'wldelay_lockout_duration'  => 60,
+            ] )
+            ->apply();
 
         // Simulate 3 failed attempts (at threshold)
         for ( $i = 0; $i < 3; $i++ ) {
@@ -99,12 +73,13 @@ class LockoutTest extends WP_UnitTestCase {
      * Test that lockout is triggered above threshold.
      */
     public function test_lockout_triggered_above_threshold() {
-        update_option( 'wldelay_options', [
-            'wldelay_lockout_enabled' => true,
-            'wldelay_lockout_threshold' => 3,
-            'wldelay_lockout_duration' => 60,
-        ] );
-        wldelay_clear_options_cache();
+        WLDelay_Test_Fixture::make()
+            ->with_options( [
+                'wldelay_lockout_enabled'   => true,
+                'wldelay_lockout_threshold' => 3,
+                'wldelay_lockout_duration'  => 60,
+            ] )
+            ->apply();
 
         // Simulate 5 failed attempts (above threshold of 3)
         for ( $i = 0; $i < 5; $i++ ) {
@@ -118,15 +93,14 @@ class LockoutTest extends WP_UnitTestCase {
      * Test that locked IP returns WP_Error.
      */
     public function test_locked_ip_returns_wp_error() {
-        update_option( 'wldelay_options', [
-            'wldelay_lockout_enabled' => true,
-            'wldelay_lockout_threshold' => 2,
-            'wldelay_lockout_duration' => 60,
-        ] );
-        wldelay_clear_options_cache();
-
-        // Lock the IP
-        wldelay_lock_ip( '192.168.1.100' );
+        WLDelay_Test_Fixture::make()
+            ->with_options( [
+                'wldelay_lockout_enabled'   => true,
+                'wldelay_lockout_threshold' => 2,
+                'wldelay_lockout_duration'  => 60,
+            ] )
+            ->with_lockout( '192.168.1.100' )
+            ->apply();
 
         // Create a valid user
         $user = $this->factory->user->create_and_get( [
@@ -145,16 +119,15 @@ class LockoutTest extends WP_UnitTestCase {
      * Test that lockout check happens before password validation.
      */
     public function test_lockout_check_before_delay() {
-        update_option( 'wldelay_options', [
-            'wldelay_lockout_enabled' => true,
-            'wldelay_lockout_threshold' => 2,
-            'wldelay_lockout_duration' => 60,
-            'wldelay_delay' => 3, // 3 second delay
-        ] );
-        wldelay_clear_options_cache();
-
-        // Lock the IP
-        wldelay_lock_ip( '192.168.1.100' );
+        WLDelay_Test_Fixture::make()
+            ->with_options( [
+                'wldelay_lockout_enabled'   => true,
+                'wldelay_lockout_threshold' => 2,
+                'wldelay_lockout_duration'  => 60,
+                'wldelay_delay'             => 3, // 3 second delay
+            ] )
+            ->with_lockout( '192.168.1.100' )
+            ->apply();
 
         $error = new WP_Error( 'invalid_password', 'Invalid password' );
 
