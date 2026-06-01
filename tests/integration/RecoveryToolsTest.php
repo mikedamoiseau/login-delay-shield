@@ -224,6 +224,40 @@ class RecoveryToolsTest extends WP_UnitTestCase {
     }
 
     /**
+     * A refresh that bumps an existing record's expiry but whose write does not
+     * persist must report failure, even though the stale record still carries
+     * the right key. Without comparing the expiry, the key-only readback would
+     * accept the stale T1 record as "current" while the live cache-only
+     * transient now expires at the later T2 — the scheduled reaper would then
+     * delete the registry row at T1, leaving the active transient
+     * undiscoverable by a global flush. The expiry check makes the caller drop
+     * that orphan instead (Codex-2 round-4 review).
+     */
+    public function test_register_transient_key_reports_stale_expiry_refresh_as_failure() {
+        $key    = wldelay_get_lockout_transient_key( '192.168.51.40' );
+        $record = wldelay_get_transient_registry_key_prefix() . md5( $key );
+
+        // Simulate the failed-refresh state: the DB readback returns a record
+        // with the right key but the PREVIOUS (earlier) expiry, because the new
+        // expiry never reached the DB during the outage.
+        $stale_exp = time() - 100;
+        $stale     = array( 'key' => $key, 'exp' => $stale_exp );
+        add_filter(
+            "option_{$record}",
+            function () use ( $stale ) {
+                return $stale;
+            }
+        );
+
+        $this->assertFalse(
+            wldelay_register_transient_key( $key, time() + HOUR_IN_SECONDS ),
+            'A refresh whose new expiry did not persist must report failure'
+        );
+
+        remove_all_filters( "option_{$record}" );
+    }
+
+    /**
      * A failure counter has no durable backing, so when its registry write is
      * unverifiable the cache-only transient would be invisible to recovery.
      * wldelay_track_failed_attempt() must fail open and drop the orphan rather

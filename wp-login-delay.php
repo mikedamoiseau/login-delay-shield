@@ -250,8 +250,10 @@ function wldelay_get_transient_registry_key_prefix() {
  * @param int    $expires_at     Absolute UNIX timestamp the transient expires
  *                               at, or 0 when unknown (record is never
  *                               auto-purged, only flushed/unlocked).
- * @return bool True when a registry record for this key is present after the
- *              write (newly written, or already present and unchanged).
+ * @return bool True when a registry record for this key AND this expiry is
+ *              present after the write (newly written, or already present and
+ *              unchanged). False when the write did not persist, including a
+ *              refresh whose new expiry did not reach the DB.
  */
 function wldelay_register_transient_key( $transient_name, $expires_at = 0 ) {
     if ( empty( $transient_name ) ) {
@@ -270,15 +272,27 @@ function wldelay_register_transient_key( $transient_name, $expires_at = 0 ) {
         false
     );
 
-    // Verify the record is actually present. On a failed write (e.g. the DB is
-    // down while an external object cache still accepted the set_transient), the
-    // record cache is not primed and get_option() falls through to the failing
-    // DB, returning false here so the caller can drop the orphan. On a re-lock
-    // that merely refreshed an existing record, the cached array still carries
-    // the right key, so this correctly reports the transient as discoverable.
+    // Verify the record is actually present AND carries the expiry we just
+    // wrote. On a failed write (e.g. the DB is down while an external object
+    // cache still accepted the set_transient), the record cache is not primed
+    // and get_option() falls through to the failing DB. On a re-lock that
+    // merely refreshed an existing record, the cached array still carries the
+    // right key, so this correctly reports the transient as discoverable.
+    //
+    // The expiry MUST match too, not just the key: a refresh that bumps an
+    // existing record from exp=T1 to exp=T2 but whose write fails leaves the
+    // stale T1 record in the DB. A key-only check would accept it as "current"
+    // while the live transient now expires at the later T2 — the scheduled
+    // reaper (which keys off the stored exp) would then delete the registry
+    // row at T1 while the cache-only transient is still active until T2,
+    // leaving it undiscoverable by a global flush. Comparing exp makes the
+    // caller drop that orphan instead (Codex-2 round-4 review).
     $stored = get_option( $record_name, false );
 
-    return is_array( $stored ) && isset( $stored['key'] ) && $stored['key'] === $transient_name;
+    return is_array( $stored )
+        && isset( $stored['key'], $stored['exp'] )
+        && $stored['key'] === $transient_name
+        && (int) $stored['exp'] === (int) $expires_at;
 }
 
 /**
