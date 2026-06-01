@@ -125,4 +125,89 @@ class Fail2BanTest extends LDS_Unit_Test_Case {
         $this->assertTrue( wldelay_fail2ban_should_log_event( 'failed login', $options ) );
         $this->assertFalse( wldelay_fail2ban_should_log_event( 'lockout', $options ) );
     }
+
+    public function test_default_max_log_bytes_is_positive() {
+        $this->assertGreaterThan( 0, wldelay_fail2ban_get_max_log_bytes() );
+    }
+
+    public function test_rotates_when_log_meets_or_exceeds_max() {
+        $path = $this->temp_log_path();
+        file_put_contents( $path, str_repeat( 'x', 100 ) );
+
+        $rotated = wldelay_fail2ban_maybe_rotate_log( $path, 100 );
+
+        $this->assertTrue( $rotated );
+        $this->assertFileDoesNotExist( $path );
+        $this->assertFileExists( $path . '.1' );
+    }
+
+    public function test_does_not_rotate_when_under_max() {
+        $path = $this->temp_log_path();
+        file_put_contents( $path, str_repeat( 'x', 50 ) );
+
+        $rotated = wldelay_fail2ban_maybe_rotate_log( $path, 100 );
+
+        $this->assertFalse( $rotated );
+        $this->assertFileExists( $path );
+        $this->assertFileDoesNotExist( $path . '.1' );
+    }
+
+    public function test_rotation_overwrites_previous_backup() {
+        $path = $this->temp_log_path();
+        file_put_contents( $path . '.1', 'old-backup' );
+        file_put_contents( $path, str_repeat( 'x', 100 ) );
+
+        wldelay_fail2ban_maybe_rotate_log( $path, 100 );
+
+        $this->assertSame( str_repeat( 'x', 100 ), file_get_contents( $path . '.1' ) );
+    }
+
+    public function test_rotation_disabled_when_max_zero() {
+        $path = $this->temp_log_path();
+        file_put_contents( $path, str_repeat( 'x', 100 ) );
+
+        $rotated = wldelay_fail2ban_maybe_rotate_log( $path, 0 );
+
+        $this->assertFalse( $rotated );
+        $this->assertFileExists( $path );
+        $this->assertFileDoesNotExist( $path . '.1' );
+    }
+
+    public function test_protect_log_dir_writes_guards_in_any_existing_dir() {
+        $dir = sys_get_temp_dir() . '/wldelay-protect-' . substr( md5( uniqid( '', true ) ), 0, 8 );
+        mkdir( $dir, 0755, true );
+
+        wldelay_fail2ban_protect_log_dir( $dir );
+
+        $this->assertFileExists( $dir . '/.htaccess' );
+        $this->assertFileExists( $dir . '/index.html' );
+        $this->assertFileExists( $dir . '/index.php' );
+        $this->assertStringContainsString( 'Require all denied', file_get_contents( $dir . '/.htaccess' ) );
+
+        foreach ( array( '.htaccess', 'index.html', 'index.php' ) as $f ) {
+            unlink( $dir . '/' . $f );
+        }
+        rmdir( $dir );
+    }
+
+    private function temp_log_path() {
+        $path = sys_get_temp_dir() . '/wldelay-rotate-' . substr( md5( uniqid( '', true ) ), 0, 8 ) . '.log';
+        $this->temp_paths[] = $path;
+        return $path;
+    }
+
+    protected $temp_paths = array();
+
+    protected function tearDown(): void {
+        foreach ( $this->temp_paths as $path ) {
+            foreach ( array( $path, $path . '.1' ) as $f ) {
+                if ( file_exists( $f ) ) {
+                    unlink( $f );
+                }
+            }
+        }
+        $this->temp_paths = array();
+
+        parent::tearDown();
+    }
 }
