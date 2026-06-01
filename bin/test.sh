@@ -36,11 +36,13 @@ if [ -t 0 ]; then
 fi
 
 # With no args, run both suites (separate bootstraps -> separate configs).
-# With args, forward them verbatim to a single phpunit invocation.
+# With args, forward them verbatim to a single phpunit invocation. The inner
+# command text is a fixed literal; caller arguments are passed as positional
+# parameters ("$@") so they are never reparsed as shell source.
 if [ "$#" -eq 0 ]; then
     PHPUNIT_CMD='echo ">>> Unit suite" && vendor/bin/phpunit --configuration phpunit-unit.xml && echo ">>> Integration suite" && vendor/bin/phpunit --configuration phpunit.xml.dist'
 else
-    PHPUNIT_CMD="vendor/bin/phpunit $*"
+    PHPUNIT_CMD='vendor/bin/phpunit "$@"'
 fi
 
 docker run --rm -i $TTY_FLAG \
@@ -51,4 +53,4 @@ docker run --rm -i $TTY_FLAG \
     -e WP_CORE_DIR=/tmp/wordpress \
     -w /app \
     "$IMAGE" \
-    bash -c "composer install --prefer-dist --no-interaction && ($PHPUNIT_CMD)"
+    bash -c "composer install --prefer-dist --no-interaction && ($PHPUNIT_CMD)" bash "$@"
