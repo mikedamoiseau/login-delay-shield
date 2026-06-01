@@ -193,6 +193,46 @@ class WLDelay_Features {
                 'type'    => 'bool',
                 'inject'  => true,
             ),
+
+            // Protection profile (resolved at the read site; empty when no
+            // profile is applied).
+            'wldelay_protection_profile'             => array(
+                'default' => '',
+                'type'    => 'string',
+                'inject'  => false,
+            ),
+
+            // Proxy / client-IP trust.
+            'wldelay_trust_proxy_headers'            => array(
+                'default' => false,
+                'type'    => 'bool',
+                'inject'  => false,
+            ),
+
+            // IP whitelist.
+            'wldelay_whitelist_enabled'              => array(
+                'default' => false,
+                'type'    => 'bool',
+                'inject'  => false,
+            ),
+            'wldelay_whitelist_ips'                  => array(
+                'default' => '',
+                'type'    => 'string',
+                'inject'  => false,
+            ),
+
+            // Custom login URL. The slug default mirrors the read-site fallback
+            // in wldelay_get_custom_login_slug() / sanitize_login_slug().
+            'wldelay_custom_login_enabled'           => array(
+                'default' => false,
+                'type'    => 'bool',
+                'inject'  => false,
+            ),
+            'wldelay_custom_login_slug'              => array(
+                'default' => 'my-login',
+                'type'    => 'string',
+                'inject'  => false,
+            ),
         );
     }
 

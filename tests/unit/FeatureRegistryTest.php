@@ -54,6 +54,12 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
             'wldelay_fail2ban_enabled',
             'wldelay_fail2ban_log_path',
             'wldelay_fail2ban_include_lockouts',
+            'wldelay_protection_profile',
+            'wldelay_trust_proxy_headers',
+            'wldelay_whitelist_enabled',
+            'wldelay_whitelist_ips',
+            'wldelay_custom_login_enabled',
+            'wldelay_custom_login_slug',
         );
 
         foreach ( $expected_keys as $key ) {
