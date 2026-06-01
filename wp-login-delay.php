@@ -314,6 +314,34 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
         wldelay_unregister_transient_key( $reset_fails_pair_key );
     }
 
+    $store = wldelay_get_persistence_store();
+
+    // Clear username-scoped lockout transients that IP-only recovery cannot
+    // derive on its own (F-2-1). Under the ip_username strategy the lockout
+    // transient is keyed on md5("ip|username"); with no username supplied the
+    // IP-keyed deletions above (md5("ip")) never match it, so the user stays
+    // locked on the transient fast-path until it expires — even after the
+    // durable row is gone. The durable rows are the IP→username index the
+    // transient registry lacks (the registry stores only opaque md5 hashes):
+    // each row records the effective username + type the transient was keyed
+    // under, so we reconstruct and clear those transients here, before removing
+    // the rows. The canonical key builders are reused (with ip_username forced)
+    // so the derived key matches exactly what wldelay_lock_ip() set.
+    $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
+    foreach ( $store->get_lockouts_for_ip( $ip ) as $row ) {
+        $row_username = isset( $row['username'] ) ? (string) $row['username'] : '';
+        $row_type     = isset( $row['lockout_type'] ) ? (string) $row['lockout_type'] : 'login';
+
+        $transient_name = ( 'password-reset' === $row_type )
+            ? wldelay_get_password_reset_lockout_transient_key( $ip, $row_username, $pair_options )
+            : wldelay_get_lockout_transient_key( $ip, $row_username, $pair_options );
+
+        if ( delete_transient( $transient_name ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_key( $transient_name );
+    }
+
     // Clear the durable store (F-2-1) by IP so recovery removes every lockout
     // for the address regardless of username, type, or strategy. Keying on the
     // (ip, username) hash alone would miss rows stored under the ip_username
@@ -321,7 +349,7 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     // no username — see remove_lockouts_for_ip(). Count these removals too, so
     // recovery reports success when the transient was evicted but the durable
     // row was still in force.
-    $deleted += wldelay_get_persistence_store()->remove_lockouts_for_ip( $ip );
+    $deleted += $store->remove_lockouts_for_ip( $ip );
 
     return $deleted;
 }

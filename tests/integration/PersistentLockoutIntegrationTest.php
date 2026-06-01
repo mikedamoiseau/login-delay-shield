@@ -161,6 +161,41 @@ class PersistentLockoutIntegrationTest extends WP_UnitTestCase {
     }
 
     /**
+     * IP-only recovery clears the username-scoped transient lockout, not just
+     * the durable row. Under the ip_username strategy wldelay_lock_ip() sets a
+     * transient keyed on md5("ip|username") AND a durable row; the IP-only
+     * unlock (admin button / WP-CLI unlock-ip) supplies no username, so without
+     * the row-driven transient cleanup the user would stay locked on the
+     * transient fast-path until it expired. Asserted WITHOUT evicting the
+     * transient first — recovery itself must clear it (F-2-1).
+     */
+    public function test_ip_only_recovery_clears_username_scoped_transient() {
+        update_option( 'wldelay_options', [
+            'wldelay_lockout_enabled'          => true,
+            'wldelay_lockout_duration'         => 30,
+            'wldelay_lockout_attempt_strategy' => 'ip_username',
+        ] );
+        wldelay_clear_options_cache();
+
+        // Lock under a username — sets both the username-scoped transient and
+        // the durable row.
+        wldelay_lock_ip( self::TEST_IP, 'victim' );
+        $this->assertTrue( wldelay_is_ip_locked( self::TEST_IP, 'victim' ) );
+
+        // IP-only recovery — the unlock-ip CLI command / admin button pass no
+        // username.
+        $removed = wldelay_delete_lockout_for_ip( self::TEST_IP );
+
+        // No transient eviction and no runtime-cache reset: recovery itself
+        // must have removed the transient fast-path entry.
+        $this->assertGreaterThanOrEqual( 1, $removed );
+        $this->assertFalse(
+            wldelay_is_ip_locked( self::TEST_IP, 'victim' ),
+            'IP-only recovery must clear the username-scoped transient lockout, not just the durable row'
+        );
+    }
+
+    /**
      * Flushing all lockouts empties the persistent store too.
      */
     public function test_flush_lockouts_clears_persistent_store() {

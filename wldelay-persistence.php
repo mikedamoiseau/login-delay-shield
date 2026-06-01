@@ -94,6 +94,22 @@ interface WLDelay_Persistence {
     public function remove_lockouts_for_ip( $ip );
 
     /**
+     * List the stored lockouts for an IP (active or expired).
+     *
+     * IP-level recovery needs to clear the transient fast-path keys too, but a
+     * username-scoped lockout transient (ip_username strategy) is keyed on
+     * md5("ip|username") and cannot be derived from the IP alone. The durable
+     * rows are the IP→username index the transient registry lacks: each row
+     * records the effective username and type the transient was keyed under, so
+     * recovery can reconstruct and clear those transients (F-2-1).
+     *
+     * @param string $ip IP address.
+     * @return array[] List of records with at least 'username' and
+     *                 'lockout_type' keys (empty array when none / no table).
+     */
+    public function get_lockouts_for_ip( $ip );
+
+    /**
      * Enumerate all currently active lockouts.
      *
      * @param int $limit Maximum rows to return.
@@ -502,6 +518,31 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         $deleted = $wpdb->delete( $table, array( 'ip_address' => (string) $ip ), array( '%s' ) );
 
         return false === $deleted ? 0 : (int) $deleted;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function get_lockouts_for_ip( $ip ) {
+        global $wpdb;
+
+        if ( empty( $ip ) || ! $this->table_exists() ) {
+            return array();
+        }
+
+        $table = wldelay_get_lockout_table_name();
+
+        // No expiry filter: recovery clears the transient for every row keyed
+        // to this IP, and deleting an already-expired transient is harmless.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT username, lockout_type FROM $table WHERE ip_address = %s",
+                (string) $ip
+            ),
+            ARRAY_A
+        );
+
+        return is_array( $rows ) ? $rows : array();
     }
 
     /**
