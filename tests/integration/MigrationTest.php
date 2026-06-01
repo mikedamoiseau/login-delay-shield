@@ -107,4 +107,41 @@ class MigrationTest extends WP_UnitTestCase {
             'A fresh install should not have a stored options array written by the runner.'
         );
     }
+
+    /**
+     * A legacy install (stored options present, no recorded settings version)
+     * that is re-activated must NOT be stamped current by the activation hook.
+     * Stamping it would make the plugins_loaded migration runner skip the v1
+     * default-key backfill permanently. Regression test for the activation
+     * fresh-install guard (F-2-6 review).
+     */
+    public function test_activation_does_not_stamp_legacy_install_with_existing_options() {
+        // Legacy install: options exist, settings version was never recorded.
+        update_option( WLDELAY_OPTION_NAME, array( 'wldelay_delay' => 5 ) );
+        $this->assertFalse( get_option( WLDELAY_SETTINGS_VERSION_OPTION, false ) );
+
+        // Simulate plugin activation.
+        wldelay_stamp_settings_version_on_activation();
+
+        // The activation hook must leave a legacy install unstamped (version 0)
+        // so the migration runner still has work to do.
+        $this->assertSame(
+            0,
+            WLDelay_Migration::stored_version(),
+            'Activation must not stamp a legacy install that has stored options.'
+        );
+
+        // The deferred migration then runs and backfills the missing defaults.
+        $ran = WLDelay_Migration::run();
+        $this->assertTrue( $ran, 'A legacy install should still migrate after activation.' );
+        $this->assertSame( WLDELAY_SETTINGS_VERSION, WLDelay_Migration::stored_version() );
+
+        $options = get_option( WLDELAY_OPTION_NAME );
+        $this->assertSame( 5, $options['wldelay_delay'], 'User value preserved.' );
+        $this->assertArrayHasKey(
+            'wldelay_lockout_threshold',
+            $options,
+            'A previously-absent default key should be backfilled by the migration.'
+        );
+    }
 }

@@ -1432,12 +1432,18 @@ register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_tables' );
  * Stamp a fresh activation at the latest settings version so a brand-new
  * install never replays historical settings migrations (F-2-6).
  *
- * Only stamps when the version was never recorded: re-activating an existing
- * install (which may legitimately be behind) must not skip its pending
- * migrations — the plugins_loaded runner handles those on the next load.
+ * Only stamps a genuinely fresh install — no recorded settings version AND no
+ * stored options — matching WLDelay_Migration::is_fresh_install(). A legacy
+ * install (stored options present, version absent) must NOT be stamped here:
+ * doing so would mark it current and make the plugins_loaded migration runner
+ * skip the v1 default-key backfill, permanently. Such installs are left
+ * unstamped so WLDelay_Migration::run() migrates them on the next load.
  */
 function wldelay_stamp_settings_version_on_activation() {
-    if ( false === get_option( WLDELAY_SETTINGS_VERSION_OPTION, false ) ) {
+    if (
+        false === get_option( WLDELAY_SETTINGS_VERSION_OPTION, false )
+        && false === get_option( WLDELAY_OPTION_NAME, false )
+    ) {
         update_option( WLDELAY_SETTINGS_VERSION_OPTION, WLDELAY_SETTINGS_VERSION );
     }
 }

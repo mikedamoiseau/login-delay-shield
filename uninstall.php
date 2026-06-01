@@ -73,6 +73,7 @@ function wldelay_uninstall_cleanup_site() {
     delete_option( 'wldelay_fail2ban_default_token' );
     delete_option( 'wldelay_transient_registry' );
     delete_option( 'wldelay_db_version' );
+    delete_option( 'wldelay_settings_version' );
 
     // Drop the failed-login log table.
     $table_name = $wpdb->prefix . 'wldelay_login_log';

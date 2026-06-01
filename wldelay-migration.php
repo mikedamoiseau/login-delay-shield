@@ -165,6 +165,17 @@ class WLDelay_Migration {
             wldelay_clear_options_cache();
         }
 
+        // Confirm the migrated array actually persisted BEFORE advancing the
+        // version. update_option() returns false both on failure AND when the
+        // stored value was already identical, so its return value cannot
+        // distinguish the two — read the option back and compare instead. If
+        // the write did not stick (e.g. a transient DB failure), leave the
+        // version untouched so the next request retries the migration rather
+        // than masking a half-applied transformation.
+        if ( get_option( WLDELAY_OPTION_NAME ) !== $options ) {
+            return false;
+        }
+
         update_option( WLDELAY_SETTINGS_VERSION_OPTION, $latest );
 
         return true;
