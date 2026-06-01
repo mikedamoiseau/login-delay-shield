@@ -87,6 +87,28 @@ class AsyncTaskTest extends LDS_Unit_Test_Case {
     }
 
     /**
+     * Two distinct tasks whose args cannot be JSON-encoded (invalid UTF-8) must
+     * NOT collapse onto md5( false ). The serialize() fallback keeps distinct
+     * unencodable arg arrays distinct. F-4-9 round-5 review fix.
+     */
+    public function test_defer_task_keeps_distinct_unencodable_args() {
+        // Invalid UTF-8 byte sequences — wp_json_encode()/json_encode() return
+        // false for these, so the dedupe key must come from the serialize fallback.
+        $bad_a = array( 'ip' => "\xB1\x31" );
+        $bad_b = array( 'ip' => "\xC3\x28" );
+
+        // Sanity: these genuinely fail to JSON-encode in this harness.
+        $this->assertFalse( wp_json_encode( $bad_a ) );
+        $this->assertFalse( wp_json_encode( $bad_b ) );
+
+        wldelay_defer_task( 'record', $bad_a );
+        wldelay_defer_task( 'record', $bad_b );
+
+        // Distinct args → two queued tasks, not one overwriting the other.
+        $this->assertSame( 2, wldelay_count_deferred_tasks() );
+    }
+
+    /**
      * Flushing runs each registered handler with its stored args and then
      * empties the queue so a second flush is a cheap no-op (idempotent).
      */
