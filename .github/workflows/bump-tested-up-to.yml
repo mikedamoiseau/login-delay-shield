@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Determine latest stable WordPress version
         id: wp
@@ -39,16 +39,29 @@ jobs:
             exit 1
           fi
           current="$(grep -E '^Tested up to:' readme.txt | head -n1 | sed -E 's/^Tested up to:[[:space:]]*//')"
+          # Validate the committed value with the same strict regex before
+          # emitting it. Prevents a malformed/malicious readme.txt value from
+          # later reaching a shell or action input.
+          if ! printf '%s' "$current" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            echo "Unexpected 'Tested up to:' value in readme.txt: '$current'" >&2
+            exit 1
+          fi
           echo "current=$current" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "Current Tested up to: '$current' — latest stable: '$latest'"
 
       - name: Update readme.txt if newer version available
         id: update
+        env:
+          # Pass step outputs through the environment instead of interpolating
+          # ${{ }} into the shell source, so the values can never be parsed as
+          # shell. Both are regex-validated in the `wp` step above.
+          CURRENT: ${{ steps.wp.outputs.current }}
+          LATEST: ${{ steps.wp.outputs.latest }}
         run: |
           set -euo pipefail
-          current="${{ steps.wp.outputs.current }}"
-          latest="${{ steps.wp.outputs.latest }}"
+          current="$CURRENT"
+          latest="$LATEST"
           # Only act when the latest version is strictly newer. sort -V handles
           # dotted version ordering; equal values are a no-op.
           if [ "$current" = "$latest" ]; then
@@ -69,7 +82,7 @@ jobs:
 
       - name: Open pull request
         if: steps.update.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
         with:
           branch: chore/bump-tested-up-to
           commit-message: "ci: bump readme Tested up to ${{ steps.wp.outputs.latest }}"
