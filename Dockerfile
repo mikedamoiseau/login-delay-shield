@@ -38,7 +38,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # PHP extensions used by WordPress + the test harness.
-RUN docker-php-ext-install mysqli pdo_mysql
+# pcntl is required by PHPUnit's php-invoker so that `enforceTimeLimit` in the
+# phpunit configs actually aborts a hung test (without pcntl it silently
+# no-ops). It is test-infra only and never shipped to wordpress.org.
+RUN docker-php-ext-install mysqli pdo_mysql pcntl
 
 # Bump memory limit — WP-CLI's zip extraction and `wp plugin check`
 # both routinely exceed the default 128M.
