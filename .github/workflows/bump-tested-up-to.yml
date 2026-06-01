@@ -31,18 +31,19 @@ jobs:
           set -euo pipefail
           # Official wordpress.org version-check endpoint. offers[0].current is
           # the latest stable release the plugin team recommends testing against.
+          # Validate the API value inside Python with re.fullmatch BEFORE it
+          # ever reaches a shell var. fullmatch rejects embedded newlines/CR,
+          # so a value like "7.0\nlatest=evil" fails closed here — a line-based
+          # `grep -Eq` would pass it (any matching line satisfies -q) and then
+          # the extra newline would inject a second record into $GITHUB_OUTPUT.
           latest="$(curl -fsS https://api.wordpress.org/core/version-check/1.7/ \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['offers'][0]['current'])")"
-          # Sanity-check the shape (e.g. 7.0 or 6.8.1) before using it.
-          if ! printf '%s' "$latest" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
-            echo "Unexpected version string from api.wordpress.org: '$latest'" >&2
-            exit 1
-          fi
+            | python3 -c "import sys,json,re; v=json.load(sys.stdin)['offers'][0]['current']; sys.exit(\"Unexpected version string from api.wordpress.org: %r\" % (v,)) if not re.fullmatch(r'[0-9]+\.[0-9]+(\.[0-9]+)?', v) else print(v)")"
           current="$(grep -E '^Tested up to:' readme.txt | head -n1 | sed -E 's/^Tested up to:[[:space:]]*//')"
-          # Validate the committed value with the same strict regex before
-          # emitting it. Prevents a malformed/malicious readme.txt value from
-          # later reaching a shell or action input.
-          if ! printf '%s' "$current" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+          # Validate the committed value with the same strict pattern before
+          # emitting it. head -n1 already guarantees a single line; fullmatch
+          # rejects any stray CR. Prevents a malformed/malicious readme.txt
+          # value from later reaching a shell or action input.
+          if ! printf '%s' "$current" | python3 -c "import sys,re; sys.exit(0 if re.fullmatch(r'[0-9]+\.[0-9]+(\.[0-9]+)?', sys.stdin.read()) else 1)"; then
             echo "Unexpected 'Tested up to:' value in readme.txt: '$current'" >&2
             exit 1
           fi
