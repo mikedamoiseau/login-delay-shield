@@ -146,6 +146,24 @@ function wldelay_create_lockout_table() {
     $table_name      = wldelay_get_lockout_table_name();
     $charset_collate = $wpdb->get_charset_collate();
 
+    // Drop the legacy gen-2 composite index before dbDelta runs. dbDelta never
+    // drops an index that is absent from the CREATE TABLE statement, so the old
+    // KEY ip_username (ip_address, username) would otherwise survive the upgrade.
+    // While username is part of that composite, widening it to varchar(255)
+    // breaches the 767-byte index limit on older MySQL/InnoDB and the ALTER
+    // fails — leaving the column permanently at varchar(60). Dropping the index
+    // first frees the widening ALTER (F-2-1). Idempotent: only drops if present.
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name ) {
+        $has_legacy_index = $wpdb->get_var(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            "SHOW INDEX FROM $table_name WHERE Key_name = 'ip_username'"
+        );
+        if ( $has_legacy_index ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+            $wpdb->query( "ALTER TABLE $table_name DROP INDEX ip_username" );
+        }
+    }
+
     $sql = "CREATE TABLE $table_name (
         id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         lockout_key varchar(64) NOT NULL,
@@ -163,6 +181,43 @@ function wldelay_create_lockout_table() {
 
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
     dbDelta( $sql );
+}
+
+/**
+ * Whether the lockout table's username column has been widened to the gen-3
+ * width (varchar(255)+). Used to gate the schema-version write so a failed or
+ * partial widening ALTER (e.g. a 767-byte index-limit failure on old MySQL)
+ * does not record the new DB version and skip the retry on the next request
+ * (F-2-1).
+ *
+ * @return bool True when the column is at least 255 chars wide.
+ */
+function wldelay_lockout_username_is_widened() {
+    global $wpdb;
+
+    $table = wldelay_get_lockout_table_name();
+
+    // Read the live column definition via SHOW COLUMNS. information_schema is
+    // NOT used here: it can return a stale CHARACTER_MAXIMUM_LENGTH immediately
+    // after a DDL ALTER (its metadata is cached), which would either pass this
+    // gate falsely or wedge the upgrade in a permanent retry. SHOW COLUMNS
+    // reflects the table definition directly.
+    $column = $wpdb->get_row(
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        "SHOW COLUMNS FROM $table LIKE 'username'"
+    );
+
+    if ( ! $column || empty( $column->Type ) ) {
+        return false;
+    }
+
+    // $column->Type looks like "varchar(255)"; extract the declared length.
+    if ( preg_match( '/varchar\((\d+)\)/i', $column->Type, $matches ) ) {
+        return (int) $matches[1] >= 255;
+    }
+
+    // A non-varchar type (e.g. a future widening to text) counts as widened.
+    return true;
 }
 
 /**
@@ -248,6 +303,16 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         $username_col = function_exists( 'mb_substr' ) ? mb_substr( $username, 0, 255 ) : substr( $username, 0, 255 );
         $created_at   = gmdate( 'Y-m-d H:i:s', $now );
         $expires_at   = gmdate( 'Y-m-d H:i:s', $expires );
+
+        // Clamp the forensic source label to the column width (varchar(20)) for
+        // the same reason as the username column above: a caller-supplied source
+        // longer than the column (wldelay_lock_ip / wldelay_track_failed_attempt
+        // accept an unconstrained source) must not fail the INSERT under strict
+        // SQL mode and silently drop the durable record (F-2-1).
+        if ( null !== $source ) {
+            $source = (string) $source;
+            $source = function_exists( 'mb_substr' ) ? mb_substr( $source, 0, 20 ) : substr( $source, 0, 20 );
+        }
 
         $table = wldelay_get_lockout_table_name();
 

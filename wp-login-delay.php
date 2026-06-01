@@ -1352,9 +1352,11 @@ function wldelay_create_log_table() {
  * call to the log-table helper.
  *
  * The schema version is recorded only after both tables are confirmed to
- * exist, so a failed or interrupted CREATE leaves the stored version untouched
- * and wldelay_maybe_upgrade_db() retries on the next request instead of masking
- * a missing table (F-2-1).
+ * exist AND the gen-3 username widening has actually taken effect, so a failed
+ * or interrupted CREATE — or an ALTER that could not widen the column (e.g. a
+ * 767-byte index-limit failure on old MySQL) — leaves the stored version
+ * untouched and wldelay_maybe_upgrade_db() retries on the next request instead
+ * of masking a half-applied schema (F-2-1).
  */
 function wldelay_create_tables() {
     global $wpdb;
@@ -1368,7 +1370,7 @@ function wldelay_create_tables() {
     $log_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
     $lockout_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $lockout_table ) ) === $lockout_table;
 
-    if ( $log_exists && $lockout_exists ) {
+    if ( $log_exists && $lockout_exists && wldelay_lockout_username_is_widened() ) {
         update_option( 'wldelay_db_version', WLDELAY_DB_VERSION );
     }
 }
@@ -2767,7 +2769,10 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
  * is NOT blocked on a persistence error — failing closed would lock out
  * legitimate users during any DB hiccup. This helper makes the degraded state
  * observable without changing that policy: it fires an action so monitoring can
- * alert, and writes a WP_DEBUG-gated log line for operators. Whether to adopt a
+ * alert, and ALWAYS writes an operator log line (not gated behind WP_DEBUG, so
+ * production sites — where WP_DEBUG is normally off — still surface the degraded
+ * security state). The log is rate-limited to one line per type per 5 minutes so
+ * a sustained DB/store outage cannot flood the error log. Whether to adopt a
  * fail-closed policy instead is a security-vs-availability decision left to the
  * site owner.
  *
@@ -2783,7 +2788,13 @@ function wldelay_note_persistence_failure( $ip, $type ) {
      */
     do_action( 'wldelay_persistence_write_failed', $ip, $type );
 
-    if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+    // Rate-limit the operator log to one line per type per 5 minutes. The guard
+    // is best-effort: if the transient store is itself the failure, set_transient
+    // may not stick and we log on every failure — acceptable during an outage.
+    $throttle_key = 'wldelay_persist_fail_logged_' . md5( (string) $type );
+    if ( false === get_transient( $throttle_key ) ) {
+        set_transient( $throttle_key, 1, 5 * MINUTE_IN_SECONDS );
+
         error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
             sprintf(
                 'WP Login Delay: durable lockout write failed for %s (%s); lockout is transient-only until the store recovers.',

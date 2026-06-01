@@ -268,4 +268,27 @@ class PersistentLockoutStoreTest extends WP_UnitTestCase {
         $this->assertTrue( $this->store->is_locked( '203.0.113.71', $one ) );
         $this->assertFalse( $this->store->is_locked( '203.0.113.71', $two ) );
     }
+
+    /**
+     * A caller-supplied source longer than the source column (varchar(20)) is
+     * clamped so the INSERT cannot fail under strict SQL mode and degrade the
+     * lockout to transient-only. The durable row is still written and matched
+     * (F-2-1).
+     */
+    public function test_long_source_persists_and_does_not_drop_lockout() {
+        $long_source = str_repeat( 'x', 64 ); // 64 chars, > source varchar(20)
+
+        $this->assertTrue(
+            $this->store->add_lockout( '203.0.113.72', 'hank', 600, 'login', $long_source ),
+            'An oversized source must not fail the durable INSERT'
+        );
+
+        wldelay_reset_persistence_runtime_cache();
+        $this->assertTrue( $this->store->is_locked( '203.0.113.72', 'hank' ) );
+
+        // The stored source is clamped to the column width, not dropped.
+        $record = $this->store->get_lockout( '203.0.113.72', 'hank' );
+        $this->assertNotNull( $record );
+        $this->assertSame( 20, strlen( $record['source'] ) );
+    }
 }

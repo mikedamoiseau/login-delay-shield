@@ -226,4 +226,51 @@ class PersistentLockoutIntegrationTest extends WP_UnitTestCase {
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         $this->assertEquals( $table, $exists );
     }
+
+    /**
+     * Upgrading a gen-2 lockout table (username varchar(60) + the legacy
+     * composite KEY ip_username) widens the column to varchar(255), drops the
+     * legacy index, and only then records the gen-3 DB version. Proves the
+     * migration does not leave the column at the old width while still marking
+     * the schema as current (F-2-1).
+     */
+    public function test_upgrade_widens_gen2_username_column_and_drops_legacy_index() {
+        global $wpdb;
+
+        $table = wldelay_get_lockout_table_name();
+        $wpdb->query( "DROP TABLE IF EXISTS $table" );
+
+        // Recreate the gen-2 shape: narrow username + the legacy composite index.
+        $charset_collate = $wpdb->get_charset_collate();
+        $wpdb->query(
+            "CREATE TABLE $table (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                lockout_key varchar(64) NOT NULL,
+                ip_address varchar(45) NOT NULL,
+                username varchar(60) NOT NULL DEFAULT '',
+                lockout_type varchar(20) NOT NULL DEFAULT 'login',
+                source varchar(20) DEFAULT NULL,
+                created_at datetime NOT NULL,
+                expires_at datetime NOT NULL,
+                PRIMARY KEY  (id),
+                UNIQUE KEY lockout_key (lockout_key),
+                KEY ip_username (ip_address, username),
+                KEY expires_at (expires_at)
+            ) $charset_collate;"
+        );
+
+        // Pre-condition: column is narrow and the legacy index is present.
+        $this->assertFalse( wldelay_lockout_username_is_widened() );
+        $legacy = $wpdb->get_var( "SHOW INDEX FROM $table WHERE Key_name = 'ip_username'" );
+        $this->assertNotNull( $legacy );
+
+        update_option( 'wldelay_db_version', '2' );
+        wldelay_maybe_upgrade_db();
+
+        // Column widened, legacy composite index gone, version recorded.
+        $this->assertTrue( wldelay_lockout_username_is_widened() );
+        $legacy_after = $wpdb->get_var( "SHOW INDEX FROM $table WHERE Key_name = 'ip_username'" );
+        $this->assertNull( $legacy_after );
+        $this->assertEquals( WLDELAY_DB_VERSION, get_option( 'wldelay_db_version' ) );
+    }
 }
