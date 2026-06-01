@@ -162,6 +162,55 @@ class EnumerationHardeningTest extends WP_UnitTestCase {
         $this->assertEquals( 200, $response->get_status() );
     }
 
+    public function test_rest_single_user_restricted_for_guest_when_enabled() {
+        $this->enable();
+
+        // An author with a published post is publicly readable via the
+        // single-user route by default, so this is the real enumeration vector.
+        $author = $this->factory->user->create( array( 'role' => 'author' ) );
+        $this->factory->post->create( array(
+            'post_author' => $author,
+            'post_status' => 'publish',
+        ) );
+        wp_set_current_user( 0 );
+
+        $request  = new WP_REST_Request( 'GET', '/wp/v2/users/' . $author );
+        $response = rest_do_request( $request );
+
+        // Guard must drop the GET handler so the single user is not disclosed.
+        $this->assertNotEquals( 200, $response->get_status() );
+    }
+
+    public function test_rest_single_user_allowed_for_guest_when_disabled() {
+        $this->disable();
+
+        $author = $this->factory->user->create( array( 'role' => 'author' ) );
+        $this->factory->post->create( array(
+            'post_author' => $author,
+            'post_status' => 'publish',
+        ) );
+        wp_set_current_user( 0 );
+
+        $request  = new WP_REST_Request( 'GET', '/wp/v2/users/' . $author );
+        $response = rest_do_request( $request );
+
+        // Core default: the single-user route exists (status is not a 404
+        // produced by our guard removing the route).
+        $this->assertEquals( 200, $response->get_status() );
+    }
+
+    public function test_rest_single_user_allowed_for_admin_when_enabled() {
+        $this->enable();
+        $admin  = $this->factory->user->create( array( 'role' => 'administrator' ) );
+        $author = $this->factory->user->create( array( 'role' => 'author' ) );
+        wp_set_current_user( $admin );
+
+        $request  = new WP_REST_Request( 'GET', '/wp/v2/users/' . $author );
+        $response = rest_do_request( $request );
+
+        $this->assertEquals( 200, $response->get_status() );
+    }
+
     /* --------------------------------------------------------------------- */
     /* Whitelist interaction                                                 */
     /* --------------------------------------------------------------------- */

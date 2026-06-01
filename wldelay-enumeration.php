@@ -12,8 +12,11 @@
  *      delay/lockout hot path.
  *   2. Blocks `?author=N` / author-archive enumeration for unauthenticated
  *      visitors. Hooked on `template_redirect`.
- *   3. Removes the unauthenticated `GET /wp/v2/users` collection listing.
- *      Hooked on `rest_endpoints` (runs once when routes are built).
+ *   3. Removes the unauthenticated `GET` handlers for both the
+ *      `/wp/v2/users` collection and the `/wp/v2/users/<id>` single-user
+ *      route (the latter is publicly readable for authors with published
+ *      posts, so it leaks names/slugs on its own). Hooked on `rest_endpoints`
+ *      (runs once when routes are built).
  *
  * Whitelist interaction: these guards are GLOBAL recon defenses, not per-IP
  * access controls. Generic login errors are site-wide UX; the author and REST
@@ -154,12 +157,15 @@ function wldelay_block_author_enumeration() {
 }
 
 /**
- * Restrict the unauthenticated REST users listing.
+ * Restrict the unauthenticated REST users endpoints.
  *
- * Removes the `GET` handler from the `/wp/v2/users` collection route for
- * visitors who cannot already `list_users`. Authenticated, capable users keep
- * full access. Hooked on `rest_endpoints`, which fires once while routes are
- * assembled — not on the per-attempt path.
+ * Removes the `GET` handler from BOTH the `/wp/v2/users` collection route and
+ * the `/wp/v2/users/<id>` single-user route for visitors who cannot already
+ * `list_users`. The single-user route is publicly readable for any author with
+ * published posts, so leaving it in place keeps usernames/slugs enumerable one
+ * id at a time even after the collection route is removed. Authenticated,
+ * capable users keep full access. Hooked on `rest_endpoints`, which fires once
+ * while routes are assembled — not on the per-attempt path.
  *
  * @param array $endpoints REST endpoints, keyed by route.
  * @return array
@@ -174,16 +180,26 @@ function wldelay_restrict_rest_user_endpoints( $endpoints ) {
         return $endpoints;
     }
 
-    $route = '/wp/v2/users';
+    // Both the collection and the numeric single-user route leak account data
+    // to the public; the `/wp/v2/users/me` route (a different key) is left
+    // untouched because it only ever reflects the current, authenticated user.
+    $routes = array(
+        '/wp/v2/users',
+        '/wp/v2/users/(?P<id>[\d]+)',
+    );
 
-    if ( ! empty( $endpoints[ $route ] ) ) {
+    foreach ( $routes as $route ) {
+        if ( empty( $endpoints[ $route ] ) ) {
+            continue;
+        }
+
         foreach ( $endpoints[ $route ] as $index => $handler ) {
             if ( ! isset( $handler['methods'] ) ) {
                 continue;
             }
 
-            // Drop only the read (GET) handler for the collection so the
-            // public cannot enumerate the user list; leave other methods.
+            // Drop only the read (GET) handler so the public cannot enumerate
+            // users; leave other methods (e.g. POST/create) intact.
             $methods = $handler['methods'];
             $is_get  = ( is_array( $methods ) && ! empty( $methods['GET'] ) )
                 || ( is_string( $methods ) && false !== stripos( $methods, 'GET' ) );
@@ -193,8 +209,8 @@ function wldelay_restrict_rest_user_endpoints( $endpoints ) {
             }
         }
 
-        // If the collection route has no handlers left, remove it entirely so
-        // core does not register an empty route.
+        // If the route has no handlers left, remove it entirely so core does
+        // not register an empty route.
         if ( empty( $endpoints[ $route ] ) ) {
             unset( $endpoints[ $route ] );
         }

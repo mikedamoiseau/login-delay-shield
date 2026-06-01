@@ -464,8 +464,8 @@ class LDS_Settings_View {
 
     /**
      * Render a coherence/validator warning when username-enumeration hardening
-     * is enabled, reminding the admin that login and password-reset feedback
-     * becomes intentionally generic.
+     * is enabled, reminding the admin that login feedback becomes intentionally
+     * generic and public author/REST listings are restricted.
      */
     private function render_enumeration_hardening_notice() {
         if ( empty( $this->options['wldelay_enumeration_hardening_enabled'] ) ) {
@@ -476,7 +476,7 @@ class LDS_Settings_View {
             <span class="dashicons dashicons-shield" aria-hidden="true"></span>
             <span>
                 <strong><?php esc_html_e( 'Enumeration hardening active:', 'login-delay-shield' ); ?></strong>
-                <?php esc_html_e( 'Login failures now show one generic error and the password-reset screen no longer confirms whether an account exists. Verify your support and account-recovery guidance reflects this before relying on it.', 'login-delay-shield' ); ?>
+                <?php esc_html_e( 'Login failures now show one generic error, and author-archive and public REST user listings are blocked. Verify your support guidance reflects this before relying on it.', 'login-delay-shield' ); ?>
             </span>
         </div>
         <?php
@@ -1279,6 +1279,6 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Hides which usernames exist: failed logins all show one generic error, ?author=N enumeration is blocked, and the public REST users listing is restricted. This starves the reconnaissance stage that precedes password-spray attacks.', 'login-delay-shield' ) );
         echo '<p id="wldelay_enumeration_hardening_enabled_desc" class="description">' . esc_html__( 'Return a single generic login error for both unknown usernames and wrong passwords, block author-archive enumeration, and restrict unauthenticated REST user listings.', 'login-delay-shield' ) . '</p>';
-        echo '<p id="wldelay_enumeration_hardening_enabled_note" class="description wldelay-enumeration-note"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> ' . esc_html__( 'Heads up: legitimate users will no longer be told whether they mistyped their username or their password, and login/password-reset screens become less specific. Make sure your support flow accounts for this before enabling.', 'login-delay-shield' ) . '</p>';
+        echo '<p id="wldelay_enumeration_hardening_enabled_note" class="description wldelay-enumeration-note"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> ' . esc_html__( 'Heads up: legitimate users will no longer be told whether they mistyped their username or their password on the login screen. Make sure your support flow accounts for this before enabling.', 'login-delay-shield' ) . '</p>';
     }
 }
