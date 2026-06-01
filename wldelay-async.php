@@ -1,6 +1,16 @@
 <?php
 /**
- * Unified async task queue + event dispatch layer (F-4-9).
+ * Unified deferred task queue + event dispatch layer (F-4-9).
+ *
+ * SCOPE / RELIABILITY CONTRACT (read before adding a handler):
+ * This is BEST-EFFORT, request-shutdown batching — NOT a durable async queue.
+ * The queue lives in request-local memory and runs on the `shutdown` hook.
+ * Work that is still queued when the PHP process exits (a task that fails, or a
+ * self-requeue that hits the pass cap) is DROPPED — there is no persistence and
+ * no retry, and the cron tick CANNOT recover it (cron runs a fresh process with
+ * an empty queue). Do NOT defer reliability-sensitive work (e.g. security audit
+ * writes whose loss matters) through this layer until it is backed by a durable
+ * store. See the F-4-9 review notes for the deferred persistence/retry decision.
  *
  * This is the keystone plumbing that downstream features build on. It absorbs
  * four merged proposals: the telemetry event bus (F-2-3), the event registry
@@ -22,10 +32,14 @@
  *      (subscribe to one event) and the generic `wldelay_event` (subscribe to
  *      all events — the audit/SIEM firehose).
  *
- *   2. Deferred task queue — enqueue work during a request that runs OFF the
- *      hot path. Tasks accumulate in an in-memory queue and flush on
- *      `wp_shutdown` (after the response has been sent, the narrowed F-4-5
- *      approach) with a daily cron event as the durable backstop:
+ *   2. Deferred task queue — enqueue work during a request that runs LATE in
+ *      the request, on the `shutdown` hook. Tasks accumulate in an in-memory
+ *      queue and flush there. Note: `shutdown` fires as the request ends but
+ *      does NOT guarantee the HTTP response has been flushed to the client
+ *      (no fastcgi_finish_request()), so a slow handler can still add to
+ *      response latency — keep handlers cheap. A daily cron tick fires the same
+ *      flush for periodic maintenance, but is NOT a recovery path for a
+ *      specific request's queued work (see the reliability contract above):
  *
  *        wldelay_register_task_handler( $callback_id, callable )  // once, at boot
  *        wldelay_defer_task( $callback_id, array $args )          // enqueue in-request
@@ -186,13 +200,16 @@ if ( ! defined( 'WLDELAY_MAX_FLUSH_PASSES' ) ) {
  * rather than being stranded in the request-local queue until a flush that
  * never comes. Passes are capped at WLDELAY_MAX_FLUSH_PASSES so a handler that
  * unconditionally re-enqueues itself cannot loop forever; any still-pending
- * tasks at the cap are left in the queue (a later flush/cron tick may drain
- * them) and the truncation is logged.
+ * tasks at the cap are DROPPED when the process exits (the in-memory queue does
+ * not survive the request, and the cron tick runs a fresh process with an empty
+ * queue — it cannot recover them). The truncation is logged so the loss is
+ * visible rather than silent.
  *
  * Idempotent: a second flush with nothing pending is a cheap no-op. Tasks whose
  * handler is not registered are skipped (no fatal). Each handler is guarded so
  * one failing task does not abort the rest of the flush; failures always emit
- * the `task_failed` event (so callers can report/recover) and are logged.
+ * the `task_failed` event and are logged. Note: the failed task is NOT retried
+ * or persisted — the event/log give visibility, not recovery.
  */
 function wldelay_flush_deferred_tasks() {
     $queue = &wldelay_deferred_task_queue();
@@ -238,14 +255,15 @@ function wldelay_flush_deferred_tasks() {
     }
 
     // If work is still pending we hit the pass cap: a handler is re-enqueueing
-    // on every pass. Leave it for a later flush rather than looping, but make
-    // the truncation visible instead of silently dropping it.
+    // on every pass. Stop looping; the leftover is dropped at process exit (the
+    // queue is request-local memory). Log it so the loss is visible.
     if ( ! empty( $queue ) ) {
         error_log( 'wldelay deferred flush hit pass cap (' . WLDELAY_MAX_FLUSH_PASSES . '); ' . count( $queue ) . ' task(s) left queued' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
     }
 }
 
-// Flush deferred work after the response has been sent.
+// Flush deferred work on shutdown (late in the request; does not guarantee the
+// response has already been flushed to the client — keep handlers cheap).
 add_action( 'shutdown', 'wldelay_flush_deferred_tasks' );
 
 // ==========================================================================
@@ -256,10 +274,12 @@ add_action( 'shutdown', 'wldelay_flush_deferred_tasks' );
  * Schedule the daily async cron backstop.
  *
  * The deferred queue flushes on every request's shutdown; this recurring tick
- * is the durable backstop for periodic maintenance (e.g. expired-lockout GC)
- * on low-traffic sites where shutdown-time work may be rare. It fires the
- * `cron_tick` event so subscribers can hook recurring maintenance off a single
- * scheduled event rather than each registering their own.
+ * is a backstop for periodic MAINTENANCE (e.g. expired-lockout GC) on
+ * low-traffic sites where shutdown-time work may be rare. It re-defers that
+ * maintenance from scratch each tick — it does NOT recover work stranded in a
+ * past request's in-memory queue. It fires the `cron_tick` event so subscribers
+ * can hook recurring maintenance off a single scheduled event rather than each
+ * registering their own.
  */
 function wldelay_schedule_async_cron() {
     if ( ! wp_next_scheduled( 'wldelay_async_cron' ) ) {
