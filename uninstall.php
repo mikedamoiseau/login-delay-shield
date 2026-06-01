@@ -81,6 +81,20 @@ function wldelay_uninstall_cleanup_site() {
     // Drop the persistent lockout table (F-2-1).
     $lockout_table = $wpdb->prefix . 'wldelay_lockouts';
     $wpdb->query( "DROP TABLE IF EXISTS `{$lockout_table}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.SchemaChange
+
+    // Clear plugin-owned scheduled cron events (F-4-9 async backstop + the
+    // daily log-cleanup event) so no orphan hooks linger after deletion.
+    $async_cron = wp_next_scheduled( 'wldelay_async_cron' );
+    if ( $async_cron ) {
+        wp_unschedule_event( $async_cron, 'wldelay_async_cron' );
+    }
+    wp_clear_scheduled_hook( 'wldelay_async_cron' );
+
+    $cleanup_cron = wp_next_scheduled( 'wldelay_cleanup_logs' );
+    if ( $cleanup_cron ) {
+        wp_unschedule_event( $cleanup_cron, 'wldelay_cleanup_logs' );
+    }
+    wp_clear_scheduled_hook( 'wldelay_cleanup_logs' );
 }
 
 if ( is_multisite() ) {

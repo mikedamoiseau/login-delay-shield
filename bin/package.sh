@@ -26,6 +26,7 @@ cd "$REPO_DIR"
 # ship vendor/, tests/, or planning content.
 zip -qr "$OUT_ZIP" \
     wp-login-delay.php \
+    wldelay-async.php \
     wldelay-fail2ban.php \
     wldelay-persistence.php \
     wldelay-settings.php \

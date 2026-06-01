@@ -43,6 +43,7 @@ add_action( 'plugins_loaded', 'wldelay_load_textdomain' );
  * @see http://codex.wordpress.org/Settings_API
  */
 require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
+require_once dirname( __FILE__ ) . '/wldelay-async.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
@@ -1526,6 +1527,12 @@ function wldelay_unschedule_cleanup() {
     }
 }
 register_deactivation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_unschedule_cleanup' );
+
+// Unschedule the F-4-9 async cron backstop on deactivation as well. The
+// scheduling/callback live in wldelay-async.php; the deactivation hook is
+// registered here alongside the existing cleanup-cron deactivation so both
+// plugin-owned cron events are torn down together.
+register_deactivation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_unschedule_async_cron' );
 
 /**
  * Delete log entries older than the retention period
