@@ -144,6 +144,58 @@ class RecoveryToolsTest extends WP_UnitTestCase {
         $this->assertFalse( get_transient( $fails_two ) );
     }
 
+    /**
+     * A registered key survives a clobber of the legacy shared-array registry.
+     *
+     * The old registry was one option holding an array, updated with a
+     * non-atomic read-modify-write: two concurrent registrations could
+     * overwrite each other's entry, losing a key. The per-key record format
+     * stores each key in its own option, so a lost/overwritten shared array no
+     * longer drops registered keys (F-2-1 review).
+     */
+    public function test_registry_keys_survive_shared_array_clobber() {
+        $a = wldelay_get_lockout_transient_key( '192.168.60.1' );
+        $b = wldelay_get_lockout_transient_key( '192.168.60.2' );
+
+        wldelay_register_transient_key( $a );
+        wldelay_register_transient_key( $b );
+
+        // Simulate a concurrent read-modify-write that clobbered the shared
+        // array down to a single (or no) entry.
+        update_option( wldelay_get_transient_registry_option_name(), array( $a ), false );
+
+        $keys = wldelay_get_registered_transient_keys();
+
+        $this->assertContains( $a, $keys );
+        $this->assertContains(
+            $b,
+            $keys,
+            'A per-key registry record must survive a shared-array clobber'
+        );
+    }
+
+    /**
+     * Flush still clears a transient whose legacy shared-array entry was lost,
+     * because the per-key registry record remains discoverable (F-2-1 review).
+     */
+    public function test_flush_clears_transient_whose_shared_array_entry_was_lost() {
+        $lockout = wldelay_get_lockout_transient_key( '192.168.60.10' );
+        $fails   = wldelay_get_failure_transient_key( '192.168.60.10' );
+
+        set_transient( $lockout, time(), HOUR_IN_SECONDS );
+        set_transient( $fails, 3, HOUR_IN_SECONDS );
+        wldelay_register_transient_key( $lockout );
+        wldelay_register_transient_key( $fails );
+
+        // The shared-array registry entry is lost to a concurrent clobber.
+        update_option( wldelay_get_transient_registry_option_name(), array(), false );
+
+        wldelay_flush_lockout_transients();
+
+        $this->assertFalse( get_transient( $lockout ) );
+        $this->assertFalse( get_transient( $fails ) );
+    }
+
     public function test_unlock_current_ip_url_contains_expected_action_and_nonce() {
         $url = wldelay_get_unlock_current_ip_url();
 

@@ -57,7 +57,22 @@ function wldelay_uninstall_cleanup_site() {
         wldelay_uninstall_rmdir( $default_dir );
     }
 
-    // Delete registered transients before dropping the registry option.
+    // Delete registered transients before dropping the registry records.
+    // Per-key records (current concurrency-safe format): value = transient name.
+    $registry_records = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+            $wpdb->esc_like( 'wldelay_treg_' ) . '%'
+        )
+    );
+    foreach ( $registry_records as $record ) {
+        if ( is_string( $record->option_value ) && '' !== $record->option_value ) {
+            delete_transient( $record->option_value );
+        }
+        delete_option( $record->option_name );
+    }
+
+    // Legacy shared-array registry (installs that predate the per-key format).
     $registry = get_option( 'wldelay_transient_registry', array() );
     if ( is_array( $registry ) ) {
         foreach ( $registry as $transient_name ) {

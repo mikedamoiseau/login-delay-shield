@@ -204,7 +204,33 @@ function wldelay_get_transient_registry_option_name() {
 }
 
 /**
+ * Option-name prefix for the per-key transient registry records.
+ *
+ * Each tracked transient is recorded as its OWN option ( value = the transient
+ * name ) rather than as one entry in a single shared array. The shared array
+ * was updated with a non-atomic read-modify-write, so two concurrent lockouts
+ * or counter increments could clobber each other's entry; the lost entry then
+ * left its transient undiscoverable by the recovery flush when transients live
+ * in an EXTERNAL object cache (Redis/Memcached) — the options-table sweep finds
+ * nothing — so a user stayed locked, or a stale failure counter survived, even
+ * though recovery reported success. Per-key options never share a row, so
+ * concurrent registrations cannot overwrite one another, and the records live
+ * in the options table regardless of where the transients themselves are
+ * stored, keeping the flush enumeration reliable under an external cache
+ * (F-2-1 review).
+ *
+ * @return string
+ */
+function wldelay_get_transient_registry_key_prefix() {
+    return 'wldelay_treg_';
+}
+
+/**
  * Track a transient key in the plugin registry.
+ *
+ * Writes one option per key ( keyed by md5 of the transient name ) so
+ * concurrent registrations cannot clobber one another. Autoload is off so these
+ * short-lived records never enter the alloptions cache.
  *
  * @param string $transient_name Transient key name (without WordPress prefix).
  */
@@ -213,17 +239,8 @@ function wldelay_register_transient_key( $transient_name ) {
         return;
     }
 
-    $option_name = wldelay_get_transient_registry_option_name();
-    $registry = get_option( $option_name, array() );
-
-    if ( ! is_array( $registry ) ) {
-        $registry = array();
-    }
-
-    if ( ! in_array( $transient_name, $registry, true ) ) {
-        $registry[] = $transient_name;
-        update_option( $option_name, $registry, false );
-    }
+    $record = wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name );
+    update_option( $record, (string) $transient_name, false );
 }
 
 /**
@@ -236,18 +253,81 @@ function wldelay_unregister_transient_key( $transient_name ) {
         return;
     }
 
-    $option_name = wldelay_get_transient_registry_option_name();
-    $registry = get_option( $option_name, array() );
+    delete_option( wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name ) );
+}
 
-    if ( ! is_array( $registry ) || empty( $registry ) ) {
-        return;
+/**
+ * Enumerate every tracked transient name.
+ *
+ * Reads the per-key registry records (the current concurrency-safe format)
+ * and, for backward compatibility, the legacy shared-array option written by
+ * older versions. Registry records live in the options table regardless of
+ * where the transients themselves are stored, so this enumeration stays
+ * reliable even with an external object cache (F-2-1 review).
+ *
+ * @return string[] Unique transient names.
+ */
+function wldelay_get_registered_transient_keys() {
+    global $wpdb;
+
+    $keys = array();
+
+    // Current per-key records.
+    $like   = $wpdb->esc_like( wldelay_get_transient_registry_key_prefix() ) . '%';
+    $values = $wpdb->get_col(
+        $wpdb->prepare(
+            "SELECT option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+            $like
+        )
+    );
+    if ( is_array( $values ) ) {
+        foreach ( $values as $value ) {
+            if ( is_string( $value ) && '' !== $value ) {
+                $keys[] = $value;
+            }
+        }
     }
 
-    $registry = array_values( array_filter( $registry, function( $key ) use ( $transient_name ) {
-        return $key !== $transient_name;
-    } ) );
+    // Legacy shared-array registry (installs that predate the per-key format).
+    $legacy = get_option( wldelay_get_transient_registry_option_name(), array() );
+    if ( is_array( $legacy ) ) {
+        foreach ( $legacy as $value ) {
+            if ( is_string( $value ) && '' !== $value ) {
+                $keys[] = $value;
+            }
+        }
+    }
 
-    update_option( $option_name, $registry, false );
+    return array_values( array_unique( $keys ) );
+}
+
+/**
+ * Derive the failure-counter transient name that pairs with a lockout transient.
+ *
+ * A lockout transient and its failure counter share the same md5 identifier
+ * suffix and differ only in prefix ( wldelay_lockout_ ↔ wldelay_fails_,
+ * wldelay_reset_lockout_ ↔ wldelay_reset_fails_ ). Swapping the prefix is
+ * therefore exact and length-proof — it never rebuilds the md5 from a
+ * (possibly truncated) stored username. Returns null when the name is not a
+ * recognised lockout transient (F-2-1 review).
+ *
+ * @param string $lockout_transient_name Lockout transient name.
+ * @return string|null Paired failure-counter transient name, or null.
+ */
+function wldelay_derive_failure_transient_key( $lockout_transient_name ) {
+    $lockout_transient_name = (string) $lockout_transient_name;
+
+    // Check the reset prefix first so a reset lockout key is never mistaken for
+    // a login one.
+    if ( strpos( $lockout_transient_name, 'wldelay_reset_lockout_' ) === 0 ) {
+        return 'wldelay_reset_fails_' . substr( $lockout_transient_name, strlen( 'wldelay_reset_lockout_' ) );
+    }
+
+    if ( strpos( $lockout_transient_name, 'wldelay_lockout_' ) === 0 ) {
+        return 'wldelay_fails_' . substr( $lockout_transient_name, strlen( 'wldelay_lockout_' ) );
+    }
+
+    return null;
 }
 
 /**
@@ -358,6 +438,23 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
             $deleted++;
         }
         wldelay_unregister_transient_key( $transient_name );
+
+        // Also clear the matching failure-counter transient. wldelay_lock_ip()
+        // does NOT reset the per-attempt counter when it fires, so an IP-only
+        // unlock that drops only the lockout leaves the counter at the
+        // threshold — the very next failed attempt re-locks the user
+        // immediately. The counter shares the lockout transient's md5 suffix
+        // and differs only in prefix, so deriving it from the (verbatim,
+        // length-proof) lockout transient name reaches the exact key
+        // production set, including under the ip_username strategy that the
+        // username-agnostic IP-keyed deletions above cannot match (F-2-1 review).
+        $fails_name = wldelay_derive_failure_transient_key( $transient_name );
+        if ( null !== $fails_name ) {
+            if ( delete_transient( $fails_name ) ) {
+                $deleted++;
+            }
+            wldelay_unregister_transient_key( $fails_name );
+        }
     }
 
     // Clear the durable store (F-2-1) by IP so recovery removes every lockout
@@ -382,22 +479,26 @@ function wldelay_flush_lockout_transients() {
 
     $deleted = 0;
 
-    $registry = get_option( wldelay_get_transient_registry_option_name(), array() );
-    if ( is_array( $registry ) ) {
-        foreach ( $registry as $transient_name ) {
-            if (
-                strpos( $transient_name, 'wldelay_lockout_' ) !== 0
-                && strpos( $transient_name, 'wldelay_fails_' ) !== 0
-                && strpos( $transient_name, 'wldelay_reset_lockout_' ) !== 0
-                && strpos( $transient_name, 'wldelay_reset_fails_' ) !== 0
-            ) {
-                continue;
-            }
-
-            if ( delete_transient( $transient_name ) ) {
-                $deleted++;
-            }
+    // Enumerate the concurrency-safe per-key registry records (plus the legacy
+    // shared array). The records live in the options table regardless of where
+    // transients are stored, so a cache-only transient whose old shared-array
+    // entry was clobbered by a concurrent write is still discoverable here
+    // (F-2-1 review).
+    foreach ( wldelay_get_registered_transient_keys() as $transient_name ) {
+        if (
+            strpos( $transient_name, 'wldelay_lockout_' ) !== 0
+            && strpos( $transient_name, 'wldelay_fails_' ) !== 0
+            && strpos( $transient_name, 'wldelay_reset_lockout_' ) !== 0
+            && strpos( $transient_name, 'wldelay_reset_fails_' ) !== 0
+        ) {
+            continue;
         }
+
+        if ( delete_transient( $transient_name ) ) {
+            $deleted++;
+        }
+        // Drop the per-key record too (harmless no-op for legacy-array entries).
+        wldelay_unregister_transient_key( $transient_name );
     }
 
     // Fallback cleanup for DB-backed transients not present in the registry.

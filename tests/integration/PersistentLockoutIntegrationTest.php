@@ -196,6 +196,81 @@ class PersistentLockoutIntegrationTest extends WP_UnitTestCase {
     }
 
     /**
+     * IP-only recovery clears the username-scoped FAILURE COUNTER, not just the
+     * lockout. wldelay_lock_ip() never resets the per-attempt counter, so under
+     * the ip_username strategy an IP-only unlock that dropped only the lockout
+     * would leave the counter at the threshold — the next failed attempt would
+     * re-lock the user immediately. Recovery must derive and clear the counter
+     * transient from each durable row's recorded lockout transient (F-2-1 review).
+     */
+    public function test_ip_only_recovery_clears_username_scoped_failure_counter() {
+        update_option( 'wldelay_options', [
+            'wldelay_lockout_enabled'          => true,
+            'wldelay_lockout_duration'         => 30,
+            'wldelay_lockout_threshold'        => 3,
+            'wldelay_lockout_attempt_strategy' => 'ip_username',
+        ] );
+        wldelay_clear_options_cache();
+
+        $pair_options = [ 'wldelay_lockout_attempt_strategy' => 'ip_username' ];
+
+        // Three failures recorded against (ip, victim), then a lockout fires.
+        $fails_key = wldelay_get_failure_transient_key( self::TEST_IP, 'victim', $pair_options );
+        set_transient( $fails_key, 3, HOUR_IN_SECONDS );
+        wldelay_register_transient_key( $fails_key );
+
+        wldelay_lock_ip( self::TEST_IP, 'victim' );
+        $this->assertTrue( wldelay_is_ip_locked( self::TEST_IP, 'victim' ) );
+        $this->assertSame( 3, wldelay_get_failure_count( self::TEST_IP, 'victim' ) );
+
+        // IP-only recovery — admin unlock / WP-CLI unlock-ip supply no username.
+        wldelay_delete_lockout_for_ip( self::TEST_IP );
+
+        $this->assertFalse(
+            wldelay_is_ip_locked( self::TEST_IP, 'victim' ),
+            'IP-only recovery must clear the lockout'
+        );
+        $this->assertSame(
+            0,
+            wldelay_get_failure_count( self::TEST_IP, 'victim' ),
+            'IP-only recovery must clear the failure counter so the next attempt does not immediately re-lock'
+        );
+    }
+
+    /**
+     * The same holds for the password-reset path: IP-only recovery clears the
+     * username-scoped password-reset failure counter, derived from the durable
+     * row's reset-lockout transient (F-2-1 review).
+     */
+    public function test_ip_only_recovery_clears_username_scoped_reset_failure_counter() {
+        update_option( 'wldelay_options', [
+            'wldelay_lockout_enabled'          => true,
+            'wldelay_lockout_duration'         => 30,
+            'wldelay_lockout_attempt_strategy' => 'ip_username',
+        ] );
+        wldelay_clear_options_cache();
+
+        $pair_options    = [ 'wldelay_lockout_attempt_strategy' => 'ip_username' ];
+        $reset_fails_key = wldelay_get_password_reset_failure_transient_key( self::TEST_IP, 'victim', $pair_options );
+        set_transient( $reset_fails_key, 3, HOUR_IN_SECONDS );
+        wldelay_register_transient_key( $reset_fails_key );
+
+        wldelay_lock_password_reset( self::TEST_IP, 'victim' );
+        $this->assertTrue( wldelay_is_password_reset_locked( self::TEST_IP, 'victim' ) );
+
+        wldelay_delete_lockout_for_ip( self::TEST_IP );
+
+        $this->assertFalse(
+            wldelay_is_password_reset_locked( self::TEST_IP, 'victim' ),
+            'IP-only recovery must clear the password-reset lockout'
+        );
+        $this->assertFalse(
+            get_transient( $reset_fails_key ),
+            'IP-only recovery must clear the username-scoped password-reset failure counter'
+        );
+    }
+
+    /**
      * IP-only recovery clears the username-scoped transient even when the
      * canonical identifier is longer than the varchar(255) username column
      * (LDAP DN / SSO). The durable row stores a TRUNCATED forensic username, so
