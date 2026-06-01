@@ -242,14 +242,23 @@ function wldelay_flush_deferred_tasks() {
                 call_user_func( $handlers[ $id ], $task['args'] );
             } catch ( \Throwable $e ) {
                 // A deferred task must never take down the shutdown sequence.
-                // Always emit a failure event so reliability-sensitive callers
-                // (audit, fail2ban batching) can observe and recover, then log.
-                wldelay_emit_event( 'task_failed', array(
-                    'id'      => $id,
-                    'args'    => $task['args'],
-                    'message' => $e->getMessage(),
-                ) );
+                // Log the original failure FIRST so it is never suppressed by a
+                // misbehaving observer, then emit the failure event.
                 error_log( 'wldelay deferred task "' . $id . '" failed: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+
+                // Emit a failure event so reliability-sensitive callers (audit,
+                // fail2ban batching) can observe and recover. Guarded on its own:
+                // a subscriber that throws must not abort the drain or discard the
+                // remaining tasks in this pass — log the observer fault and carry on.
+                try {
+                    wldelay_emit_event( 'task_failed', array(
+                        'id'      => $id,
+                        'args'    => $task['args'],
+                        'message' => $e->getMessage(),
+                    ) );
+                } catch ( \Throwable $observer_error ) {
+                    error_log( 'wldelay task_failed observer for "' . $id . '" threw: ' . $observer_error->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                }
             }
         }
     }

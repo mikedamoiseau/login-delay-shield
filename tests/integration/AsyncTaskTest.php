@@ -114,6 +114,37 @@ class AsyncTaskTest extends WP_UnitTestCase {
     }
 
     /**
+     * A throwing task_failed observer must not abort the flush: the original
+     * failure is still logged, the observer fault is isolated, and unrelated
+     * tasks queued after the failing one still run. F-4-9 round-3 review fix.
+     */
+    public function test_throwing_failure_observer_does_not_abort_drain() {
+        $second_ran = false;
+
+        wldelay_register_task_handler( 'boom', function () {
+            throw new \RuntimeException( 'task boom' );
+        } );
+        wldelay_register_task_handler( 'after_boom', function () use ( &$second_ran ) {
+            $second_ran = true;
+        } );
+
+        // A monitoring subscriber to the failure event that itself throws.
+        wldelay_on_event( 'task_failed', function () {
+            throw new \RuntimeException( 'observer boom' );
+        } );
+
+        wldelay_defer_task( 'boom' );
+        wldelay_defer_task( 'after_boom' );
+
+        // Must not throw out of the flush despite both the task and the
+        // failure observer throwing.
+        wldelay_flush_deferred_tasks();
+
+        $this->assertTrue( $second_ran, 'task queued after the failing one must still run' );
+        $this->assertSame( 0, wldelay_count_deferred_tasks() );
+    }
+
+    /**
      * The cron backstop hook is bound to the flush callback.
      */
     public function test_cron_backstop_action_is_registered() {

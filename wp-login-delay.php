@@ -1528,6 +1528,14 @@ function wldelay_unschedule_cleanup() {
 }
 register_deactivation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_unschedule_cleanup' );
 
+// Schedule the F-4-9 async cron backstop on activation so the maintenance tick
+// exists immediately, without waiting for a front-end `wp` action that may never
+// fire on admin-only, AJAX, or externally-cronned sites. The scheduling function
+// is idempotent (no-op if already scheduled). Both scheduling/callback live in
+// wldelay-async.php; the hook is registered here alongside the deactivation
+// teardown so both plugin-owned cron events are managed together.
+register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_schedule_async_cron' );
+
 // Unschedule the F-4-9 async cron backstop on deactivation as well. The
 // scheduling/callback live in wldelay-async.php; the deactivation hook is
 // registered here alongside the existing cleanup-cron deactivation so both
