@@ -6,10 +6,12 @@ define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
 // Schema version for the plugin-owned tables. Bumped whenever the DB schema
-// changes (F-2-1: added the lockout table = generation 2). Kept separate from
-// WLDELAY_VERSION so a schema upgrade fires on existing installs without
-// depending on a user-facing release version bump.
-define( 'WLDELAY_DB_VERSION', '2' );
+// changes (F-2-1: gen 2 added the lockout table; gen 3 widened its username
+// column to varchar(255) and replaced the unused (ip_address, username) index
+// with an IP-only index). Kept separate from WLDELAY_VERSION so a schema
+// upgrade fires on existing installs without depending on a user-facing
+// release version bump.
+define( 'WLDELAY_DB_VERSION', '3' );
 
 /*
 Plugin Name: Login Delay Shield
@@ -2738,7 +2740,7 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
     // Persist to the durable store (F-2-1) so the lockout survives transient /
     // object-cache eviction and can be enumerated. The transient above remains
     // the hot-path fast read; this is the authoritative fallback.
-    wldelay_get_persistence_store()->add_lockout(
+    $persisted = wldelay_get_persistence_store()->add_lockout(
         $ip,
         wldelay_get_effective_lockout_username( $username, $options ),
         $lockout_duration,
@@ -2746,7 +2748,50 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
         $source
     );
 
+    if ( ! $persisted ) {
+        wldelay_note_persistence_failure( $ip, 'login' );
+    }
+
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, $source );
+}
+
+/**
+ * Surface a durable lockout-write failure (F-2-1).
+ *
+ * When the persistent store cannot record a lockout (missing table mid-upgrade,
+ * or a DB error), the lockout is protected only by the transient fast-path and
+ * will NOT survive object-cache eviction. Both reviewers flagged that this
+ * degradation was silent.
+ *
+ * Policy is fail-open by design: the transient lockout still applies and login
+ * is NOT blocked on a persistence error — failing closed would lock out
+ * legitimate users during any DB hiccup. This helper makes the degraded state
+ * observable without changing that policy: it fires an action so monitoring can
+ * alert, and writes a WP_DEBUG-gated log line for operators. Whether to adopt a
+ * fail-closed policy instead is a security-vs-availability decision left to the
+ * site owner.
+ *
+ * @param string $ip   IP address whose durable lockout write failed.
+ * @param string $type Lockout type ('login' or 'password-reset').
+ */
+function wldelay_note_persistence_failure( $ip, $type ) {
+    /**
+     * Fires when a lockout could not be written to the durable store.
+     *
+     * @param string $ip   IP address whose durable lockout write failed.
+     * @param string $type Lockout type ('login' or 'password-reset').
+     */
+    do_action( 'wldelay_persistence_write_failed', $ip, $type );
+
+    if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+        error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            sprintf(
+                'WP Login Delay: durable lockout write failed for %s (%s); lockout is transient-only until the store recovers.',
+                $ip,
+                $type
+            )
+        );
+    }
 }
 
 /**
@@ -3109,13 +3154,17 @@ function wldelay_lock_password_reset( $ip, $username = '' ) {
 
     // Persist to the durable store (F-2-1) under the password-reset type so it
     // is isolated from login lockouts but equally survives cache eviction.
-    wldelay_get_persistence_store()->add_lockout(
+    $persisted = wldelay_get_persistence_store()->add_lockout(
         $ip,
         wldelay_get_effective_lockout_username( $username, $options ),
         $lockout_duration,
         'password-reset',
         'password-reset'
     );
+
+    if ( ! $persisted ) {
+        wldelay_note_persistence_failure( $ip, 'password-reset' );
+    }
 
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, 'password-reset' );
 }

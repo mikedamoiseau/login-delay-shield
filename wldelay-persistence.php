@@ -150,14 +150,14 @@ function wldelay_create_lockout_table() {
         id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         lockout_key varchar(64) NOT NULL,
         ip_address varchar(45) NOT NULL,
-        username varchar(60) NOT NULL DEFAULT '',
+        username varchar(255) NOT NULL DEFAULT '',
         lockout_type varchar(20) NOT NULL DEFAULT 'login',
         source varchar(20) DEFAULT NULL,
         created_at datetime NOT NULL,
         expires_at datetime NOT NULL,
         PRIMARY KEY  (id),
         UNIQUE KEY lockout_key (lockout_key),
-        KEY ip_username (ip_address, username),
+        KEY ip_address (ip_address),
         KEY expires_at (expires_at)
     ) $charset_collate;";
 
@@ -238,9 +238,16 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         $type       = (string) $type;
         $now        = time();
         $expires    = $now + (int) $duration;
-        $key        = wldelay_get_lockout_storage_key( $ip, $username, $type );
-        $created_at = gmdate( 'Y-m-d H:i:s', $now );
-        $expires_at = gmdate( 'Y-m-d H:i:s', $expires );
+        // The lockout key hashes the FULL canonical identifier, so lockout
+        // matching is exact at any username length. The username column is a
+        // forensic/display copy; clamp it to the column width so a custom-auth
+        // identifier (LDAP/SSO/email via wldelay_normalize_username) longer than
+        // the column cannot fail the INSERT under strict SQL mode and silently
+        // drop the durable record (F-2-1).
+        $key          = wldelay_get_lockout_storage_key( $ip, $username, $type );
+        $username_col = function_exists( 'mb_substr' ) ? mb_substr( $username, 0, 255 ) : substr( $username, 0, 255 );
+        $created_at   = gmdate( 'Y-m-d H:i:s', $now );
+        $expires_at   = gmdate( 'Y-m-d H:i:s', $expires );
 
         $table = wldelay_get_lockout_table_name();
 
@@ -269,7 +276,7 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
                         expires_at = VALUES(expires_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                     $key,
                     $ip,
-                    $username,
+                    $username_col,
                     $type,
                     $created_at,
                     $expires_at
@@ -290,7 +297,7 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
                         expires_at = VALUES(expires_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                     $key,
                     $ip,
-                    $username,
+                    $username_col,
                     $type,
                     (string) $source,
                     $created_at,

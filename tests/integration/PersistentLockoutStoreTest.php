@@ -64,8 +64,10 @@ class PersistentLockoutStoreTest extends WP_UnitTestCase {
     }
 
     /**
-     * The lockout table carries an (ip_address, username) index and an
-     * expires_at index, so the hot-path lookup is indexed.
+     * The lockout table carries a unique lockout_key index (the hot-path
+     * lookup), an IP index, and an expires_at index. The username is part of
+     * the hashed lockout_key, so it is intentionally not a standalone indexed
+     * column (F-2-1).
      */
     public function test_lockout_table_has_indexes() {
         global $wpdb;
@@ -76,7 +78,7 @@ class PersistentLockoutStoreTest extends WP_UnitTestCase {
 
         $this->assertContains( 'PRIMARY', $names );
         $this->assertContains( 'lockout_key', $names );
-        $this->assertContains( 'ip_username', $names );
+        $this->assertContains( 'ip_address', $names );
         $this->assertContains( 'expires_at', $names );
     }
 
@@ -228,5 +230,42 @@ class PersistentLockoutStoreTest extends WP_UnitTestCase {
 
         $this->assertTrue( $this->store->is_locked( '203.0.113.60', 'gina', 'login' ) );
         $this->assertFalse( $this->store->is_locked( '203.0.113.60', 'gina', 'password-reset' ) );
+    }
+
+    /**
+     * A canonical identifier longer than the old 60-char column (LDAP/SSO/email
+     * via the wldelay_normalize_username filter) is persisted durably and
+     * matched exactly, instead of failing the INSERT under strict SQL mode and
+     * degrading to a transient-only lockout (F-2-1).
+     */
+    public function test_long_username_persists_and_matches() {
+        $long = str_repeat( 'a', 80 ) . '@sso.example.com'; // 96 chars, > old varchar(60)
+
+        $this->assertTrue( $this->store->add_lockout( '203.0.113.70', $long, 600 ) );
+
+        // Eviction-proof: clear the per-request cache and confirm the DB row
+        // still answers, keyed on the full (untruncated) identifier.
+        wldelay_reset_persistence_runtime_cache();
+        $this->assertTrue( $this->store->is_locked( '203.0.113.70', $long ) );
+
+        $record = $this->store->get_lockout( '203.0.113.70', $long );
+        $this->assertNotNull( $record );
+        $this->assertSame( '203.0.113.70', $record['ip_address'] );
+    }
+
+    /**
+     * Two distinct identifiers that share the first 60 characters do not
+     * collide, proving the lockout key hashes the full identifier rather than
+     * the truncated column value (F-2-1).
+     */
+    public function test_long_usernames_sharing_prefix_do_not_collide() {
+        $prefix = str_repeat( 'b', 60 );
+        $one    = $prefix . '-one@example.com';
+        $two    = $prefix . '-two@example.com';
+
+        $this->store->add_lockout( '203.0.113.71', $one, 600 );
+
+        $this->assertTrue( $this->store->is_locked( '203.0.113.71', $one ) );
+        $this->assertFalse( $this->store->is_locked( '203.0.113.71', $two ) );
     }
 }
