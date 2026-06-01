@@ -72,10 +72,15 @@ function wldelay_uninstall_cleanup_site() {
     delete_option( 'wldelay_options' );
     delete_option( 'wldelay_fail2ban_default_token' );
     delete_option( 'wldelay_transient_registry' );
+    delete_option( 'wldelay_db_version' );
 
     // Drop the failed-login log table.
     $table_name = $wpdb->prefix . 'wldelay_login_log';
     $wpdb->query( "DROP TABLE IF EXISTS `{$table_name}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.SchemaChange
+
+    // Drop the persistent lockout table (F-2-1).
+    $lockout_table = $wpdb->prefix . 'wldelay_lockouts';
+    $wpdb->query( "DROP TABLE IF EXISTS `{$lockout_table}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.SchemaChange
 }
 
 if ( is_multisite() ) {

@@ -46,3 +46,6 @@ abstract class LDS_Unit_Test_Case extends \PHPUnit\Framework\TestCase {
 // Load the settings classes for constants
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-settings-view.php';
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-settings.php';
+
+// Load the persistence contract for pure-logic unit tests (key derivation).
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-persistence.php';

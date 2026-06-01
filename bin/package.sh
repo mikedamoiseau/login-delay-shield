@@ -27,6 +27,7 @@ cd "$REPO_DIR"
 zip -qr "$OUT_ZIP" \
     wp-login-delay.php \
     wldelay-fail2ban.php \
+    wldelay-persistence.php \
     wldelay-settings.php \
     wldelay-settings-view.php \
     admin.css \

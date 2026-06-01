@@ -32,6 +32,7 @@ add_action( 'plugins_loaded', 'wldelay_load_textdomain' );
  * Settings
  * @see http://codex.wordpress.org/Settings_API
  */
+require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 if( is_admin() ) {
@@ -305,6 +306,15 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
         wldelay_unregister_transient_key( $reset_fails_pair_key );
     }
 
+    // Clear the durable store (F-2-1) for both the IP-only key and, when a
+    // username is provided, the IP+username key — covering both strategies and
+    // both lockout types.
+    $store = wldelay_get_persistence_store();
+    $store->remove_lockout( $ip, '', null );
+    if ( ! empty( $username ) ) {
+        $store->remove_lockout( $ip, $username, null );
+    }
+
     return $deleted;
 }
 
@@ -360,6 +370,10 @@ function wldelay_flush_lockout_transients() {
     }
 
     update_option( wldelay_get_transient_registry_option_name(), array(), false );
+
+    // Clear the durable store (F-2-1) as well so a global flush truly removes
+    // every lockout, not just the transient fast-path.
+    $deleted += wldelay_get_persistence_store()->clear_all();
 
     return $deleted;
 }
@@ -1321,7 +1335,21 @@ function wldelay_create_log_table() {
     update_option( 'wldelay_db_version', WLDELAY_VERSION );
 }
 
-register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_log_table' );
+/**
+ * Create every plugin-owned table.
+ *
+ * Used on activation and on the DB upgrade path so the log table and the
+ * durable lockout store (F-2-1) are provisioned together behind one schema
+ * version. Kept separate from wldelay_create_log_table() so creating the
+ * lockout table (DDL, which implicitly commits) is not triggered on every
+ * call to the log-table helper.
+ */
+function wldelay_create_tables() {
+    wldelay_create_log_table();
+    wldelay_create_lockout_table();
+}
+
+register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_tables' );
 
 // ==========================================================================
 // Trend Analytics Queries
@@ -1466,6 +1494,10 @@ function wldelay_cleanup_old_logs() {
     if ( $total_deleted > 0 ) {
         delete_transient( 'wldelay_dashboard_attempts' );
     }
+
+    // Purge expired rows from the durable lockout store (F-2-1) on the same
+    // daily schedule so the table does not accumulate stale lockouts.
+    wldelay_get_persistence_store()->purge_expired();
 }
 add_action( 'wldelay_cleanup_logs', 'wldelay_cleanup_old_logs' );
 
@@ -1475,7 +1507,7 @@ add_action( 'wldelay_cleanup_logs', 'wldelay_cleanup_old_logs' );
 function wldelay_maybe_upgrade_db() {
     $installed_version = get_option( 'wldelay_db_version' );
     if ( $installed_version !== WLDELAY_VERSION ) {
-        wldelay_create_log_table();
+        wldelay_create_tables();
     }
 }
 add_action( 'plugins_loaded', 'wldelay_maybe_upgrade_db' );
@@ -2019,6 +2051,22 @@ function wldelay_get_lockout_transient_key( $ip, $username = '', $options = null
 }
 
 /**
+ * Get the effective username used for persistent-store lockout keys.
+ *
+ * Mirrors the transient keying: under the IP-only strategy the username is
+ * dropped so the transient fast-path and the durable store agree on identity.
+ *
+ * @param string     $username Username attempted.
+ * @param array|null $options  Optional options array.
+ * @return string Effective username ('' under the IP-only strategy).
+ */
+function wldelay_get_effective_lockout_username( $username = '', $options = null ) {
+    $strategy = wldelay_get_lockout_attempt_strategy( $options );
+
+    return ( $strategy === 'ip_username' ) ? (string) $username : '';
+}
+
+/**
  * Get username from current login request.
  *
  * @return string Normalized username or empty string.
@@ -2069,6 +2117,18 @@ function wldelay_get_lockout_remaining_seconds( $ip = null, $username = '' ) {
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username );
     $locked_at = get_transient( $transient_key );
     if ( false === $locked_at ) {
+        // Durable fallback (F-2-1): derive the countdown from the persistent
+        // store when the transient has been evicted.
+        $store = wldelay_get_persistence_store();
+        if ( $store instanceof WLDelay_DB_Persistence ) {
+            $remaining = $store->get_remaining_seconds(
+                $ip,
+                wldelay_get_effective_lockout_username( $username ),
+                'login'
+            );
+            return max( 0, (int) $remaining );
+        }
+
         return 0;
     }
 
@@ -2604,7 +2664,18 @@ function wldelay_is_ip_locked( $ip = null, $username = '' ) {
 
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username );
 
-    return get_transient( $transient_key ) !== false;
+    // Hot-path fast read: the transient (object cache) answers most requests.
+    if ( get_transient( $transient_key ) !== false ) {
+        return true;
+    }
+
+    // Durable fallback (F-2-1): the transient may have been evicted while the
+    // lockout is still in force — the DB-backed store is authoritative.
+    return wldelay_get_persistence_store()->is_locked(
+        $ip,
+        wldelay_get_effective_lockout_username( $username ),
+        'login'
+    );
 }
 
 /**
@@ -2641,6 +2712,18 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
     wldelay_register_transient_key( $transient_key );
+
+    // Persist to the durable store (F-2-1) so the lockout survives transient /
+    // object-cache eviction and can be enumerated. The transient above remains
+    // the hot-path fast read; this is the authoritative fallback.
+    wldelay_get_persistence_store()->add_lockout(
+        $ip,
+        wldelay_get_effective_lockout_username( $username, $options ),
+        $lockout_duration,
+        'login',
+        $source
+    );
+
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, $source );
 }
 
@@ -2977,7 +3060,16 @@ function wldelay_is_password_reset_locked( $ip = null, $username = '' ) {
 
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
 
-    return get_transient( $transient_key ) !== false;
+    if ( get_transient( $transient_key ) !== false ) {
+        return true;
+    }
+
+    // Durable fallback (F-2-1).
+    return wldelay_get_persistence_store()->is_locked(
+        $ip,
+        wldelay_get_effective_lockout_username( $username ),
+        'password-reset'
+    );
 }
 
 /**
@@ -2992,6 +3084,17 @@ function wldelay_lock_password_reset( $ip, $username = '' ) {
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
     wldelay_register_transient_key( $transient_key );
+
+    // Persist to the durable store (F-2-1) under the password-reset type so it
+    // is isolated from login lockouts but equally survives cache eviction.
+    wldelay_get_persistence_store()->add_lockout(
+        $ip,
+        wldelay_get_effective_lockout_username( $username, $options ),
+        $lockout_duration,
+        'password-reset',
+        'password-reset'
+    );
+
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, 'password-reset' );
 }
 
@@ -3013,6 +3116,17 @@ function wldelay_get_password_reset_lockout_remaining_seconds( $ip = null, $user
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
     $locked_at = get_transient( $transient_key );
     if ( false === $locked_at ) {
+        // Durable fallback (F-2-1).
+        $store = wldelay_get_persistence_store();
+        if ( $store instanceof WLDelay_DB_Persistence ) {
+            $remaining = $store->get_remaining_seconds(
+                $ip,
+                wldelay_get_effective_lockout_username( $username ),
+                'password-reset'
+            );
+            return max( 0, (int) $remaining );
+        }
+
         return 0;
     }
 
