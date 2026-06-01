@@ -22,11 +22,23 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="login-delay-shield-dev:latest"
 COMPOSER_CACHE_VOLUME="login-delay-shield-composer-cache"
 
+# Tag the dev image by a fingerprint of the Dockerfile content rather than a
+# fixed ":latest". A Dockerfile change (e.g. F-4-7 adding the pcntl extension
+# that PHPUnit's php-invoker needs to enforce defaultTimeLimit) produces a new
+# tag, so an existing local image is NOT silently reused — the missing-tag
+# check below rebuilds. Unchanged Dockerfile => same tag => no rebuild, no
+# per-run `docker build` overhead.
+if command -v sha256sum >/dev/null 2>&1; then
+    DOCKERFILE_HASH="$(sha256sum "$REPO_DIR/Dockerfile" | cut -c1-12)"
+else
+    DOCKERFILE_HASH="$(shasum -a 256 "$REPO_DIR/Dockerfile" | cut -c1-12)"
+fi
+IMAGE="login-delay-shield-dev:${DOCKERFILE_HASH}"
+
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    echo ">>> Building $IMAGE (first run; ~3 min)..."
+    echo ">>> Building $IMAGE (Dockerfile changed or first run; ~3 min)..."
     docker build -t "$IMAGE" "$REPO_DIR"
 fi
 
@@ -53,4 +65,4 @@ docker run --rm -i $TTY_FLAG \
     -e WP_CORE_DIR=/tmp/wordpress \
     -w /app \
     "$IMAGE" \
-    bash -c "composer install --prefer-dist --no-interaction && ($PHPUNIT_CMD)" bash "$@"
+    bash -c 'php -m | grep -qx pcntl || { echo "ERROR: pcntl extension missing — per-test timeouts (enforceTimeLimit) would silently no-op. Rebuild the image." >&2; exit 1; }; composer install --prefer-dist --no-interaction && ('"$PHPUNIT_CMD"')' bash "$@"
