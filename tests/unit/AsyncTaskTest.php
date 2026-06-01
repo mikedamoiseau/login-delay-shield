@@ -88,12 +88,13 @@ class AsyncTaskTest extends LDS_Unit_Test_Case {
 
     /**
      * Two distinct tasks whose args cannot be JSON-encoded (invalid UTF-8) must
-     * NOT collapse onto md5( false ). The serialize() fallback keeps distinct
-     * unencodable arg arrays distinct. F-4-9 round-5 review fix.
+     * NOT collapse onto md5( false ). When encoding fails the enqueue gets a
+     * unique per-request key, so distinct unencodable arg arrays stay distinct.
+     * F-4-9 round-5 review fix.
      */
     public function test_defer_task_keeps_distinct_unencodable_args() {
         // Invalid UTF-8 byte sequences — wp_json_encode()/json_encode() return
-        // false for these, so the dedupe key must come from the serialize fallback.
+        // false for these, so the dedupe key comes from the unique-key fallback.
         $bad_a = array( 'ip' => "\xB1\x31" );
         $bad_b = array( 'ip' => "\xC3\x28" );
 
@@ -106,6 +107,31 @@ class AsyncTaskTest extends LDS_Unit_Test_Case {
 
         // Distinct args → two queued tasks, not one overwriting the other.
         $this->assertSame( 2, wldelay_count_deferred_tasks() );
+    }
+
+    /**
+     * Two distinct OPEN RESOURCES must not collapse into one queue entry.
+     * serialize() converts every resource to the same "i:0;" representation, so
+     * a serialize()-based fallback would silently overwrite the first task with
+     * the second. The unique per-enqueue fallback key keeps them distinct.
+     * F-4-9 round-6 review fix.
+     */
+    public function test_defer_task_keeps_distinct_resource_args() {
+        $res_a = fopen( 'php://memory', 'rb' );
+        $res_b = fopen( 'php://memory', 'rb' );
+
+        // Sanity: resources cannot be JSON-encoded, so the fallback path runs.
+        $this->assertFalse( wp_json_encode( array( 'h' => $res_a ) ) );
+
+        wldelay_defer_task( 'record', array( 'h' => $res_a ) );
+        wldelay_defer_task( 'record', array( 'h' => $res_b ) );
+
+        // Distinct resources → two queued tasks, not one overwriting the other
+        // (which is exactly what a serialize() "i:0;" fallback would have done).
+        $this->assertSame( 2, wldelay_count_deferred_tasks() );
+
+        fclose( $res_a );
+        fclose( $res_b );
     }
 
     /**

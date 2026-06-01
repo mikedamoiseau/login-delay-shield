@@ -156,16 +156,21 @@ function wldelay_defer_task( $callback_id, array $args = array() ) {
     $queue = &wldelay_deferred_task_queue();
 
     // Dedupe key: id + a stable hash of the args. wp_json_encode() returns
-    // false on values it cannot encode (invalid UTF-8, recursion, resources);
-    // md5( false ) collapses every such enqueue onto md5( '' ), which would let
-    // two distinct unencodable arg arrays silently overwrite each other. Fall
-    // back to binary-safe serialize() so distinct args stay distinct.
-    // F-4-9 round-5 review fix.
+    // false on values it cannot encode (invalid UTF-8, recursion, resources).
+    // serialize() is NOT a safe universal fallback: it collapses every resource
+    // to "i:0;", so two distinct resource args would hash identically and one
+    // task would silently overwrite the other. When the args cannot be encoded
+    // we therefore give the enqueue a unique per-request key instead — this
+    // disables coalescing for these (rare) unencodable args, but never drops or
+    // misroutes a task, which is the safer trade-off for a work queue.
+    // F-4-9 round-6 review fix.
     $encoded = wp_json_encode( $args );
     if ( false === $encoded ) {
-        $encoded = serialize( $args ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+        static $fallback_seq = 0;
+        $key = $callback_id . ':unencodable:' . ( ++$fallback_seq );
+    } else {
+        $key = $callback_id . ':' . md5( $encoded );
     }
-    $key = $callback_id . ':' . md5( $encoded );
 
     $queue[ $key ] = array(
         'id'   => $callback_id,
