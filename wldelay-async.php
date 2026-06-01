@@ -171,13 +171,28 @@ function wldelay_reset_deferred_tasks() {
 }
 
 /**
+ * Hard cap on flush passes, so a handler that re-enqueues itself every pass
+ * cannot spin the shutdown sequence into an infinite loop.
+ */
+if ( ! defined( 'WLDELAY_MAX_FLUSH_PASSES' ) ) {
+    define( 'WLDELAY_MAX_FLUSH_PASSES', 10 );
+}
+
+/**
  * Run every queued task through its registered handler, then drain the queue.
  *
- * Idempotent: the queue is captured and cleared up front, so a handler that
- * itself defers more work re-queues for the next flush rather than looping, and
- * a second flush with nothing pending is a cheap no-op. Tasks whose handler is
- * not registered are skipped (no fatal). Each handler is guarded so one failing
- * task does not abort the rest of the flush.
+ * Drains in bounded passes: a handler that itself defers more work has that
+ * work picked up by a subsequent pass within the SAME flush (re-entrant safe),
+ * rather than being stranded in the request-local queue until a flush that
+ * never comes. Passes are capped at WLDELAY_MAX_FLUSH_PASSES so a handler that
+ * unconditionally re-enqueues itself cannot loop forever; any still-pending
+ * tasks at the cap are left in the queue (a later flush/cron tick may drain
+ * them) and the truncation is logged.
+ *
+ * Idempotent: a second flush with nothing pending is a cheap no-op. Tasks whose
+ * handler is not registered are skipped (no fatal). Each handler is guarded so
+ * one failing task does not abort the rest of the flush; failures always emit
+ * the `task_failed` event (so callers can report/recover) and are logged.
  */
 function wldelay_flush_deferred_tasks() {
     $queue = &wldelay_deferred_task_queue();
@@ -187,27 +202,46 @@ function wldelay_flush_deferred_tasks() {
         return;
     }
 
-    // Snapshot and clear before running so re-entrant defers go to the next pass.
-    $pending = $queue;
-    $queue   = array();
-
     $handlers = &wldelay_task_handler_registry();
+    $passes   = 0;
 
-    foreach ( $pending as $task ) {
-        $id = $task['id'];
-        if ( ! isset( $handlers[ $id ] ) || ! is_callable( $handlers[ $id ] ) ) {
-            continue;
-        }
+    // Drain in bounded passes so tasks deferred by a handler still run in this
+    // flush instead of being silently dropped at request termination.
+    while ( ! empty( $queue ) && $passes < WLDELAY_MAX_FLUSH_PASSES ) {
+        $passes++;
 
-        try {
-            call_user_func( $handlers[ $id ], $task['args'] );
-        } catch ( \Throwable $e ) {
-            // A deferred task must never take down the shutdown sequence.
-            // Surface for debugging without fataling the request.
-            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+        // Snapshot and clear before running so re-entrant defers land in the
+        // freshly-emptied queue and are picked up by the next while iteration.
+        $pending = $queue;
+        $queue   = array();
+
+        foreach ( $pending as $task ) {
+            $id = $task['id'];
+            if ( ! isset( $handlers[ $id ] ) || ! is_callable( $handlers[ $id ] ) ) {
+                continue;
+            }
+
+            try {
+                call_user_func( $handlers[ $id ], $task['args'] );
+            } catch ( \Throwable $e ) {
+                // A deferred task must never take down the shutdown sequence.
+                // Always emit a failure event so reliability-sensitive callers
+                // (audit, fail2ban batching) can observe and recover, then log.
+                wldelay_emit_event( 'task_failed', array(
+                    'id'      => $id,
+                    'args'    => $task['args'],
+                    'message' => $e->getMessage(),
+                ) );
                 error_log( 'wldelay deferred task "' . $id . '" failed: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
             }
         }
+    }
+
+    // If work is still pending we hit the pass cap: a handler is re-enqueueing
+    // on every pass. Leave it for a later flush rather than looping, but make
+    // the truncation visible instead of silently dropping it.
+    if ( ! empty( $queue ) ) {
+        error_log( 'wldelay deferred flush hit pass cap (' . WLDELAY_MAX_FLUSH_PASSES . '); ' . count( $queue ) . ' task(s) left queued' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
     }
 }
 

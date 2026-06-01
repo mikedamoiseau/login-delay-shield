@@ -133,4 +133,50 @@ class AsyncTaskTest extends LDS_Unit_Test_Case {
         wldelay_flush_deferred_tasks();
         $this->assertSame( 0, wldelay_count_deferred_tasks() );
     }
+
+    /**
+     * A task deferred by another task during the flush still runs within the
+     * same flush (bounded re-entrant drain), rather than being stranded in the
+     * request-local queue until a flush that never comes. F-4-9 review fix.
+     */
+    public function test_flush_runs_task_deferred_by_another_task() {
+        $ran_b = false;
+
+        wldelay_register_task_handler( 'task_a', function () {
+            // Handler A enqueues B mid-flush.
+            wldelay_defer_task( 'task_b' );
+        } );
+        wldelay_register_task_handler( 'task_b', function () use ( &$ran_b ) {
+            $ran_b = true;
+        } );
+
+        wldelay_defer_task( 'task_a' );
+        wldelay_flush_deferred_tasks();
+
+        $this->assertTrue( $ran_b, 'task B deferred by task A should run in the same flush' );
+        $this->assertSame( 0, wldelay_count_deferred_tasks() );
+    }
+
+    /**
+     * A handler that unconditionally re-enqueues itself is bounded by the pass
+     * cap instead of looping forever; the flush returns and leaves the pending
+     * task queued rather than spinning. F-4-9 review fix.
+     */
+    public function test_flush_self_requeue_is_bounded_by_pass_cap() {
+        $runs = 0;
+
+        wldelay_register_task_handler( 'greedy', function () use ( &$runs ) {
+            $runs++;
+            // Re-enqueue every pass — would loop forever without the cap.
+            wldelay_defer_task( 'greedy' );
+        } );
+
+        wldelay_defer_task( 'greedy' );
+        wldelay_flush_deferred_tasks();
+
+        // Ran exactly once per pass, capped — not unbounded.
+        $this->assertSame( WLDELAY_MAX_FLUSH_PASSES, $runs );
+        // The still-pending re-enqueue is left for a later flush, not dropped.
+        $this->assertSame( 1, wldelay_count_deferred_tasks() );
+    }
 }
