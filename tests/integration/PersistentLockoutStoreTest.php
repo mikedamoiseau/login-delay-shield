@@ -291,4 +291,49 @@ class PersistentLockoutStoreTest extends WP_UnitTestCase {
         $this->assertNotNull( $record );
         $this->assertSame( 20, strlen( $record['source'] ) );
     }
+
+    /**
+     * remove_lockouts_for_ip deletes every row for an IP regardless of the
+     * username or type the row was keyed under — the IP-level recovery path
+     * (F-2-1).
+     */
+    public function test_remove_lockouts_for_ip_clears_all_keys() {
+        $this->store->add_lockout( '203.0.113.80', 'alice', 600, 'login' );
+        $this->store->add_lockout( '203.0.113.80', 'alice', 600, 'password-reset' );
+        $this->store->add_lockout( '203.0.113.80', 'bob', 600, 'login' );
+        $this->store->add_lockout( '203.0.113.81', 'carol', 600, 'login' ); // other IP, untouched
+
+        $removed = $this->store->remove_lockouts_for_ip( '203.0.113.80' );
+
+        $this->assertSame( 3, $removed );
+        $this->assertFalse( $this->store->is_locked( '203.0.113.80', 'alice', 'login' ) );
+        $this->assertFalse( $this->store->is_locked( '203.0.113.80', 'alice', 'password-reset' ) );
+        $this->assertFalse( $this->store->is_locked( '203.0.113.80', 'bob', 'login' ) );
+        $this->assertTrue( $this->store->is_locked( '203.0.113.81', 'carol', 'login' ) );
+    }
+
+    /**
+     * The lockout table name follows the active $wpdb->prefix rather than
+     * pinning the first prefix seen. Under multisite a request can
+     * switch_to_blog() between calls; a globally-cached name would resolve the
+     * wrong site's table and leak lockouts across sites (F-2-1).
+     */
+    public function test_table_name_follows_active_wpdb_prefix() {
+        global $wpdb;
+
+        $original = $wpdb->prefix;
+
+        // Prime the cache with the current prefix.
+        $this->assertSame( $original . 'wldelay_lockouts', wldelay_get_lockout_table_name() );
+
+        // Simulate switch_to_blog() pointing $wpdb at another site's prefix.
+        $wpdb->set_prefix( 'wptest7_' );
+        $switched = wldelay_get_lockout_table_name();
+
+        // Restore before asserting so a failure cannot poison later tests.
+        $wpdb->set_prefix( $original );
+
+        $this->assertSame( 'wptest7_wldelay_lockouts', $switched );
+        $this->assertSame( $original . 'wldelay_lockouts', wldelay_get_lockout_table_name() );
+    }
 }

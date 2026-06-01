@@ -80,6 +80,20 @@ interface WLDelay_Persistence {
     public function remove_lockout( $ip, $username, $type = null );
 
     /**
+     * Remove every lockout row for an IP, regardless of username or type.
+     *
+     * IP-level recovery (admin unlock / WP-CLI `unlock-ip`) only knows the IP.
+     * Under the ip_username strategy the durable row is keyed on the full
+     * (ip, username) hash, so a username-agnostic key cannot match it — this
+     * deletes by the indexed ip_address column instead so the IP is reliably
+     * cleared (F-2-1).
+     *
+     * @param string $ip IP address.
+     * @return int Number of rows removed.
+     */
+    public function remove_lockouts_for_ip( $ip );
+
+    /**
      * Enumerate all currently active lockouts.
      *
      * @param int $limit Maximum rows to return.
@@ -124,14 +138,20 @@ function wldelay_get_lockout_storage_key( $ip, $username = '', $type = 'login' )
  * @return string
  */
 function wldelay_get_lockout_table_name() {
-    static $table_name = null;
+    global $wpdb;
 
-    if ( $table_name === null ) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'wldelay_lockouts';
+    // Cache per active prefix, not once globally: under multisite a request
+    // may switch_to_blog() between calls, changing $wpdb->prefix. A single
+    // static would pin the first site's table and leak lockouts across sites
+    // (F-2-1).
+    static $table_names = array();
+
+    $prefix = $wpdb->prefix;
+    if ( ! isset( $table_names[ $prefix ] ) ) {
+        $table_names[ $prefix ] = $prefix . 'wldelay_lockouts';
     }
 
-    return $table_name;
+    return $table_names[ $prefix ];
 }
 
 /**
@@ -238,15 +258,17 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
      * have a stable contract.
      */
     public function reset_runtime_cache() {
-        $this->table_exists = null;
+        $this->table_exists = array();
     }
 
     /**
-     * Cached table-existence flag for the current request.
+     * Cached table-existence flags for the current request, keyed by table
+     * name so the cache is scoped per blog prefix. A single bool would carry
+     * site A's result into site B after switch_to_blog() (F-2-1).
      *
-     * @var bool|null
+     * @var array<string,bool>
      */
-    private $table_exists = null;
+    private $table_exists = array();
 
     /**
      * Whether the lockout table exists.
@@ -259,20 +281,20 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
      * @return bool
      */
     private function table_exists() {
-        if ( null !== $this->table_exists ) {
-            return $this->table_exists;
-        }
-
         global $wpdb;
         $table = wldelay_get_lockout_table_name();
+
+        if ( isset( $this->table_exists[ $table ] ) ) {
+            return $this->table_exists[ $table ];
+        }
 
         $suppress = $wpdb->suppress_errors( true );
         $found    = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         $wpdb->suppress_errors( $suppress );
 
-        $this->table_exists = ( $found === $table );
+        $this->table_exists[ $table ] = ( $found === $table );
 
-        return $this->table_exists;
+        return $this->table_exists[ $table ];
     }
 
     /**
@@ -464,6 +486,22 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         }
 
         return $removed;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function remove_lockouts_for_ip( $ip ) {
+        global $wpdb;
+
+        if ( empty( $ip ) || ! $this->table_exists() ) {
+            return 0;
+        }
+
+        $table   = wldelay_get_lockout_table_name();
+        $deleted = $wpdb->delete( $table, array( 'ip_address' => (string) $ip ), array( '%s' ) );
+
+        return false === $deleted ? 0 : (int) $deleted;
     }
 
     /**

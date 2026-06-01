@@ -130,6 +130,37 @@ class PersistentLockoutIntegrationTest extends WP_UnitTestCase {
     }
 
     /**
+     * IP-level recovery clears a durable lockout that was stored with a
+     * username under the ip_username strategy. The CLI/admin unlock path knows
+     * only the IP, so a username-agnostic key cannot match the stored row — the
+     * recovery must delete by IP (F-2-1).
+     */
+    public function test_ip_only_recovery_clears_ip_username_durable_lockout() {
+        update_option( 'wldelay_options', [
+            'wldelay_lockout_enabled'          => true,
+            'wldelay_lockout_duration'         => 30,
+            'wldelay_lockout_attempt_strategy' => 'ip_username',
+        ] );
+        wldelay_clear_options_cache();
+
+        $store = wldelay_get_persistence_store();
+
+        // Durable row keyed on (ip, username), as ip_username mode would store it.
+        $store->add_lockout( self::TEST_IP, 'victim', 600, 'login' );
+        $this->assertTrue( $store->is_locked( self::TEST_IP, 'victim' ) );
+
+        // IP-only recovery — the unlock-ip CLI command passes no username.
+        $removed = wldelay_delete_lockout_for_ip( self::TEST_IP );
+        wldelay_reset_persistence_runtime_cache();
+
+        $this->assertGreaterThanOrEqual( 1, $removed );
+        $this->assertFalse(
+            wldelay_get_persistence_store()->is_locked( self::TEST_IP, 'victim' ),
+            'IP-only recovery must clear durable lockouts stored with a username'
+        );
+    }
+
+    /**
      * Flushing all lockouts empties the persistent store too.
      */
     public function test_flush_lockouts_clears_persistent_store() {

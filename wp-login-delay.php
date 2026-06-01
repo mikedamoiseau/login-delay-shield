@@ -314,15 +314,14 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
         wldelay_unregister_transient_key( $reset_fails_pair_key );
     }
 
-    // Clear the durable store (F-2-1) for both the IP-only key and, when a
-    // username is provided, the IP+username key — covering both strategies and
-    // both lockout types. Count these removals too, so recovery reports success
-    // when the transient was evicted but the durable row was still in force.
-    $store = wldelay_get_persistence_store();
-    $deleted += $store->remove_lockout( $ip, '', null );
-    if ( ! empty( $username ) ) {
-        $deleted += $store->remove_lockout( $ip, $username, null );
-    }
+    // Clear the durable store (F-2-1) by IP so recovery removes every lockout
+    // for the address regardless of username, type, or strategy. Keying on the
+    // (ip, username) hash alone would miss rows stored under the ip_username
+    // strategy when IP-level recovery (admin unlock / WP-CLI unlock-ip) supplies
+    // no username — see remove_lockouts_for_ip(). Count these removals too, so
+    // recovery reports success when the transient was evicted but the durable
+    // row was still in force.
+    $deleted += wldelay_get_persistence_store()->remove_lockouts_for_ip( $ip );
 
     return $deleted;
 }
