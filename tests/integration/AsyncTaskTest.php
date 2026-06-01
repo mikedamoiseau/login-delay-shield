@@ -177,6 +177,45 @@ class AsyncTaskTest extends WP_UnitTestCase {
     }
 
     /**
+     * Deactivation removes ALL scheduled occurrences, not just the next one.
+     * Duplicate schedules can exist (concurrent scheduling, migration, old
+     * versions); wldelay_unschedule_async_cron() must clear every instance.
+     * F-4-9 round-4 review fix.
+     */
+    public function test_unschedule_clears_duplicate_cron_events() {
+        // Force two distinct occurrences of the hook into cron storage.
+        $timestamp = wp_next_scheduled( 'wldelay_async_cron' );
+        if ( $timestamp ) {
+            wp_unschedule_event( $timestamp, 'wldelay_async_cron' );
+        }
+        wp_schedule_event( time() + 100, 'daily', 'wldelay_async_cron' );
+        wp_schedule_event( time() + 200, 'daily', 'wldelay_async_cron' );
+
+        // Two occurrences are now scheduled under the same hook.
+        $crons   = _get_cron_array();
+        $matches = 0;
+        foreach ( $crons as $events ) {
+            if ( isset( $events['wldelay_async_cron'] ) ) {
+                $matches++;
+            }
+        }
+        $this->assertSame( 2, $matches, 'two occurrences should be scheduled' );
+
+        // Deactivation must remove BOTH, not just the next one.
+        wldelay_unschedule_async_cron();
+
+        $this->assertFalse( wp_next_scheduled( 'wldelay_async_cron' ) );
+        $crons = _get_cron_array();
+        foreach ( $crons as $events ) {
+            $this->assertArrayNotHasKey(
+                'wldelay_async_cron',
+                $events,
+                'no wldelay_async_cron occurrences should remain after unschedule'
+            );
+        }
+    }
+
+    /**
      * The cron tick emits a recurring event so subscribers (e.g. GC) get a
      * durable backstop independent of per-request shutdown.
      */

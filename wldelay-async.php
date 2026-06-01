@@ -299,12 +299,15 @@ add_action( 'wp', 'wldelay_schedule_async_cron' );
 
 /**
  * Remove the async cron backstop. Called on deactivation.
+ *
+ * Uses wp_clear_scheduled_hook() (not single-event wp_unschedule_event) so ALL
+ * scheduled occurrences are removed, not just the next one. Duplicate schedules
+ * can exist after concurrent scheduling requests (the schedule check + create is
+ * non-atomic), migration, or prior plugin versions; clearing the hook removes
+ * every instance and matches the uninstall cleanup. F-4-9 round-4 review fix.
  */
 function wldelay_unschedule_async_cron() {
-    $timestamp = wp_next_scheduled( 'wldelay_async_cron' );
-    if ( $timestamp ) {
-        wp_unschedule_event( $timestamp, 'wldelay_async_cron' );
-    }
+    wp_clear_scheduled_hook( 'wldelay_async_cron' );
 }
 
 /**
