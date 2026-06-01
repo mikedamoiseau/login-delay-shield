@@ -5,6 +5,12 @@ define( 'WLDELAY_VERSION', '2.3.4' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
+// Schema version for the plugin-owned tables. Bumped whenever the DB schema
+// changes (F-2-1: added the lockout table = generation 2). Kept separate from
+// WLDELAY_VERSION so a schema upgrade fires on existing installs without
+// depending on a user-facing release version bump.
+define( 'WLDELAY_DB_VERSION', '2' );
+
 /*
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
@@ -308,11 +314,12 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
 
     // Clear the durable store (F-2-1) for both the IP-only key and, when a
     // username is provided, the IP+username key — covering both strategies and
-    // both lockout types.
+    // both lockout types. Count these removals too, so recovery reports success
+    // when the transient was evicted but the durable row was still in force.
     $store = wldelay_get_persistence_store();
-    $store->remove_lockout( $ip, '', null );
+    $deleted += $store->remove_lockout( $ip, '', null );
     if ( ! empty( $username ) ) {
-        $store->remove_lockout( $ip, $username, null );
+        $deleted += $store->remove_lockout( $ip, $username, null );
     }
 
     return $deleted;
@@ -1331,8 +1338,6 @@ function wldelay_create_log_table() {
 
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
     dbDelta( $sql );
-
-    update_option( 'wldelay_db_version', WLDELAY_VERSION );
 }
 
 /**
@@ -1343,10 +1348,27 @@ function wldelay_create_log_table() {
  * version. Kept separate from wldelay_create_log_table() so creating the
  * lockout table (DDL, which implicitly commits) is not triggered on every
  * call to the log-table helper.
+ *
+ * The schema version is recorded only after both tables are confirmed to
+ * exist, so a failed or interrupted CREATE leaves the stored version untouched
+ * and wldelay_maybe_upgrade_db() retries on the next request instead of masking
+ * a missing table (F-2-1).
  */
 function wldelay_create_tables() {
+    global $wpdb;
+
     wldelay_create_log_table();
     wldelay_create_lockout_table();
+
+    $log_table     = wldelay_get_log_table_name();
+    $lockout_table = wldelay_get_lockout_table_name();
+
+    $log_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
+    $lockout_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $lockout_table ) ) === $lockout_table;
+
+    if ( $log_exists && $lockout_exists ) {
+        update_option( 'wldelay_db_version', WLDELAY_DB_VERSION );
+    }
 }
 
 register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_tables' );
@@ -1459,6 +1481,13 @@ register_deactivation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_unschedule_cleanup' );
 function wldelay_cleanup_old_logs() {
     global $wpdb;
 
+    // Purge expired rows from the durable lockout store (F-2-1) first, before
+    // any retention-based early return. Lockout rows are bounded by their own
+    // expiry rather than the log retention setting, so they must be reaped even
+    // when logs are kept forever (retention = 0) — otherwise a rotating-IP
+    // attack grows the lockout table without bound.
+    wldelay_get_persistence_store()->purge_expired();
+
     $options = get_option( WLDELAY_OPTION_NAME );
     $retention_days = isset( $options['wldelay_log_retention_days'] )
         ? (int) $options['wldelay_log_retention_days']
@@ -1494,10 +1523,6 @@ function wldelay_cleanup_old_logs() {
     if ( $total_deleted > 0 ) {
         delete_transient( 'wldelay_dashboard_attempts' );
     }
-
-    // Purge expired rows from the durable lockout store (F-2-1) on the same
-    // daily schedule so the table does not accumulate stale lockouts.
-    wldelay_get_persistence_store()->purge_expired();
 }
 add_action( 'wldelay_cleanup_logs', 'wldelay_cleanup_old_logs' );
 
@@ -1506,7 +1531,7 @@ add_action( 'wldelay_cleanup_logs', 'wldelay_cleanup_old_logs' );
  */
 function wldelay_maybe_upgrade_db() {
     $installed_version = get_option( 'wldelay_db_version' );
-    if ( $installed_version !== WLDELAY_VERSION ) {
+    if ( $installed_version !== WLDELAY_DB_VERSION ) {
         wldelay_create_tables();
     }
 }
@@ -2118,18 +2143,15 @@ function wldelay_get_lockout_remaining_seconds( $ip = null, $username = '' ) {
     $locked_at = get_transient( $transient_key );
     if ( false === $locked_at ) {
         // Durable fallback (F-2-1): derive the countdown from the persistent
-        // store when the transient has been evicted.
-        $store = wldelay_get_persistence_store();
-        if ( $store instanceof WLDelay_DB_Persistence ) {
-            $remaining = $store->get_remaining_seconds(
-                $ip,
-                wldelay_get_effective_lockout_username( $username ),
-                'login'
-            );
-            return max( 0, (int) $remaining );
-        }
+        // store when the transient has been evicted. Called through the
+        // interface so any filtered backend supplies the countdown too.
+        $remaining = wldelay_get_persistence_store()->get_remaining_seconds(
+            $ip,
+            wldelay_get_effective_lockout_username( $username ),
+            'login'
+        );
 
-        return 0;
+        return max( 0, (int) $remaining );
     }
 
     $lockout_duration = wldelay_get_lockout_duration_seconds();
@@ -3116,18 +3138,15 @@ function wldelay_get_password_reset_lockout_remaining_seconds( $ip = null, $user
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
     $locked_at = get_transient( $transient_key );
     if ( false === $locked_at ) {
-        // Durable fallback (F-2-1).
-        $store = wldelay_get_persistence_store();
-        if ( $store instanceof WLDelay_DB_Persistence ) {
-            $remaining = $store->get_remaining_seconds(
-                $ip,
-                wldelay_get_effective_lockout_username( $username ),
-                'password-reset'
-            );
-            return max( 0, (int) $remaining );
-        }
+        // Durable fallback (F-2-1). Called through the interface so any
+        // filtered backend supplies the countdown too.
+        $remaining = wldelay_get_persistence_store()->get_remaining_seconds(
+            $ip,
+            wldelay_get_effective_lockout_username( $username ),
+            'password-reset'
+        );
 
-        return 0;
+        return max( 0, (int) $remaining );
     }
 
     $lockout_duration = wldelay_get_lockout_duration_seconds();

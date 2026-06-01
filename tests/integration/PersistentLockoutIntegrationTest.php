@@ -150,6 +150,33 @@ class PersistentLockoutIntegrationTest extends WP_UnitTestCase {
     }
 
     /**
+     * Expired lockout rows are purged by the cleanup job even when log
+     * retention is set to keep-forever (0), so the lockout table cannot grow
+     * without bound on sites that retain logs indefinitely (F-2-1).
+     */
+    public function test_cleanup_purges_expired_lockouts_when_retention_zero() {
+        update_option( 'wldelay_options', [ 'wldelay_log_retention_days' => 0 ] );
+        wldelay_clear_options_cache();
+
+        $store = wldelay_get_persistence_store();
+        $store->add_lockout( '198.51.100.41', '', 600 );   // active
+        $store->add_lockout( '198.51.100.42', '', -10 );    // expired
+
+        wldelay_cleanup_old_logs();
+        wldelay_reset_persistence_runtime_cache();
+
+        $active = wldelay_get_persistence_store()->get_active_lockouts();
+        $ips = array_column( $active, 'ip_address' );
+        $this->assertContains( '198.51.100.41', $ips );
+
+        // The expired row is gone from the table entirely, not just inactive.
+        global $wpdb;
+        $table = wldelay_get_lockout_table_name();
+        $count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" );
+        $this->assertSame( 1, $count );
+    }
+
+    /**
      * The DB upgrade hook creates the lockout table on a version bump.
      */
     public function test_upgrade_creates_lockout_table() {
@@ -163,6 +190,26 @@ class PersistentLockoutIntegrationTest extends WP_UnitTestCase {
 
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         $this->assertEquals( $table, $exists );
+    }
+
+    /**
+     * An existing install whose stored version is the previous plugin version
+     * string (2.3.4 — the F-2-1 parent) still provisions the lockout table on
+     * upgrade, because the schema gate compares against WLDELAY_DB_VERSION
+     * rather than the user-facing plugin version (F-2-1).
+     */
+    public function test_upgrade_from_previous_plugin_version_creates_lockout_table() {
+        global $wpdb;
+
+        $table = wldelay_get_lockout_table_name();
+        $wpdb->query( "DROP TABLE IF EXISTS $table" );
+
+        update_option( 'wldelay_db_version', '2.3.4' );
+        wldelay_maybe_upgrade_db();
+
+        $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+        $this->assertEquals( $table, $exists );
+        $this->assertEquals( WLDELAY_DB_VERSION, get_option( 'wldelay_db_version' ) );
     }
 
     /**

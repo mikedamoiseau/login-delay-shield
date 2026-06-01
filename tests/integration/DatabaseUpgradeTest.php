@@ -43,16 +43,19 @@ class DatabaseUpgradeTest extends WP_UnitTestCase {
     }
 
     /**
-     * Test that create_log_table sets db_version option.
+     * Test that create_tables sets the db_version option once both tables
+     * exist. The version is owned by wldelay_create_tables() (not the
+     * individual log-table helper) so a partial/failed creation does not
+     * record the schema version (F-2-1).
      */
-    public function test_create_log_table_sets_version() {
+    public function test_create_tables_sets_version() {
         delete_option( 'wldelay_db_version' );
 
-        wldelay_create_log_table();
+        wldelay_create_tables();
 
         $db_version = get_option( 'wldelay_db_version' );
 
-        $this->assertEquals( WLDELAY_VERSION, $db_version );
+        $this->assertEquals( WLDELAY_DB_VERSION, $db_version );
     }
 
     /**
@@ -83,15 +86,15 @@ class DatabaseUpgradeTest extends WP_UnitTestCase {
         $this->assertEquals( $table_name, $table_exists );
 
         // Verify version was updated
-        $this->assertEquals( WLDELAY_VERSION, get_option( 'wldelay_db_version' ) );
+        $this->assertEquals( WLDELAY_DB_VERSION, get_option( 'wldelay_db_version' ) );
     }
 
     /**
      * Test that maybe_upgrade_db does nothing when version matches.
      */
     public function test_maybe_upgrade_skips_when_version_matches() {
-        // Set current version
-        update_option( 'wldelay_db_version', WLDELAY_VERSION );
+        // Set current schema version
+        update_option( 'wldelay_db_version', WLDELAY_DB_VERSION );
 
         // Add a spy to track if create_log_table is called
         // Since we can't easily mock, we'll check that version stays the same

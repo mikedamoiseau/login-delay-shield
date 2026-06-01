@@ -59,6 +59,16 @@ interface WLDelay_Persistence {
     public function is_locked( $ip, $username, $type = 'login' );
 
     /**
+     * Remaining lockout time in seconds, or 0 if not locked.
+     *
+     * @param string $ip       IP address.
+     * @param string $username Username.
+     * @param string $type     Lockout type.
+     * @return int
+     */
+    public function get_remaining_seconds( $ip, $username, $type = 'login' );
+
+    /**
      * Remove lockouts for an IP/username. When $type is null, removes every
      * lockout type for the pair.
      *
@@ -224,42 +234,68 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
             return false;
         }
 
-        $username = (string) $username;
-        $type     = (string) $type;
-        $now      = time();
-        $expires  = $now + (int) $duration;
-        $key      = wldelay_get_lockout_storage_key( $ip, $username, $type );
-
-        $data = array(
-            'lockout_key'  => $key,
-            'ip_address'   => $ip,
-            'username'     => $username,
-            'lockout_type' => $type,
-            'source'       => ( $source === null ) ? null : (string) $source,
-            'created_at'   => gmdate( 'Y-m-d H:i:s', $now ),
-            'expires_at'   => gmdate( 'Y-m-d H:i:s', $expires ),
-        );
+        $username   = (string) $username;
+        $type       = (string) $type;
+        $now        = time();
+        $expires    = $now + (int) $duration;
+        $key        = wldelay_get_lockout_storage_key( $ip, $username, $type );
+        $created_at = gmdate( 'Y-m-d H:i:s', $now );
+        $expires_at = gmdate( 'Y-m-d H:i:s', $expires );
 
         $table = wldelay_get_lockout_table_name();
 
-        // Upsert on the unique lockout_key so re-locking refreshes the row.
-        $existing_id = $wpdb->get_var(
-            $wpdb->prepare( "SELECT id FROM $table WHERE lockout_key = %s", $key )
-        );
-
-        if ( $existing_id ) {
-            $result = $wpdb->update(
-                $table,
-                $data,
-                array( 'id' => (int) $existing_id ),
-                array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' ),
-                array( '%d' )
+        // Atomic upsert keyed on the unique lockout_key. A single statement
+        // avoids the read-then-write race where two concurrent first-time locks
+        // for the same identity both see no row and the loser fails on the
+        // unique key, silently dropping the durable record. On a re-lock the
+        // existing row is refreshed in place.
+        //
+        // The source column is nullable, so emit a literal NULL (rather than
+        // the empty string $wpdb->prepare would substitute for a null %s) when
+        // no source is supplied. prepare() is inlined into query() so the
+        // parameters are escaped at the call site.
+        if ( null === $source ) {
+            $result = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+                $wpdb->prepare(
+                    "INSERT INTO $table
+                        (lockout_key, ip_address, username, lockout_type, source, created_at, expires_at)
+                     VALUES (%s, %s, %s, %s, NULL, %s, %s)
+                     ON DUPLICATE KEY UPDATE
+                        ip_address = VALUES(ip_address),
+                        username = VALUES(username),
+                        lockout_type = VALUES(lockout_type),
+                        source = VALUES(source),
+                        created_at = VALUES(created_at),
+                        expires_at = VALUES(expires_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $key,
+                    $ip,
+                    $username,
+                    $type,
+                    $created_at,
+                    $expires_at
+                )
             );
         } else {
-            $result = $wpdb->insert(
-                $table,
-                $data,
-                array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+            $result = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+                $wpdb->prepare(
+                    "INSERT INTO $table
+                        (lockout_key, ip_address, username, lockout_type, source, created_at, expires_at)
+                     VALUES (%s, %s, %s, %s, %s, %s, %s)
+                     ON DUPLICATE KEY UPDATE
+                        ip_address = VALUES(ip_address),
+                        username = VALUES(username),
+                        lockout_type = VALUES(lockout_type),
+                        source = VALUES(source),
+                        created_at = VALUES(created_at),
+                        expires_at = VALUES(expires_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $key,
+                    $ip,
+                    $username,
+                    $type,
+                    (string) $source,
+                    $created_at,
+                    $expires_at
+                )
             );
         }
 
