@@ -196,6 +196,96 @@ class RecoveryToolsTest extends WP_UnitTestCase {
         $this->assertFalse( get_transient( $fails ) );
     }
 
+    /**
+     * wldelay_register_transient_key() reports whether the record is actually
+     * persisted, not whether update_option() returned true (which is false both
+     * on failure and on an unchanged write). When the record cannot be read back
+     * — the DB-outage case where set_transient() hit an external object cache but
+     * the registry write failed — it returns false so callers can drop the
+     * orphan (Codex round-3 review).
+     */
+    public function test_register_transient_key_reports_unverifiable_write_as_failure() {
+        $key    = wldelay_get_lockout_transient_key( '192.168.51.10' );
+        $record = wldelay_get_transient_registry_key_prefix() . md5( $key );
+
+        // Force the readback to miss, simulating a write that did not persist.
+        add_filter( "option_{$record}", '__return_false' );
+        $this->assertFalse(
+            wldelay_register_transient_key( $key, time() + HOUR_IN_SECONDS ),
+            'An unverifiable registry write must report failure'
+        );
+        remove_filter( "option_{$record}", '__return_false' );
+
+        // With the readback intact the same call reports success.
+        $this->assertTrue(
+            wldelay_register_transient_key( $key, time() + HOUR_IN_SECONDS ),
+            'A persisted registry record must report success'
+        );
+    }
+
+    /**
+     * A failure counter has no durable backing, so when its registry write is
+     * unverifiable the cache-only transient would be invisible to recovery.
+     * wldelay_track_failed_attempt() must fail open and drop the orphan rather
+     * than leave a counter that flush can never clear (Codex round-3 review).
+     */
+    public function test_failure_counter_orphan_dropped_when_registry_unverifiable() {
+        $ip = '192.168.51.20';
+        $_SERVER['REMOTE_ADDR'] = $ip;
+
+        // Lockout enabled (so the counter is tracked) with a threshold high
+        // enough that the single attempt never trips an actual lockout.
+        update_option( 'wldelay_options', array(
+            'wldelay_lockout_enabled'   => true,
+            'wldelay_lockout_threshold' => 99,
+        ) );
+        wldelay_clear_options_cache();
+
+        $key    = wldelay_get_failure_transient_key( $ip );
+        $record = wldelay_get_transient_registry_key_prefix() . md5( $key );
+
+        add_filter( "option_{$record}", '__return_false' );
+        wldelay_track_failed_attempt( '' );
+        remove_filter( "option_{$record}", '__return_false' );
+
+        $this->assertFalse(
+            get_transient( $key ),
+            'An undiscoverable failure-counter transient must be dropped, not orphaned'
+        );
+    }
+
+    /**
+     * Per-key registry records carry the transient's expiry and are reaped by
+     * the daily cleanup once elapsed, so a rotating-IP/username attack cannot
+     * grow wp_options without bound. A live record is left untouched; no manual
+     * flush is required (Codex-2 round-3 review).
+     */
+    public function test_expired_registry_record_is_purged_by_cleanup() {
+        $live_key    = wldelay_get_failure_transient_key( '192.168.51.30' );
+        $expired_key = wldelay_get_failure_transient_key( '192.168.51.31' );
+
+        wldelay_register_transient_key( $live_key, time() + HOUR_IN_SECONDS );
+        wldelay_register_transient_key( $expired_key, time() - 10 );
+
+        $live_record    = wldelay_get_transient_registry_key_prefix() . md5( $live_key );
+        $expired_record = wldelay_get_transient_registry_key_prefix() . md5( $expired_key );
+
+        $this->assertIsArray( get_option( $live_record, false ) );
+        $this->assertIsArray( get_option( $expired_record, false ) );
+
+        $removed = wldelay_purge_expired_transient_registry_records();
+
+        $this->assertGreaterThanOrEqual( 1, $removed );
+        $this->assertFalse(
+            get_option( $expired_record, false ),
+            'An expired registry record must be reaped without a manual flush'
+        );
+        $this->assertIsArray(
+            get_option( $live_record, false ),
+            'A still-live registry record must survive the reaper'
+        );
+    }
+
     public function test_unlock_current_ip_url_contains_expected_action_and_nonce() {
         $url = wldelay_get_unlock_current_ip_url();
 

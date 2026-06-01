@@ -58,7 +58,9 @@ function wldelay_uninstall_cleanup_site() {
     }
 
     // Delete registered transients before dropping the registry records.
-    // Per-key records (current concurrency-safe format): value = transient name.
+    // Per-key records: value is array( 'key' => transient name, 'exp' => ts );
+    // a plain string is the legacy round-2 per-key record whose value was the
+    // transient name itself. Handle both.
     $registry_records = $wpdb->get_results(
         $wpdb->prepare(
             "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
@@ -66,8 +68,15 @@ function wldelay_uninstall_cleanup_site() {
         )
     );
     foreach ( $registry_records as $record ) {
-        if ( is_string( $record->option_value ) && '' !== $record->option_value ) {
-            delete_transient( $record->option_value );
+        $value          = maybe_unserialize( $record->option_value );
+        $transient_name = '';
+        if ( is_array( $value ) && isset( $value['key'] ) ) {
+            $transient_name = (string) $value['key'];
+        } elseif ( is_string( $value ) ) {
+            $transient_name = $value;
+        }
+        if ( '' !== $transient_name ) {
+            delete_transient( $transient_name );
         }
         delete_option( $record->option_name );
     }

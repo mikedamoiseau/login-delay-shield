@@ -232,15 +232,53 @@ function wldelay_get_transient_registry_key_prefix() {
  * concurrent registrations cannot clobber one another. Autoload is off so these
  * short-lived records never enter the alloptions cache.
  *
+ * The record value is array( 'key' => $transient_name, 'exp' => $expires_at )
+ * so scheduled cleanup can reap records whose transient has expired. Without a
+ * stored expiry the records only died on explicit flush/unlock/uninstall, so an
+ * attacker rotating IPs or usernames could grow wp_options without bound — every
+ * failed attempt registers a key whose 1-hour transient expires while the option
+ * row lived forever (Codex-2 round-3 review).
+ *
+ * Returns whether the write actually persisted, verified by reading the record
+ * back. update_option() returns false BOTH on failure and when the stored value
+ * was already identical, so its return value cannot tell the two apart; callers
+ * that must know whether the transient is now discoverable (so they can fail
+ * open and drop an otherwise-orphaned cache-only transient during a DB outage)
+ * rely on this readback instead (Codex round-3 review).
+ *
  * @param string $transient_name Transient key name (without WordPress prefix).
+ * @param int    $expires_at     Absolute UNIX timestamp the transient expires
+ *                               at, or 0 when unknown (record is never
+ *                               auto-purged, only flushed/unlocked).
+ * @return bool True when a registry record for this key is present after the
+ *              write (newly written, or already present and unchanged).
  */
-function wldelay_register_transient_key( $transient_name ) {
+function wldelay_register_transient_key( $transient_name, $expires_at = 0 ) {
     if ( empty( $transient_name ) ) {
-        return;
+        return false;
     }
 
-    $record = wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name );
-    update_option( $record, (string) $transient_name, false );
+    $transient_name = (string) $transient_name;
+    $record_name    = wldelay_get_transient_registry_key_prefix() . md5( $transient_name );
+
+    update_option(
+        $record_name,
+        array(
+            'key' => $transient_name,
+            'exp' => (int) $expires_at,
+        ),
+        false
+    );
+
+    // Verify the record is actually present. On a failed write (e.g. the DB is
+    // down while an external object cache still accepted the set_transient), the
+    // record cache is not primed and get_option() falls through to the failing
+    // DB, returning false here so the caller can drop the orphan. On a re-lock
+    // that merely refreshed an existing record, the cached array still carries
+    // the right key, so this correctly reports the transient as discoverable.
+    $stored = get_option( $record_name, false );
+
+    return is_array( $stored ) && isset( $stored['key'] ) && $stored['key'] === $transient_name;
 }
 
 /**
@@ -272,7 +310,9 @@ function wldelay_get_registered_transient_keys() {
 
     $keys = array();
 
-    // Current per-key records.
+    // Current per-key records. The value is array( 'key' => name, 'exp' => ts );
+    // a plain string is a legacy per-key record (round-2 format) whose value was
+    // the transient name itself. Handle both.
     $like   = $wpdb->esc_like( wldelay_get_transient_registry_key_prefix() ) . '%';
     $values = $wpdb->get_col(
         $wpdb->prepare(
@@ -281,8 +321,11 @@ function wldelay_get_registered_transient_keys() {
         )
     );
     if ( is_array( $values ) ) {
-        foreach ( $values as $value ) {
-            if ( is_string( $value ) && '' !== $value ) {
+        foreach ( $values as $raw ) {
+            $value = maybe_unserialize( $raw );
+            if ( is_array( $value ) && isset( $value['key'] ) && '' !== $value['key'] ) {
+                $keys[] = (string) $value['key'];
+            } elseif ( is_string( $value ) && '' !== $value ) {
                 $keys[] = $value;
             }
         }
@@ -299,6 +342,55 @@ function wldelay_get_registered_transient_keys() {
     }
 
     return array_values( array_unique( $keys ) );
+}
+
+/**
+ * Purge per-key registry records whose transient has already expired.
+ *
+ * Each per-key record carries the absolute expiry of the transient it tracks.
+ * The transient itself expires on its own (WordPress TTL), but the options-table
+ * record does not — so without this reaper an attacker rotating IPs/usernames
+ * would grow wp_options without bound (every failed attempt leaves a permanent
+ * row whose 1-hour transient is long gone). Run from the daily cleanup cron.
+ *
+ * Only records with a positive, elapsed expiry are removed. Records with exp = 0
+ * (legacy round-2 string records, or registrations with an unknown TTL) are left
+ * for explicit flush/unlock so this reaper never deletes a still-live marker
+ * (Codex-2 round-3 review).
+ *
+ * @return int Number of expired registry records removed.
+ */
+function wldelay_purge_expired_transient_registry_records() {
+    global $wpdb;
+
+    $like = $wpdb->esc_like( wldelay_get_transient_registry_key_prefix() ) . '%';
+    $rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+            $like
+        )
+    );
+
+    if ( ! is_array( $rows ) ) {
+        return 0;
+    }
+
+    $now     = time();
+    $removed = 0;
+    foreach ( $rows as $row ) {
+        $value = maybe_unserialize( $row->option_value );
+        if (
+            is_array( $value )
+            && isset( $value['exp'] )
+            && (int) $value['exp'] > 0
+            && (int) $value['exp'] <= $now
+        ) {
+            delete_option( $row->option_name );
+            $removed++;
+        }
+    }
+
+    return $removed;
 }
 
 /**
@@ -1702,6 +1794,11 @@ function wldelay_cleanup_old_logs() {
     // attack grows the lockout table without bound.
     wldelay_get_persistence_store()->purge_expired();
 
+    // Reap per-key transient registry records whose transient has expired, so a
+    // rotating-identity attack cannot grow wp_options without bound. Bounded by
+    // its own expiry, independent of log retention (Codex-2 round-3 review).
+    wldelay_purge_expired_transient_registry_records();
+
     $options = get_option( WLDELAY_OPTION_NAME );
     $retention_days = isset( $options['wldelay_log_retention_days'] )
         ? (int) $options['wldelay_log_retention_days']
@@ -2948,7 +3045,7 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
     $lockout_duration = wldelay_get_lockout_duration_seconds( $options );
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
-    wldelay_register_transient_key( $transient_key );
+    $registered = wldelay_register_transient_key( $transient_key, time() + $lockout_duration );
 
     // Persist to the durable store (F-2-1) so the lockout survives transient /
     // object-cache eviction and can be enumerated. The transient above remains
@@ -2964,6 +3061,17 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
 
     if ( ! $persisted ) {
         wldelay_note_persistence_failure( $ip, 'login' );
+
+        // When the durable write AND the registry write both failed (a DB
+        // outage while an external object cache still accepted the transient),
+        // the lockout exists only as a cache-only transient with no record in
+        // SQL or the durable table — recovery could never discover or clear it,
+        // so it would strand the user until the transient expires. Fail fully
+        // open: drop the orphan rather than create an unrecoverable lockout
+        // (Codex round-3 review).
+        if ( ! $registered ) {
+            delete_transient( $transient_key );
+        }
     }
 
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, $source );
@@ -3373,7 +3481,7 @@ function wldelay_lock_password_reset( $ip, $username = '' ) {
     $lockout_duration = wldelay_get_lockout_duration_seconds( $options );
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
-    wldelay_register_transient_key( $transient_key );
+    $registered = wldelay_register_transient_key( $transient_key, time() + $lockout_duration );
 
     // Persist to the durable store (F-2-1) under the password-reset type so it
     // is isolated from login lockouts but equally survives cache eviction.
@@ -3388,6 +3496,13 @@ function wldelay_lock_password_reset( $ip, $username = '' ) {
 
     if ( ! $persisted ) {
         wldelay_note_persistence_failure( $ip, 'password-reset' );
+
+        // Both durable and registry writes failed: drop the orphaned cache-only
+        // transient so recovery is never left with an undiscoverable lockout
+        // (see wldelay_lock_ip; Codex round-3 review).
+        if ( ! $registered ) {
+            delete_transient( $transient_key );
+        }
     }
 
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, 'password-reset' );
@@ -3480,7 +3595,12 @@ function wldelay_track_password_reset_attempt( $username ) {
 
     $failed_attempts++;
     set_transient( $transient_key, $failed_attempts, HOUR_IN_SECONDS );
-    wldelay_register_transient_key( $transient_key );
+    if ( ! wldelay_register_transient_key( $transient_key, time() + HOUR_IN_SECONDS ) ) {
+        // Same as the login counter: an unregistered, durable-less counter
+        // transient is undiscoverable by recovery, so fail open and drop it
+        // (Codex round-3 review).
+        delete_transient( $transient_key );
+    }
 
     if ( $lockout_enabled ) {
         $lockout_threshold = isset( $options['wldelay_lockout_threshold'] )
@@ -3580,7 +3700,14 @@ function wldelay_track_failed_attempt( $username, $source = null ) {
 
     $failed_attempts++;
     set_transient( $transient_key, $failed_attempts, HOUR_IN_SECONDS );
-    wldelay_register_transient_key( $transient_key );
+    if ( ! wldelay_register_transient_key( $transient_key, time() + HOUR_IN_SECONDS ) ) {
+        // The counter has no durable backing, so an unregistered counter
+        // transient (registry write failed during a DB outage while an external
+        // object cache still accepted the set_transient) is undiscoverable by
+        // recovery — flush would report success while it lingered. Fail open:
+        // drop it. Worst case the count restarts next request (Codex round-3 review).
+        delete_transient( $transient_key );
+    }
 
     // Check email notification threshold
     if ( $email_enabled ) {
