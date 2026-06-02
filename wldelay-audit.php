@@ -241,9 +241,14 @@ function wldelay_audit_write_row( array $row ) {
         return false;
     }
 
-    // A verified successful write clears any prior integrity marker: the audit
-    // pipeline is demonstrably healthy again.
-    wldelay_clear_audit_write_failure();
+    // A verified successful write records pipeline RECOVERY but must NOT erase
+    // the integrity marker. The row(s) lost during the outage are permanently
+    // gone; a later success proves the pipeline works again, not that the trail
+    // is complete. Conflating the two would let an apparently authoritative
+    // audit log hide a known gap. The trail-incomplete warning therefore
+    // persists until an administrator explicitly acknowledges the gap
+    // (nonce-protected); recovery is tracked separately as recovered_at.
+    wldelay_note_audit_write_recovered();
 
     return (int) $wpdb->insert_id;
 }
@@ -286,40 +291,93 @@ function wldelay_record_audit_write_failure( $action, $error = '' ) {
         return;
     }
 
-    $existing = get_option( WLDELAY_AUDIT_HEALTH_OPTION, array() );
-    $count    = ( is_array( $existing ) && isset( $existing['count'] ) ) ? (int) $existing['count'] : 0;
+    $existing  = get_option( WLDELAY_AUDIT_HEALTH_OPTION, array() );
+    $existing  = is_array( $existing ) ? $existing : array();
+    $count     = isset( $existing['count'] ) ? (int) $existing['count'] : 0;
+    $now       = current_time( 'mysql', true );
+    // gap_since is sticky: the moment the FIRST unacknowledged write failed.
+    // It survives recoveries so the durable record shows when the gap opened.
+    $gap_since = ( isset( $existing['gap_since'] ) && '' !== (string) $existing['gap_since'] )
+        ? $existing['gap_since']
+        : $now;
 
     update_option(
         WLDELAY_AUDIT_HEALTH_OPTION,
         array(
-            'failed_at'   => current_time( 'mysql', true ),
-            'last_action' => substr( (string) $action, 0, 50 ),
-            'count'       => $count + 1,
+            'gap_since'    => $gap_since,
+            'failed_at'    => $now,
+            'last_action'  => substr( (string) $action, 0, 50 ),
+            'count'        => $count + 1,
+            // A fresh failure reopens the gap: drop any prior recovery note and
+            // any acknowledgement so the admin warning re-appears.
+            'recovered_at' => null,
         ),
         false // Not autoloaded: only read on the plugin admin screen.
     );
 }
 
 /**
- * Clear the audit-integrity marker after a verified successful write.
+ * Note that the audit pipeline recovered (a write succeeded after a failure).
+ *
+ * Records the recovery time on the existing integrity marker but deliberately
+ * does NOT delete it: the rows lost during the outage stay lost, so the
+ * trail-incomplete warning must persist until an administrator acknowledges the
+ * gap. Cheap on the healthy path — when no marker exists this is a single read.
  */
-function wldelay_clear_audit_write_failure() {
-    if ( ! function_exists( 'get_option' ) || ! function_exists( 'delete_option' ) ) {
+function wldelay_note_audit_write_recovered() {
+    if ( ! function_exists( 'get_option' ) || ! function_exists( 'update_option' ) ) {
         return;
     }
 
-    // Cheap guard: only touch the store when a marker is actually set, so the
-    // common (healthy) path stays a single read.
-    if ( false !== get_option( WLDELAY_AUDIT_HEALTH_OPTION, false ) ) {
-        delete_option( WLDELAY_AUDIT_HEALTH_OPTION );
+    $marker = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
+    if ( ! is_array( $marker ) || empty( $marker ) ) {
+        return; // Healthy: nothing to annotate.
     }
+
+    if ( ! empty( $marker['recovered_at'] ) ) {
+        return; // Recovery already noted since the last failure; no write needed.
+    }
+
+    $marker['recovered_at'] = current_time( 'mysql', true );
+    update_option( WLDELAY_AUDIT_HEALTH_OPTION, $marker, false );
+}
+
+/**
+ * Acknowledge a known audit-trail gap (explicit, nonce-protected admin action).
+ *
+ * Clears the admin-visible warning WITHOUT discarding the forensic record: the
+ * marker is retained with an acknowledged_at stamp (and the original gap_since
+ * / count), so the fact that a gap existed remains durably recorded. Only this
+ * deliberate operator action — never an automatic successful write — silences
+ * the warning. A subsequent write failure reopens the gap (recorder drops
+ * acknowledged_at), so the warning returns.
+ *
+ * @param int $actor_id Acknowledging user id (0/system when unknown).
+ * @return bool True when an outstanding gap was acknowledged.
+ */
+function wldelay_acknowledge_audit_gap( $actor_id = 0 ) {
+    if ( ! function_exists( 'get_option' ) || ! function_exists( 'update_option' ) ) {
+        return false;
+    }
+
+    $marker = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
+    if ( ! is_array( $marker ) || empty( $marker ) ) {
+        return false; // Nothing outstanding to acknowledge.
+    }
+
+    $marker['acknowledged_at'] = current_time( 'mysql', true );
+    $marker['acknowledged_by'] = (int) $actor_id;
+    update_option( WLDELAY_AUDIT_HEALTH_OPTION, $marker, false );
+
+    return true;
 }
 
 /**
  * Current audit-integrity health state.
  *
- * @return array|false Marker array (failed_at/last_action/count), or false when
- *                     the audit pipeline is healthy.
+ * @return array|false Marker array (gap_since/failed_at/last_action/count/
+ *                     recovered_at/acknowledged_at), or false when no gap has
+ *                     ever been recorded.
  */
 function wldelay_get_audit_health() {
     if ( ! function_exists( 'get_option' ) ) {
@@ -332,13 +390,18 @@ function wldelay_get_audit_health() {
 }
 
 /**
- * Whether the audit trail is known to be incomplete (a write has failed and
- * not yet recovered).
+ * Whether the audit trail is known to be incomplete: a write has failed and the
+ * resulting gap has NOT yet been acknowledged by an administrator.
+ *
+ * Stays true across a later successful write (the lost rows do not come back) —
+ * only an explicit acknowledgement, or never having failed, makes it false.
  *
  * @return bool
  */
 function wldelay_audit_log_is_degraded() {
-    return false !== wldelay_get_audit_health();
+    $marker = wldelay_get_audit_health();
+
+    return is_array( $marker ) && empty( $marker['acknowledged_at'] );
 }
 
 // Register the deferred audit-write handler at boot so any request can enqueue a
@@ -581,6 +644,7 @@ function wldelay_get_audit_action_label( $action ) {
         'lockout_cleared'   => __( 'Lockout cleared', 'login-delay-shield' ),
         'lockouts_flushed'  => __( 'All lockouts flushed', 'login-delay-shield' ),
         'whitelist_changed' => __( 'Whitelist changed', 'login-delay-shield' ),
+        'audit_gap_acknowledged' => __( 'Audit gap acknowledged', 'login-delay-shield' ),
     );
 
     return isset( $labels[ $action ] ) ? $labels[ $action ] : $action;
@@ -786,11 +850,68 @@ function wldelay_render_audit_health_notice() {
 
     echo '<div class="notice notice-error"><p><strong>'
         . esc_html__( 'Login Delay Shield', 'login-delay-shield' ) . '</strong> — '
-        . esc_html__( 'One or more audit-log entries could not be written. The audit trail below may be incomplete. Check your database/error log; the warning clears automatically once auditing succeeds again.', 'login-delay-shield' )
+        . esc_html__( 'One or more audit-log entries could not be written, so the audit trail below is permanently incomplete. The lost events cannot be recovered. Check your database/error log, then acknowledge the gap to dismiss this warning.', 'login-delay-shield' )
+        . ' <a href="' . esc_url( wldelay_get_audit_ack_gap_url() ) . '">'
+        . esc_html__( 'Acknowledge gap', 'login-delay-shield' ) . '</a>'
         . '</p></div>';
+}
+
+/**
+ * Nonce-protected URL for acknowledging a known audit-trail gap.
+ *
+ * @return string
+ */
+function wldelay_get_audit_ack_gap_url() {
+    $url = add_query_arg(
+        array( 'action' => 'wldelay_ack_audit_gap' ),
+        admin_url( 'admin-post.php' )
+    );
+
+    return wp_nonce_url( $url, 'wldelay_ack_audit_gap' );
+}
+
+/**
+ * admin-post handler: acknowledge a known audit-trail gap.
+ *
+ * Explicit, capability- and nonce-checked. Retains the forensic marker (with an
+ * acknowledged_at stamp) while dismissing the admin warning. The acknowledgement
+ * itself is audited so the dismissal is part of the trail.
+ */
+function wldelay_handle_ack_audit_gap() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+    }
+
+    check_admin_referer( 'wldelay_ack_audit_gap' );
+
+    $actor_id = function_exists( 'get_current_user_id' ) ? (int) get_current_user_id() : 0;
+
+    if ( wldelay_acknowledge_audit_gap( $actor_id ) ) {
+        // Audit the acknowledgement itself so the dismissal is on the record.
+        wldelay_audit_log(
+            'audit_gap_acknowledged',
+            array( 'object' => 'audit_log' )
+        );
+    }
+
+    $redirect_url = add_query_arg(
+        array(
+            'page'                  => 'login-delay-shield-admin',
+            'wldelay_audit_gap_ack' => '1',
+        ),
+        admin_url( 'options-general.php' )
+    );
+
+    wp_safe_redirect( $redirect_url );
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        return;
+    }
+    exit;
 }
 
 // Guarded so the module stays loadable in the unit suite (no WP runtime).
 if ( function_exists( 'add_action' ) ) {
     add_action( 'admin_notices', 'wldelay_render_audit_health_notice' );
+    add_action( 'admin_post_wldelay_ack_audit_gap', 'wldelay_handle_ack_audit_gap' );
 }

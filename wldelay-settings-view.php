@@ -816,7 +816,12 @@ class LDS_Settings_View {
 
             <?php if ( function_exists( 'wldelay_audit_log_is_degraded' ) && wldelay_audit_log_is_degraded() ) : ?>
                 <div class="notice notice-error inline" role="alert">
-                    <p><?php esc_html_e( 'One or more audit-log entries could not be written, so this trail may be incomplete. The warning clears automatically once an audit write succeeds again.', 'login-delay-shield' ); ?></p>
+                    <p>
+                        <?php esc_html_e( 'One or more audit-log entries could not be written, so this trail is permanently incomplete — the lost events cannot be recovered. This warning persists until an administrator acknowledges the gap.', 'login-delay-shield' ); ?>
+                        <?php if ( function_exists( 'wldelay_get_audit_ack_gap_url' ) ) : ?>
+                            <a href="<?php echo esc_url( wldelay_get_audit_ack_gap_url() ); ?>"><?php esc_html_e( 'Acknowledge gap', 'login-delay-shield' ); ?></a>
+                        <?php endif; ?>
+                    </p>
                 </div>
             <?php endif; ?>
 

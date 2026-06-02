@@ -311,11 +311,13 @@ class AuditLogTest extends WP_UnitTestCase {
     }
 
     /**
-     * Once the audit pipeline recovers, a verified successful write clears the
-     * integrity marker so the admin warning does not linger forever (review fix:
-     * the marker tracks current health, not a permanent flag).
+     * A later successful write records RECOVERY but must NOT erase the gap
+     * warning: the rows lost during the outage are permanently gone, so the
+     * trail-incomplete signal has to persist (review fix — a successful write
+     * proves pipeline health, not trail integrity). recovered_at is annotated;
+     * is_degraded stays true.
      */
-    public function test_integrity_marker_clears_after_successful_write() {
+    public function test_successful_write_records_recovery_but_keeps_gap_warning() {
         // Seed a failure marker directly (as a prior failed write would).
         wldelay_record_audit_write_failure( 'settings_changed', 'simulated outage' );
         $this->assertTrue( wldelay_audit_log_is_degraded(), 'Precondition: marker is set' );
@@ -328,10 +330,70 @@ class AuditLogTest extends WP_UnitTestCase {
         ) );
 
         $this->assertNotFalse( $id, 'The recovery write must succeed' );
+
+        // The gap warning MUST still be raised — the lost row never came back.
+        $this->assertTrue(
+            wldelay_audit_log_is_degraded(),
+            'A successful write must NOT clear the gap warning'
+        );
+
+        // Recovery is tracked separately so the operator can see the pipeline
+        // is working again even though the trail stays flagged.
+        $health = wldelay_get_audit_health();
+        $this->assertNotEmpty( $health['recovered_at'], 'Recovery time must be recorded' );
+        $this->assertSame( 1, (int) $health['count'], 'Failure count is preserved as forensic evidence' );
+    }
+
+    /**
+     * The gap warning clears ONLY through an explicit administrator
+     * acknowledgement, and that acknowledgement retains the forensic metadata
+     * (gap_since/count) rather than discarding it (review fix).
+     */
+    public function test_gap_clears_only_on_explicit_acknowledgement() {
+        wldelay_record_audit_write_failure( 'settings_changed', 'simulated outage' );
+        $this->assertTrue( wldelay_audit_log_is_degraded(), 'Precondition: marker is set' );
+
+        $acknowledged = wldelay_acknowledge_audit_gap( 42 );
+        $this->assertTrue( $acknowledged, 'An outstanding gap must be acknowledgeable' );
+
+        // Warning is now dismissed...
         $this->assertFalse(
             wldelay_audit_log_is_degraded(),
-            'A successful write must clear the integrity marker'
+            'Acknowledgement must dismiss the warning'
         );
+
+        // ...but the forensic record is RETAINED, not deleted.
+        $health = wldelay_get_audit_health();
+        $this->assertIsArray( $health, 'The marker must be retained after acknowledgement' );
+        $this->assertNotEmpty( $health['acknowledged_at'], 'acknowledged_at must be stamped' );
+        $this->assertSame( 42, (int) $health['acknowledged_by'] );
+        $this->assertSame( 1, (int) $health['count'], 'The historical failure count is preserved' );
+        $this->assertNotEmpty( $health['gap_since'], 'The gap-open time is preserved' );
+    }
+
+    /**
+     * A NEW write failure after an acknowledgement reopens the gap: the warning
+     * returns and the original gap-open time is preserved (review fix — an
+     * acknowledged gap must not mask a fresh, distinct failure).
+     */
+    public function test_new_failure_after_acknowledgement_reopens_gap() {
+        wldelay_record_audit_write_failure( 'settings_changed', 'outage one' );
+        $first       = wldelay_get_audit_health();
+        $first_since = $first['gap_since'];
+
+        wldelay_acknowledge_audit_gap( 1 );
+        $this->assertFalse( wldelay_audit_log_is_degraded(), 'Precondition: acknowledged' );
+
+        // A second, distinct failure.
+        wldelay_record_audit_write_failure( 'lockout_cleared', 'outage two' );
+
+        $this->assertTrue(
+            wldelay_audit_log_is_degraded(),
+            'A fresh failure after acknowledgement must reopen the warning'
+        );
+        $health = wldelay_get_audit_health();
+        $this->assertSame( 2, (int) $health['count'], 'The cumulative failure count keeps climbing' );
+        $this->assertSame( $first_since, $health['gap_since'], 'gap_since stays anchored to the first failure' );
     }
 
     /**
