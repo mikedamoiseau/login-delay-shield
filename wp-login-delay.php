@@ -10,10 +10,12 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 // column to varchar(255) and replaced the unused (ip_address, username) index
 // with an IP-only index; gen 4 added the transient_key column so IP-level
 // recovery can delete the exact lockout transient without reconstructing it
-// from the truncated username column). Kept separate from WLDELAY_VERSION so a
-// schema upgrade fires on existing installs without depending on a user-facing
-// release version bump.
-define( 'WLDELAY_DB_VERSION', '5' );
+// from the truncated username column; gen 5 was the audit table; gen 6 added the
+// generation column so recovery can snapshot-then-conditionally-delete durable
+// rows and skip any a concurrent relock refreshed during the flush window).
+// Kept separate from WLDELAY_VERSION so a schema upgrade fires on existing
+// installs without depending on a user-facing release version bump.
+define( 'WLDELAY_DB_VERSION', '6' );
 
 /*
 Plugin Name: Login Delay Shield
@@ -233,12 +235,21 @@ function wldelay_get_transient_registry_key_prefix() {
  * concurrent registrations cannot clobber one another. Autoload is off so these
  * short-lived records never enter the alloptions cache.
  *
- * The record value is array( 'key' => $transient_name, 'exp' => $expires_at )
- * so scheduled cleanup can reap records whose transient has expired. Without a
- * stored expiry the records only died on explicit flush/unlock/uninstall, so an
- * attacker rotating IPs or usernames could grow wp_options without bound — every
- * failed attempt registers a key whose 1-hour transient expires while the option
- * row lived forever (Codex-2 round-3 review).
+ * The record value is array( 'key' => $transient_name, 'exp' => $expires_at,
+ * 'gen' => $generation ) so scheduled cleanup can reap records whose transient
+ * has expired. Without a stored expiry the records only died on explicit
+ * flush/unlock/uninstall, so an attacker rotating IPs or usernames could grow
+ * wp_options without bound — every failed attempt registers a key whose 1-hour
+ * transient expires while the option row lived forever (Codex-2 round-3 review).
+ *
+ * Each write also stamps a fresh random GENERATION token. A flush/unlock
+ * snapshots the records it intends to remove and conditionally unregisters only
+ * those whose full (key,exp,gen) still match the snapshot. Because a concurrent
+ * same-second relock rewrites the record with a NEW gen, the compare can now
+ * tell the refreshed record from the stale one and leaves it in place — the
+ * live external-cache transient stays discoverable by later flushes, closing the
+ * orphaning race that a key+second-resolution-exp record could not detect
+ * (F-2-1 hardening).
  *
  * Returns whether the write actually persisted, verified by reading the record
  * back. update_option() returns false BOTH on failure and when the stored value
@@ -264,11 +275,20 @@ function wldelay_register_transient_key( $transient_name, $expires_at = 0 ) {
     $transient_name = (string) $transient_name;
     $record_name    = wldelay_get_transient_registry_key_prefix() . md5( $transient_name );
 
+    // A unique per-write generation lets the recovery compare-and-delete tell a
+    // concurrent same-second relock (new gen) apart from the stale record it
+    // snapshotted (F-2-1 hardening). wldelay_generate_lockout_generation() lives
+    // in wldelay-persistence.php, required before this file runs.
+    $generation = function_exists( 'wldelay_generate_lockout_generation' )
+        ? wldelay_generate_lockout_generation()
+        : substr( md5( uniqid( (string) wp_rand(), true ) ), 0, 24 );
+
     update_option(
         $record_name,
         array(
             'key' => $transient_name,
             'exp' => (int) $expires_at,
+            'gen' => $generation,
         ),
         false
     );
@@ -293,7 +313,9 @@ function wldelay_register_transient_key( $transient_name, $expires_at = 0 ) {
     return is_array( $stored )
         && isset( $stored['key'], $stored['exp'] )
         && $stored['key'] === $transient_name
-        && (int) $stored['exp'] === (int) $expires_at;
+        && (int) $stored['exp'] === (int) $expires_at
+        && isset( $stored['gen'] )
+        && $stored['gen'] === $generation;
 }
 
 /**
@@ -307,6 +329,96 @@ function wldelay_unregister_transient_key( $transient_name ) {
     }
 
     delete_option( wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name ) );
+}
+
+/**
+ * Read the current registry record for a transient name.
+ *
+ * Returns the live per-key record so a recovery path can SNAPSHOT it before
+ * clearing transients and later prove it is unchanged. Returns null when no
+ * per-key record exists (e.g. a legacy shared-array-only entry).
+ *
+ * @param string $transient_name Transient key name (without WordPress prefix).
+ * @return array|null Record array (key/exp/gen) or null when absent.
+ */
+function wldelay_get_transient_registry_record( $transient_name ) {
+    if ( empty( $transient_name ) ) {
+        return null;
+    }
+
+    $record_name = wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name );
+    $stored      = get_option( $record_name, false );
+
+    return is_array( $stored ) ? $stored : null;
+}
+
+/**
+ * Conditionally unregister a transient record only when it is UNCHANGED since a
+ * snapshot.
+ *
+ * Recovery (flush / IP unlock) snapshots the record it intends to remove, clears
+ * the transient, then calls this with the snapshot. The record is deleted only
+ * when the live record still matches the snapshot's key + exp + gen. A
+ * concurrent same-second relock rewrites the record with a NEW gen, so the
+ * compare fails and the refreshed record (and its live external-cache transient)
+ * is left discoverable for the next flush — closing the orphaning race a
+ * key+second-resolution-exp record could not detect (F-2-1 hardening).
+ *
+ * Backward compatibility: a snapshot or live record without a 'gen' (legacy
+ * key+exp record, or a plain-string round-2 record that snapshots as null) is
+ * treated as "gen always matches", so legacy records are never stranded — they
+ * still get cleaned by recovery. Likewise a null snapshot (the caller could not
+ * read a per-key record, e.g. a legacy shared-array entry) falls back to an
+ * unconditional unregister so nothing is left behind.
+ *
+ * @param string     $transient_name Transient key name (without WordPress prefix).
+ * @param array|null $snapshot       Record captured before the transient was
+ *                                   cleared, or null to force an unconditional
+ *                                   unregister (legacy entry).
+ * @return bool True when the record was removed.
+ */
+function wldelay_unregister_transient_record_if_unchanged( $transient_name, $snapshot ) {
+    if ( empty( $transient_name ) ) {
+        return false;
+    }
+
+    // No snapshot to compare against (legacy shared-array-only entry): fall back
+    // to an unconditional unregister so the record is not stranded.
+    if ( ! is_array( $snapshot ) ) {
+        wldelay_unregister_transient_key( $transient_name );
+        return true;
+    }
+
+    $current = wldelay_get_transient_registry_record( $transient_name );
+
+    // The per-key record is already gone — nothing to remove, and a concurrent
+    // writer that has not yet re-created it must not be clobbered.
+    if ( null === $current ) {
+        return false;
+    }
+
+    $key_matches = isset( $current['key'], $snapshot['key'] )
+        && $current['key'] === $snapshot['key'];
+    $exp_matches = isset( $current['exp'], $snapshot['exp'] )
+        && (int) $current['exp'] === (int) $snapshot['exp'];
+
+    // Treat a missing gen (legacy record on either side) as "always matches" so
+    // old records still get cleaned. Only when BOTH carry a gen do we require
+    // them to be equal — that is what distinguishes a concurrent relock.
+    $snapshot_gen = isset( $snapshot['gen'] ) ? (string) $snapshot['gen'] : null;
+    $current_gen  = isset( $current['gen'] ) ? (string) $current['gen'] : null;
+    $gen_matches  = ( null === $snapshot_gen || null === $current_gen )
+        ? true
+        : ( $snapshot_gen === $current_gen );
+
+    if ( $key_matches && $exp_matches && $gen_matches ) {
+        wldelay_unregister_transient_key( $transient_name );
+        return true;
+    }
+
+    // The record changed (a concurrent relock rewrote it with a new gen/exp):
+    // leave it so its live transient stays discoverable by the next flush.
+    return false;
 }
 
 /**
@@ -526,8 +638,16 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     // reconstructing the key from the stored username/type (exact for
     // identifiers within the column width), reusing the canonical builders with
     // ip_username forced so the derived key matches what wldelay_lock_ip() set.
+    //
+    // Snapshot the durable rows ONCE (capturing each row's lockout_key +
+    // generation) before touching anything, then drive both the transient
+    // cleanup and the conditional durable delete from that single snapshot. A
+    // concurrent failed login that refreshes a row during this window writes a
+    // NEW generation, so the compare-and-delete below leaves it in force and the
+    // user is not silently re-orphaned by recovery (F-2-1 hardening).
     $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
-    foreach ( $store->get_lockouts_for_ip( $ip ) as $row ) {
+    $snapshot     = $store->get_lockouts_for_ip( $ip );
+    foreach ( $snapshot as $row ) {
         $stored_key = isset( $row['transient_key'] ) ? (string) $row['transient_key'] : '';
 
         if ( '' !== $stored_key ) {
@@ -541,10 +661,14 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
                 : wldelay_get_lockout_transient_key( $ip, $row_username, $pair_options );
         }
 
+        // Snapshot the registry record BEFORE clearing the transient, then
+        // conditionally unregister: a concurrent relock that rewrites the record
+        // with a new gen must keep its live transient discoverable.
+        $record_snapshot = wldelay_get_transient_registry_record( $transient_name );
         if ( delete_transient( $transient_name ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $transient_name );
+        wldelay_unregister_transient_record_if_unchanged( $transient_name, $record_snapshot );
 
         // Also clear the matching failure-counter transient. wldelay_lock_ip()
         // does NOT reset the per-attempt counter when it fires, so an IP-only
@@ -557,21 +681,23 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
         // username-agnostic IP-keyed deletions above cannot match (F-2-1 review).
         $fails_name = wldelay_derive_failure_transient_key( $transient_name );
         if ( null !== $fails_name ) {
+            $fails_record_snapshot = wldelay_get_transient_registry_record( $fails_name );
             if ( delete_transient( $fails_name ) ) {
                 $deleted++;
             }
-            wldelay_unregister_transient_key( $fails_name );
+            wldelay_unregister_transient_record_if_unchanged( $fails_name, $fails_record_snapshot );
         }
     }
 
-    // Clear the durable store (F-2-1) by IP so recovery removes every lockout
-    // for the address regardless of username, type, or strategy. Keying on the
-    // (ip, username) hash alone would miss rows stored under the ip_username
-    // strategy when IP-level recovery (admin unlock / WP-CLI unlock-ip) supplies
-    // no username — see remove_lockouts_for_ip(). Count these removals too, so
-    // recovery reports success when the transient was evicted but the durable
-    // row was still in force.
-    $deleted += $store->remove_lockouts_for_ip( $ip );
+    // Clear the durable store (F-2-1) for the snapshotted rows only, and only
+    // while their generation still matches — so a row a concurrent relock
+    // refreshed during recovery (new generation) survives instead of being
+    // orphaned. Replaces the former unconditional remove_lockouts_for_ip($ip),
+    // which deleted every row for the IP including a just-created re-lock,
+    // leaving the user locked on a durable row that recovery had reported gone
+    // (F-2-1 hardening). Count these removals so recovery still reports success
+    // when the transient was evicted but a durable row was in force.
+    $deleted += $store->remove_lockouts_matching_generation( $snapshot );
 
     return $deleted;
 }
@@ -601,11 +727,18 @@ function wldelay_flush_lockout_transients() {
             continue;
         }
 
+        // Snapshot the record BEFORE clearing the transient, then conditionally
+        // unregister. A concurrent same-second relock rewrites the record with a
+        // new gen; the compare-and-delete leaves that refreshed record in place
+        // so its live external-cache transient stays discoverable by the next
+        // flush instead of being orphaned (F-2-1 hardening). A legacy record
+        // (no gen, or a shared-array-only entry snapshotting as null) still gets
+        // cleaned — see wldelay_unregister_transient_record_if_unchanged().
+        $record_snapshot = wldelay_get_transient_registry_record( $transient_name );
         if ( delete_transient( $transient_name ) ) {
             $deleted++;
         }
-        // Drop the per-key record too (harmless no-op for legacy-array entries).
-        wldelay_unregister_transient_key( $transient_name );
+        wldelay_unregister_transient_record_if_unchanged( $transient_name, $record_snapshot );
     }
 
     // Fallback cleanup for DB-backed transients not present in the registry.
@@ -635,9 +768,10 @@ function wldelay_flush_lockout_transients() {
 
     $store = wldelay_get_persistence_store();
 
-    // Delete the exact lockout transient each durable row recorded BEFORE
-    // dropping the rows. The registry + options-table sweep above cannot reach
-    // a cache-only transient (Redis/Memcached object cache) whose registry
+    // Snapshot every active durable row ONCE (capturing lockout_key +
+    // generation) and drive both the transient cleanup and the conditional
+    // durable delete from it. The registry + options-table sweep above cannot
+    // reach a cache-only transient (Redis/Memcached object cache) whose registry
     // entry was lost to the non-atomic read-modify-write in
     // wldelay_register_transient_key(): the options-table LIKE finds nothing,
     // so without this the orphaned transient would keep a user locked until it
@@ -646,19 +780,26 @@ function wldelay_flush_lockout_transients() {
     // regardless of registry state (mirrors wldelay_delete_lockout_for_ip).
     // A high limit ensures the safety net covers every active row, not just the
     // default page; deleting an already-expired transient is harmless.
-    foreach ( $store->get_active_lockouts( PHP_INT_MAX ) as $row ) {
+    $snapshot = $store->get_active_lockouts( PHP_INT_MAX );
+    foreach ( $snapshot as $row ) {
         if ( empty( $row['transient_key'] ) ) {
             continue;
         }
+        $record_snapshot = wldelay_get_transient_registry_record( $row['transient_key'] );
         if ( delete_transient( $row['transient_key'] ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $row['transient_key'] );
+        wldelay_unregister_transient_record_if_unchanged( $row['transient_key'], $record_snapshot );
     }
 
-    // Clear the durable store (F-2-1) as well so a global flush truly removes
-    // every lockout, not just the transient fast-path.
-    $deleted += $store->clear_all();
+    // Clear the durable store for the snapshotted rows only, and only while
+    // their generation still matches. Replaces the former unconditional
+    // clear_all(), which deleted EVERY row including a re-lock a concurrent
+    // failed login created after the snapshot — orphaning the new lockout's
+    // transient and leaving that user locked even though flush reported success
+    // (F-2-1 hardening). A row refreshed mid-flush carries a new generation, so
+    // it survives and is reaped by the next flush / its own expiry.
+    $deleted += $store->remove_lockouts_matching_generation( $snapshot );
 
     return $deleted;
 }
@@ -1695,6 +1836,7 @@ function wldelay_create_tables() {
         && $audit_exists
         && wldelay_lockout_username_is_widened()
         && wldelay_lockout_has_transient_key_column()
+        && wldelay_lockout_has_generation_column()
     ) {
         update_option( 'wldelay_db_version', WLDELAY_DB_VERSION );
     }

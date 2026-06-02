@@ -98,6 +98,28 @@ interface WLDelay_Persistence {
     public function remove_lockouts_for_ip( $ip );
 
     /**
+     * Conditionally delete the durable rows captured in a recovery snapshot.
+     *
+     * IP-level and bulk recovery snapshot the target rows (capturing each row's
+     * lockout_key + generation) BEFORE clearing the transient fast-path, then
+     * call this with that snapshot. A row is only deleted when its generation
+     * STILL matches the snapshot, so a concurrent failed login that refreshed
+     * the row (writing a new generation via add_lockout) during the recovery
+     * window survives — closing the race where unconditional deletion orphaned
+     * an external-object-cache lockout and left a user locked after recovery
+     * reported success (F-2-1 hardening).
+     *
+     * A snapshot entry whose generation is the empty string (a legacy row
+     * predating the generation column) matches a current empty generation, so
+     * legacy rows are still cleanable and never stranded.
+     *
+     * @param array[] $snapshot List of entries each with 'lockout_key' and
+     *                          'generation' keys (extra keys are ignored).
+     * @return int Number of rows removed.
+     */
+    public function remove_lockouts_matching_generation( array $snapshot );
+
+    /**
      * List the stored lockouts for an IP (active or expired).
      *
      * IP-level recovery needs to clear the transient fast-path keys too, but a
@@ -108,10 +130,13 @@ interface WLDelay_Persistence {
      * recovery can reconstruct and clear those transients (F-2-1).
      *
      * @param string $ip IP address.
-     * @return array[] List of records with at least 'username', 'lockout_type'
-     *                 and 'transient_key' keys (empty array when none / no
-     *                 table). 'transient_key' is the exact transient name set at
-     *                 lock time, or '' for legacy rows predating it (F-2-1).
+     * @return array[] List of records with at least 'lockout_key', 'username',
+     *                 'lockout_type', 'transient_key' and 'generation' keys
+     *                 (empty array when none / no table). 'transient_key' is the
+     *                 exact transient name set at lock time, or '' for legacy
+     *                 rows predating it; 'generation' is the per-write random
+     *                 token used for the recovery compare-and-delete, or '' for
+     *                 rows predating it (F-2-1).
      */
     public function get_lockouts_for_ip( $ip );
 
@@ -152,6 +177,40 @@ interface WLDelay_Persistence {
  */
 function wldelay_get_lockout_storage_key( $ip, $username = '', $type = 'login' ) {
     return sha1( $type . '|' . $ip . '|' . $username );
+}
+
+/**
+ * Generate a fresh, unique generation token for a lockout write / registry record.
+ *
+ * Every lockout INSERT/refresh and every transient-registry write stamps a new
+ * token so the recovery compare-and-delete can distinguish a snapshot row from a
+ * row that a concurrent same-second relock refreshed during the recovery window.
+ * The token only needs to be unique per write, not cryptographically secret, so
+ * a short random hex is enough — and cheap enough for the auth hot path. Prefers
+ * random_bytes() and degrades to wp_generate_password()/mt_rand() so it never
+ * fatals on a platform without the CSPRNG (F-2-1 hardening).
+ *
+ * @return string 24-char hex token (fits the varchar(32) generation column).
+ */
+function wldelay_generate_lockout_generation() {
+    if ( function_exists( 'random_bytes' ) ) {
+        try {
+            return bin2hex( random_bytes( 12 ) );
+        } catch ( Exception $e ) {
+            // Fall through to the non-CSPRNG paths below.
+        }
+    }
+
+    if ( function_exists( 'wp_generate_password' ) ) {
+        return wp_generate_password( 24, false );
+    }
+
+    // Last-resort fallback for a context without random_bytes or
+    // wp_generate_password. wp_rand() is preferred over mt_rand() (far less
+    // predictable, and the plugin-check standard requires it).
+    $seed = function_exists( 'wp_rand' ) ? wp_rand() : 0;
+
+    return substr( md5( uniqid( (string) $seed, true ) ), 0, 24 );
 }
 
 /**
@@ -214,6 +273,7 @@ function wldelay_create_lockout_table() {
         lockout_type varchar(20) NOT NULL DEFAULT 'login',
         source varchar(20) DEFAULT NULL,
         transient_key varchar(191) NOT NULL DEFAULT '',
+        generation varchar(32) NOT NULL DEFAULT '',
         created_at datetime NOT NULL,
         expires_at datetime NOT NULL,
         PRIMARY KEY  (id),
@@ -282,6 +342,31 @@ function wldelay_lockout_has_transient_key_column() {
     $column = $wpdb->get_row(
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
         "SHOW COLUMNS FROM $table LIKE 'transient_key'"
+    );
+
+    return ! empty( $column );
+}
+
+/**
+ * Whether the lockout table carries the gen-6 generation column. Gates the
+ * schema-version write so a dbDelta run that failed to add the column does not
+ * record the new DB version and skip the retry — which would leave recovery's
+ * snapshot-then-conditional-delete with no generation to compare on, falling
+ * back to deleting rows refreshed by a concurrent relock and re-opening the
+ * orphaning race the column closes (F-2-1 hardening).
+ *
+ * @return bool True when the generation column exists.
+ */
+function wldelay_lockout_has_generation_column() {
+    global $wpdb;
+
+    $table = wldelay_get_lockout_table_name();
+
+    // SHOW COLUMNS reflects the live table definition directly (information_schema
+    // can lag immediately after a DDL ALTER — same rationale as the gates above).
+    $column = $wpdb->get_row(
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        "SHOW COLUMNS FROM $table LIKE 'generation'"
     );
 
     return ! empty( $column );
@@ -390,6 +475,14 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         $transient_key = (string) $transient_key;
         $transient_key = function_exists( 'mb_substr' ) ? mb_substr( $transient_key, 0, 191 ) : substr( $transient_key, 0, 191 );
 
+        // Stamp a fresh generation on every insert AND every refresh. Recovery
+        // snapshots the generation it intends to remove, then deletes only rows
+        // whose generation still matches — so a concurrent same-second relock
+        // (which lands here and writes a NEW generation through the ON DUPLICATE
+        // KEY UPDATE branch) survives the recovery sweep instead of being
+        // orphaned (F-2-1 hardening).
+        $generation = wldelay_generate_lockout_generation();
+
         $table = wldelay_get_lockout_table_name();
 
         // Atomic upsert keyed on the unique lockout_key. A single statement
@@ -406,14 +499,15 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
             $result = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
                 $wpdb->prepare(
                     "INSERT INTO $table
-                        (lockout_key, ip_address, username, lockout_type, source, transient_key, created_at, expires_at)
-                     VALUES (%s, %s, %s, %s, NULL, %s, %s, %s)
+                        (lockout_key, ip_address, username, lockout_type, source, transient_key, generation, created_at, expires_at)
+                     VALUES (%s, %s, %s, %s, NULL, %s, %s, %s, %s)
                      ON DUPLICATE KEY UPDATE
                         ip_address = VALUES(ip_address),
                         username = VALUES(username),
                         lockout_type = VALUES(lockout_type),
                         source = VALUES(source),
                         transient_key = VALUES(transient_key),
+                        generation = VALUES(generation),
                         created_at = VALUES(created_at),
                         expires_at = VALUES(expires_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                     $key,
@@ -421,6 +515,7 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
                     $username_col,
                     $type,
                     $transient_key,
+                    $generation,
                     $created_at,
                     $expires_at
                 )
@@ -429,14 +524,15 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
             $result = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
                 $wpdb->prepare(
                     "INSERT INTO $table
-                        (lockout_key, ip_address, username, lockout_type, source, transient_key, created_at, expires_at)
-                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        (lockout_key, ip_address, username, lockout_type, source, transient_key, generation, created_at, expires_at)
+                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                      ON DUPLICATE KEY UPDATE
                         ip_address = VALUES(ip_address),
                         username = VALUES(username),
                         lockout_type = VALUES(lockout_type),
                         source = VALUES(source),
                         transient_key = VALUES(transient_key),
+                        generation = VALUES(generation),
                         created_at = VALUES(created_at),
                         expires_at = VALUES(expires_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                     $key,
@@ -445,6 +541,7 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
                     $type,
                     (string) $source,
                     $transient_key,
+                    $generation,
                     $created_at,
                     $expires_at
                 )
@@ -565,6 +662,47 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
     /**
      * {@inheritDoc}
      */
+    public function remove_lockouts_matching_generation( array $snapshot ) {
+        global $wpdb;
+
+        if ( empty( $snapshot ) || ! $this->table_exists() ) {
+            return 0;
+        }
+
+        $table   = wldelay_get_lockout_table_name();
+        $removed = 0;
+
+        // Compare-and-delete per snapshot row: WHERE lockout_key = %s AND
+        // generation = %s. A row a concurrent relock refreshed during the
+        // recovery window now carries a NEW generation, so it fails the match
+        // and survives — exactly the orphaning race this closes. A legacy row's
+        // empty-string generation matches a still-empty current generation, so
+        // legacy rows remain cleanable.
+        foreach ( $snapshot as $entry ) {
+            if ( ! is_array( $entry ) || ! isset( $entry['lockout_key'] ) ) {
+                continue;
+            }
+
+            $deleted = $wpdb->delete(
+                $table,
+                array(
+                    'lockout_key' => (string) $entry['lockout_key'],
+                    'generation'  => isset( $entry['generation'] ) ? (string) $entry['generation'] : '',
+                ),
+                array( '%s', '%s' )
+            );
+
+            if ( $deleted ) {
+                $removed += (int) $deleted;
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public function get_lockouts_for_ip( $ip ) {
         global $wpdb;
 
@@ -576,9 +714,12 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
 
         // No expiry filter: recovery clears the transient for every row keyed
         // to this IP, and deleting an already-expired transient is harmless.
+        // lockout_key + generation are selected so IP-level recovery can snapshot
+        // the rows and conditionally delete only those a concurrent relock did
+        // not refresh (F-2-1 hardening).
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT username, lockout_type, transient_key FROM $table WHERE ip_address = %s",
+                "SELECT lockout_key, username, lockout_type, transient_key, generation FROM $table WHERE ip_address = %s",
                 (string) $ip
             ),
             ARRAY_A
