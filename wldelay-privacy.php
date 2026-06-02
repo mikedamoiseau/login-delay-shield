@@ -887,6 +887,16 @@ function wldelay_privacy_eraser( $email_address, $page = 1 ) {
 
     $result['items_removed'] = $removed;
 
+    // Erasing a subject's login-log rows is functionally a bulk row deletion, so
+    // it makes the cached dashboard aggregates stale (they could keep showing the
+    // erased username/IP and inflated trend counts until their TTLs expire).
+    // Invalidate both dashboard sub-caches, mirroring wldelay_cleanup_old_logs()
+    // (F-4-1) — closes a small PII-staleness window after an Art.17 erasure.
+    if ( $removed && defined( 'WLDELAY_DASH_RECENT_CACHE' ) ) {
+        delete_transient( WLDELAY_DASH_RECENT_CACHE );
+        delete_transient( WLDELAY_DASH_TRENDS_CACHE );
+    }
+
     return $result;
 }
 

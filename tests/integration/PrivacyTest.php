@@ -379,6 +379,25 @@ class PrivacyTest extends WP_UnitTestCase {
     }
 
     /**
+     * F-4-1 + F-3-1: erasing a subject's login rows must invalidate the dashboard
+     * sub-caches so the erased username/IP can no longer be served from a stale
+     * aggregate. (The split caches ride their own TTLs, so without explicit
+     * invalidation the erased PII would linger up to 5 minutes.)
+     */
+    public function test_eraser_invalidates_dashboard_caches() {
+        $this->seed_login_log( $this->login );
+
+        set_transient( WLDELAY_DASH_RECENT_CACHE, array( 'primed' => true ), MINUTE_IN_SECONDS );
+        set_transient( WLDELAY_DASH_TRENDS_CACHE, array( 'primed' => true ), 5 * MINUTE_IN_SECONDS );
+
+        $result = wldelay_privacy_eraser( $this->email, 1 );
+
+        $this->assertTrue( $result['items_removed'], 'The subject had a login row, so something was removed.' );
+        $this->assertFalse( get_transient( WLDELAY_DASH_RECENT_CACHE ), 'Recent cache must be invalidated after erasure.' );
+        $this->assertFalse( get_transient( WLDELAY_DASH_TRENDS_CACHE ), 'Trends cache must be invalidated after erasure.' );
+    }
+
+    /**
      * Finding 2: erasing one user must not clear an unrelated account's lockout
      * that originates from the SAME IP (shared NAT). The former IP-wide delete
      * cleared both; the username-scoped path must leave the other user locked.
