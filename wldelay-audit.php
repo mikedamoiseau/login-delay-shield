@@ -273,7 +273,7 @@ if ( ! defined( 'WLDELAY_AUDIT_HEALTH_OPTION' ) ) {
  * option. That makes a concurrent failure impossible to clobber with a stale
  * acknowledgement (the prior single-option design lost the newer failure and
  * its count). Degraded state is derived by comparing the failure generation
- * (health 'count') against the acknowledged generation here.
+ * (the atomic generation counter) against the acknowledged generation here.
  */
 if ( ! defined( 'WLDELAY_AUDIT_ACK_OPTION' ) ) {
     define( 'WLDELAY_AUDIT_ACK_OPTION', 'wldelay_audit_ack' );
@@ -295,6 +295,82 @@ if ( ! defined( 'WLDELAY_AUDIT_ACK_OPTION' ) ) {
  */
 if ( ! defined( 'WLDELAY_AUDIT_RECOVERY_OPTION' ) ) {
     define( 'WLDELAY_AUDIT_RECOVERY_OPTION', 'wldelay_audit_recovery' );
+}
+
+/**
+ * Option key for the audit-failure GENERATION counter.
+ *
+ * The authoritative, lost-update-proof count of audit write failures. Stored as
+ * a plain integer option and advanced with an atomic SQL `option_value + 1`
+ * UPDATE — NOT a get_option()/update_option() read-modify-write. Two concurrent
+ * failures that both read the same value and write back the same increment
+ * (round-7 race) cannot collapse here: MySQL evaluates the increment under the
+ * row lock held for the UPDATE, so the two serialize to distinct generations
+ * (N -> N+1 -> N+2). is_degraded()/acknowledgement/recovery all derive the
+ * generation from this counter rather than from the (clobberable) health blob,
+ * so a lost metadata write can never let an acknowledgement dismiss an unseen
+ * failure.
+ */
+if ( ! defined( 'WLDELAY_AUDIT_GEN_OPTION' ) ) {
+    define( 'WLDELAY_AUDIT_GEN_OPTION', 'wldelay_audit_gen' );
+}
+
+/**
+ * Current audit-failure generation (authoritative failure count).
+ *
+ * @return int Number of audit write failures recorded since install/uninstall.
+ */
+function wldelay_get_audit_failure_generation() {
+    if ( ! function_exists( 'get_option' ) ) {
+        return 0;
+    }
+
+    return (int) get_option( WLDELAY_AUDIT_GEN_OPTION, 0 );
+}
+
+/**
+ * Atomically advance the audit-failure generation and return the new value.
+ *
+ * Uses a single `UPDATE ... SET option_value = option_value + 1` so concurrent
+ * failures cannot lose an increment (the defect a get_option/update_option
+ * read-modify-write cannot avoid). The direct write bypasses the object cache,
+ * so the cached entry is dropped before the value is re-read.
+ *
+ * @return int The generation after incrementing (0 only when the DB is
+ *             unavailable).
+ */
+function wldelay_increment_audit_failure_generation() {
+    global $wpdb;
+
+    if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! function_exists( 'get_option' ) ) {
+        return 0;
+    }
+
+    $option = WLDELAY_AUDIT_GEN_OPTION;
+
+    // Ensure the counter row exists (no-op when present). autoload=no: only read
+    // on the plugin admin screen and the audit write path.
+    if ( function_exists( 'add_option' ) ) {
+        add_option( $option, '0', '', 'no' );
+    }
+
+    // Atomic increment under the row lock — no lost update between concurrent
+    // failures. $wpdb->options is plugin-derived, not user input; option_name is
+    // bound via prepare().
+    $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->prepare(
+            "UPDATE {$wpdb->options} SET option_value = option_value + 1 WHERE option_name = %s",
+            $option
+        )
+    );
+
+    // The direct UPDATE did not touch the object cache; drop the stale entry so
+    // the next read returns the committed value.
+    if ( function_exists( 'wp_cache_delete' ) ) {
+        wp_cache_delete( $option, 'options' );
+    }
+
+    return wldelay_get_audit_failure_generation();
 }
 
 /**
@@ -324,9 +400,16 @@ function wldelay_record_audit_write_failure( $action, $error = '' ) {
         return;
     }
 
+    // Advance the authoritative failure generation ATOMICALLY. This — not the
+    // 'count' that previously lived in the health blob — is what
+    // is_degraded()/acknowledgement/recovery compare against. Doing it with an
+    // atomic SQL increment means two concurrent failures can never collapse into
+    // one generation, so an acknowledgement of the generation the admin saw can
+    // never silently dismiss a newer, unseen failure (round-7 race).
+    wldelay_increment_audit_failure_generation();
+
     $existing  = get_option( WLDELAY_AUDIT_HEALTH_OPTION, array() );
     $existing  = is_array( $existing ) ? $existing : array();
-    $count     = isset( $existing['count'] ) ? (int) $existing['count'] : 0;
     $now       = current_time( 'mysql', true );
     // gap_since is sticky: the moment the FIRST unacknowledged write failed.
     // It survives recoveries so the durable record shows when the gap opened.
@@ -334,20 +417,18 @@ function wldelay_record_audit_write_failure( $action, $error = '' ) {
         ? $existing['gap_since']
         : $now;
 
+    // The health blob holds only best-effort display metadata (when the gap
+    // opened, the last failed action, the last failure time). It deliberately
+    // does NOT store the count: the authoritative generation lives in the atomic
+    // counter above, so a clobbered metadata write under concurrency can affect
+    // only which action name/time is shown — never whether the warning shows.
+    // wldelay_get_audit_health() injects the count from the atomic counter.
     update_option(
         WLDELAY_AUDIT_HEALTH_OPTION,
         array(
-            'gap_since'    => $gap_since,
-            'failed_at'    => $now,
-            'last_action'  => substr( (string) $action, 0, 50 ),
-            'count'        => $count + 1,
-            // A fresh failure bumps the generation past any acknowledged
-            // watermark, so wldelay_audit_log_is_degraded() reopens the warning
-            // automatically — no need to touch the (separate) ack option here.
-            // The (separate) recovery note is likewise left untouched: bumping
-            // 'count' past its recorded recovered_count makes it stale, and the
-            // merge in wldelay_get_audit_health() suppresses a stale recovery,
-            // so a prior recovered_at cannot imply this new failure healed.
+            'gap_since'   => $gap_since,
+            'failed_at'   => $now,
+            'last_action' => substr( (string) $action, 0, 50 ),
         ),
         false // Not autoloaded: only read on the plugin admin screen.
     );
@@ -372,15 +453,13 @@ function wldelay_note_audit_write_recovered() {
         return;
     }
 
-    $marker = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
-    if ( ! is_array( $marker ) || empty( $marker ) ) {
+    // The generation this recovery corresponds to (the authoritative failure
+    // count at the moment the write succeeded). Read-only — no write to the
+    // health or generation option, so a concurrent failure cannot be clobbered.
+    $count = wldelay_get_audit_failure_generation();
+    if ( $count <= 0 ) {
         return; // Healthy: nothing to annotate.
     }
-
-    // The generation this recovery corresponds to (the failure count at the
-    // moment the write succeeded). Read-only on the health option — no write,
-    // so a concurrent failure cannot be clobbered.
-    $count = isset( $marker['count'] ) ? (int) $marker['count'] : 0;
 
     $recovery = get_option( WLDELAY_AUDIT_RECOVERY_OPTION, array() );
     $recovery = is_array( $recovery ) ? $recovery : array();
@@ -444,12 +523,14 @@ function wldelay_acknowledge_audit_gap( $actor_id = 0, $observed_count = null ) 
         return false;
     }
 
-    $health = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
-    if ( ! is_array( $health ) || empty( $health ) ) {
+    // Authoritative generation from the atomic counter, not the clobberable
+    // health blob, so the watermark is compared against a count that concurrent
+    // failures cannot have collapsed.
+    $count = wldelay_get_audit_failure_generation();
+    if ( $count <= 0 ) {
         return false; // Nothing outstanding to acknowledge.
     }
 
-    $count    = isset( $health['count'] ) ? (int) $health['count'] : 0;
     $ack      = wldelay_get_audit_ack_watermark();
     $prev_ack = isset( $ack['acknowledged_count'] ) ? (int) $ack['acknowledged_count'] : 0;
 
@@ -521,7 +602,11 @@ function wldelay_get_audit_health() {
         return false;
     }
 
-    $count = isset( $marker['count'] ) ? (int) $marker['count'] : 0;
+    // Authoritative count comes from the atomic generation counter, not the
+    // health blob (which no longer stores it). Inject it so callers/tests see a
+    // single coherent record with the lost-update-proof failure count.
+    $count            = wldelay_get_audit_failure_generation();
+    $marker['count']  = $count;
 
     // Fold in the recovery note only when it corresponds to the current failure
     // generation. A recovered_count below the live count means a fresh failure
@@ -548,11 +633,11 @@ function wldelay_get_audit_health() {
  * Whether the audit trail is known to be incomplete: a write has failed and the
  * resulting gap has NOT yet been acknowledged by an administrator.
  *
- * Derived by comparing the failure generation (health 'count') against the
- * acknowledged generation. Stays true across a later successful write (the lost
- * rows do not come back), and a fresh failure that bumps 'count' past the
- * acknowledged watermark reopens it automatically — only an acknowledgement
- * that covers the current generation makes it false.
+ * Derived by comparing the failure generation (the atomic generation counter)
+ * against the acknowledged generation. Stays true across a later successful
+ * write (the lost rows do not come back), and a fresh failure that atomically
+ * bumps the generation past the acknowledged watermark reopens it automatically
+ * — only an acknowledgement that covers the current generation makes it false.
  *
  * @return bool
  */
@@ -561,12 +646,11 @@ function wldelay_audit_log_is_degraded() {
         return false;
     }
 
-    $health = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
-    if ( ! is_array( $health ) || empty( $health ) ) {
+    $count = wldelay_get_audit_failure_generation();
+    if ( $count <= 0 ) {
         return false; // Never failed.
     }
 
-    $count     = isset( $health['count'] ) ? (int) $health['count'] : 0;
     $ack       = wldelay_get_audit_ack_watermark();
     $ack_count = isset( $ack['acknowledged_count'] ) ? (int) $ack['acknowledged_count'] : 0;
 

@@ -29,6 +29,7 @@ class AuditLogTest extends WP_UnitTestCase {
         delete_option( 'wldelay_audit_health' );
         delete_option( 'wldelay_audit_ack' );
         delete_option( 'wldelay_audit_recovery' );
+        delete_option( 'wldelay_audit_gen' );
     }
 
     /**
@@ -498,6 +499,43 @@ class AuditLogTest extends WP_UnitTestCase {
         // Acknowledging the current generation (2) finally clears it.
         $this->assertTrue( wldelay_acknowledge_audit_gap( 7, 2 ) );
         $this->assertFalse( wldelay_audit_log_is_degraded(), 'Acknowledging the current generation clears the warning' );
+    }
+
+    /**
+     * Each failure advances the generation by exactly one and the increment is
+     * atomic, so two failures can never collapse into a single generation that a
+     * stale acknowledgement could dismiss. Guards the round-7 race: the failure
+     * count used to be a get_option/update_option read-modify-write on the health
+     * blob, where two concurrent failures could both read N and both write N+1 —
+     * acknowledging that collapsed generation would then silence the second,
+     * unseen failure. The count now lives in an atomic SQL-incremented counter.
+     */
+    public function test_failure_generation_is_atomic_and_uncollapsed() {
+        // Five sequential failures must yield generation 5 — no collapse, no
+        // lost increment.
+        for ( $i = 1; $i <= 5; $i++ ) {
+            wldelay_record_audit_write_failure( 'settings_changed', "outage {$i}" );
+            $this->assertSame(
+                $i,
+                wldelay_get_audit_failure_generation(),
+                "Failure #{$i} must advance the generation to {$i}"
+            );
+        }
+
+        $this->assertSame( 5, (int) wldelay_get_audit_health()['count'], 'The authoritative count must equal the failure generation' );
+
+        // Acknowledging an OLD generation the admin saw (3) must not dismiss the
+        // later, unseen failures: the live generation (5) is still ahead of the
+        // watermark, so the warning stays raised.
+        $this->assertTrue( wldelay_acknowledge_audit_gap( 1, 3 ) );
+        $this->assertTrue(
+            wldelay_audit_log_is_degraded(),
+            'Acknowledging a superseded generation must not silence newer failures'
+        );
+
+        // Only acknowledging the current generation (5) clears it.
+        $this->assertTrue( wldelay_acknowledge_audit_gap( 1, 5 ) );
+        $this->assertFalse( wldelay_audit_log_is_degraded(), 'Acknowledging the live generation clears the warning' );
     }
 
     /**

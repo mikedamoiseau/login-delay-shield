@@ -101,6 +101,7 @@ function wldelay_uninstall_cleanup_site() {
     delete_option( 'wldelay_audit_health' );
     delete_option( 'wldelay_audit_ack' );
     delete_option( 'wldelay_audit_recovery' );
+    delete_option( 'wldelay_audit_gen' );
 
     // Drop the failed-login log table.
     $table_name = $wpdb->prefix . 'wldelay_login_log';
