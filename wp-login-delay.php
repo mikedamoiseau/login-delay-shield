@@ -68,6 +68,7 @@ require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
 require_once dirname( __FILE__ ) . '/wldelay-audit.php';
 require_once dirname( __FILE__ ) . '/wldelay-privacy.php';
+require_once dirname( __FILE__ ) . '/wldelay-changelog.php';
 if( is_admin() ) {
     $wldelay_settings_page = new LDS_Settings();
 }
@@ -139,8 +140,10 @@ function wldelay_enqueue_admin_assets( $hook ) {
         )
     );
 
-    // Only load styles on dashboard and our settings page.
-    if ( $hook !== 'index.php' && $hook !== 'settings_page_login-delay-shield-admin' ) {
+    // Only load styles on dashboard, our settings page, and the changelog page.
+    if ( $hook !== 'index.php'
+        && $hook !== 'settings_page_login-delay-shield-admin'
+        && $hook !== 'settings_page_' . WLDELAY_CHANGELOG_SLUG ) {
         return;
     }
 

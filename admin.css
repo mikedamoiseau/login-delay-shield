@@ -1020,3 +1020,44 @@
     margin: 0 8px;
     color: #50575e;
 }
+
+/* Changelog / "What's New" page (F-5-5). */
+.wldelay-changelog-entry {
+    padding: 4px 0 8px;
+    border-top: 1px solid #dcdcde;
+    margin-top: 12px;
+}
+
+.wldelay-changelog-entry:first-of-type {
+    border-top: 0;
+    margin-top: 0;
+}
+
+.wldelay-changelog-entry--current {
+    border-left: 4px solid #2271b1;
+    padding-left: 12px;
+    background: #f0f6fc;
+}
+
+.wldelay-changelog-current-badge {
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #135e96;
+    vertical-align: middle;
+}
+
+.wldelay-changelog-summary {
+    font-weight: 600;
+    margin: 0 0 8px;
+}
+
+.wldelay-changelog-items {
+    list-style: disc;
+    margin: 0 0 12px 20px;
+}
+
+.wldelay-changelog-older {
+    color: #50575e;
+    font-style: italic;
+}

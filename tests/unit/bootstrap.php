@@ -62,3 +62,8 @@ require_once dirname( dirname( __DIR__ ) ) . '/wldelay-audit.php';
 // email→login resolution). Its filter registration is guarded by
 // function_exists so it stays inert without a WP runtime.
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-privacy.php';
+
+// Load the changelog module so the pure parser (wldelay_parse_changelog) is
+// available to unit tests. Its admin_menu hook registration is guarded by
+// function_exists( 'add_action' ) so it stays inert without a WP runtime.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-changelog.php';
