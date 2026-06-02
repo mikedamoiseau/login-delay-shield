@@ -97,6 +97,13 @@ function wldelay_uninstall_cleanup_site() {
     delete_transient( 'wldelay_dash_recent' );
     delete_transient( 'wldelay_dash_trends' );
 
+    // Changelog cache (F-5-5). The key is version-suffixed (wldelay_changelog_X.Y.Z),
+    // so sweep every variant by option-name pattern rather than guessing versions.
+    // Covers both the value and timeout rows of the (non-site) transient.
+    $wpdb->query(
+        "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_wldelay\\_changelog\\_%' OR option_name LIKE '\\_transient\\_timeout\\_wldelay\\_changelog\\_%'"
+    );
+
     // Remove plugin options.
     delete_option( 'wldelay_options' );
     delete_option( 'wldelay_fail2ban_default_token' );

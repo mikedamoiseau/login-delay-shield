@@ -323,13 +323,20 @@ function wldelay_register_changelog_page() {
  * version is marked both with text ("Installed version") and a CSS class so the
  * meaning is never carried by colour alone (WCAG 1.4.1). Headings follow a
  * single h1 → h2 → h3 hierarchy and bullet lists are real <ul>/<li>.
+ *
+ * @param array<int,array<string,mixed>>|null $entries Optional pre-parsed
+ *        entries. Defaults to the loader; an explicit value lets tests render
+ *        crafted (e.g. malicious) entries deterministically without depending on
+ *        the request-static / transient cache state.
  */
-function wldelay_render_changelog_page() {
+function wldelay_render_changelog_page( $entries = null ) {
     if ( function_exists( 'current_user_can' ) && ! current_user_can( 'manage_options' ) ) {
         return;
     }
 
-    $entries     = wldelay_get_changelog_entries();
+    if ( null === $entries || ! is_array( $entries ) ) {
+        $entries = wldelay_get_changelog_entries();
+    }
     $total        = count( $entries );
     $shown        = array_slice( $entries, 0, WLDELAY_CHANGELOG_MAX_ENTRIES );
     $has_older    = $total > count( $shown );

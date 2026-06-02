@@ -14,12 +14,12 @@ class ChangelogPageTest extends WP_UnitTestCase {
      *
      * @return string
      */
-    private function render_changelog_page() {
+    private function render_changelog_page( $entries = null ) {
         $admin_id = $this->factory->user->create( array( 'role' => 'administrator' ) );
         wp_set_current_user( $admin_id );
 
         ob_start();
-        wldelay_render_changelog_page();
+        wldelay_render_changelog_page( $entries );
         return ob_get_clean();
     }
 
@@ -86,9 +86,9 @@ class ChangelogPageTest extends WP_UnitTestCase {
     }
 
     public function test_rendered_page_escapes_parsed_content() {
-        // Force a parsed entry that contains HTML so we can assert it is escaped
-        // rather than emitted raw. The loader caches per version transient, so
-        // seed that transient directly.
+        // Render crafted malicious entries DIRECTLY (the render function accepts an
+        // explicit entries argument), so the assertion is deterministic and does
+        // not depend on the loader's request-static / transient cache state.
         $malicious = array(
             array(
                 'version'  => WLDELAY_VERSION,
@@ -102,20 +102,16 @@ class ChangelogPageTest extends WP_UnitTestCase {
             ),
         );
 
-        // Bypass the request-static + transient cache via a filter-free path:
-        // wldelay_get_changelog_entries() consults the transient first.
-        set_transient( 'wldelay_changelog_' . WLDELAY_VERSION, $malicious, DAY_IN_SECONDS );
+        $output = $this->render_changelog_page( $malicious );
 
-        // The request-static in the loader may already be warm from earlier
-        // tests in this process; run the render in an isolated subprocess-like
-        // manner is overkill, so assert against the parser output directly for
-        // the escaping contract and against a fresh render for structure.
-        $output = $this->render_changelog_page();
-
-        // Whatever entries were rendered, no raw script/img tag may appear.
+        // No raw script/img/bold tag from the parsed content may appear.
         $this->assertStringNotContainsString( '<script>alert(1)</script>', $output );
         $this->assertStringNotContainsString( '<img src=x onerror=alert(1)>', $output );
+        $this->assertStringNotContainsString( '<b>x</b>', $output );
 
-        delete_transient( 'wldelay_changelog_' . WLDELAY_VERSION );
+        // The escaped forms MUST be present — proving the malicious entries were
+        // actually rendered (not skipped) and were escaped.
+        $this->assertStringContainsString( 'Summary &lt;script&gt;alert(1)&lt;/script&gt;', $output );
+        $this->assertStringContainsString( 'Item &lt;img src=x onerror=alert(1)&gt;', $output );
     }
 }
