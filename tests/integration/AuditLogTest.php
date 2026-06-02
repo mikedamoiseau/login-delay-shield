@@ -27,6 +27,7 @@ class AuditLogTest extends WP_UnitTestCase {
         // Clear any audit-integrity marker left by a prior test so the
         // degraded-state assertions start from a healthy baseline.
         delete_option( 'wldelay_audit_health' );
+        delete_option( 'wldelay_audit_ack' );
     }
 
     /**
@@ -394,6 +395,41 @@ class AuditLogTest extends WP_UnitTestCase {
         $health = wldelay_get_audit_health();
         $this->assertSame( 2, (int) $health['count'], 'The cumulative failure count keeps climbing' );
         $this->assertSame( $first_since, $health['gap_since'], 'gap_since stays anchored to the first failure' );
+    }
+
+    /**
+     * A failure that lands AFTER the acknowledge link was rendered (a concurrent
+     * request) must not be silenced by that acknowledgement, and its count must
+     * not be lost. Guards the read-modify-write clobber between the failure
+     * recorder and the acknowledgement: the two now write separate options and
+     * the ack only covers the generation the admin actually saw (review fix).
+     */
+    public function test_concurrent_failure_is_not_overwritten_by_acknowledgement() {
+        // Generation 1 — the gap the admin sees and is about to acknowledge.
+        wldelay_record_audit_write_failure( 'settings_changed', 'outage one' );
+        $observed = (int) wldelay_get_audit_health()['count'];
+        $this->assertSame( 1, $observed );
+
+        // A SECOND failure lands before the acknowledgement completes (the
+        // concurrent-request interleaving), bumping the generation to 2.
+        wldelay_record_audit_write_failure( 'lockout_cleared', 'outage two' );
+
+        // The admin acknowledges only the generation they actually saw (1).
+        $this->assertTrue( wldelay_acknowledge_audit_gap( 7, $observed ) );
+
+        // The newer, unseen failure must keep the warning raised...
+        $this->assertTrue(
+            wldelay_audit_log_is_degraded(),
+            'A failure newer than the acknowledged generation must keep the gap open'
+        );
+
+        // ...and its count must survive (the prior single-option design lost it).
+        $health = wldelay_get_audit_health();
+        $this->assertSame( 2, (int) $health['count'], 'The concurrent failure count must not be lost' );
+
+        // Acknowledging the current generation (2) finally clears it.
+        $this->assertTrue( wldelay_acknowledge_audit_gap( 7, 2 ) );
+        $this->assertFalse( wldelay_audit_log_is_degraded(), 'Acknowledging the current generation clears the warning' );
     }
 
     /**

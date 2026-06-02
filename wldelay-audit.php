@@ -265,6 +265,21 @@ if ( ! defined( 'WLDELAY_AUDIT_HEALTH_OPTION' ) ) {
 }
 
 /**
+ * Option key for the audit-gap acknowledgement watermark.
+ *
+ * Deliberately a SEPARATE option from WLDELAY_AUDIT_HEALTH_OPTION: the failure
+ * recorder writes only the health option and the acknowledgement writes only
+ * this one, so the two paths never perform a read-modify-write on the same
+ * option. That makes a concurrent failure impossible to clobber with a stale
+ * acknowledgement (the prior single-option design lost the newer failure and
+ * its count). Degraded state is derived by comparing the failure generation
+ * (health 'count') against the acknowledged generation here.
+ */
+if ( ! defined( 'WLDELAY_AUDIT_ACK_OPTION' ) ) {
+    define( 'WLDELAY_AUDIT_ACK_OPTION', 'wldelay_audit_ack' );
+}
+
+/**
  * Record that an audit write failed, for admin-visible surfacing.
  *
  * Fires an action (parity with wldelay_note_persistence_failure so monitoring
@@ -308,8 +323,11 @@ function wldelay_record_audit_write_failure( $action, $error = '' ) {
             'failed_at'    => $now,
             'last_action'  => substr( (string) $action, 0, 50 ),
             'count'        => $count + 1,
-            // A fresh failure reopens the gap: drop any prior recovery note and
-            // any acknowledgement so the admin warning re-appears.
+            // A fresh failure bumps the generation past any acknowledged
+            // watermark, so wldelay_audit_log_is_degraded() reopens the warning
+            // automatically — no need to touch the (separate) ack option here.
+            // Drop the prior recovery note so a stale recovered_at can't imply
+            // this new failure already healed.
             'recovered_at' => null,
         ),
         false // Not autoloaded: only read on the plugin admin screen.
@@ -352,32 +370,89 @@ function wldelay_note_audit_write_recovered() {
  * the warning. A subsequent write failure reopens the gap (recorder drops
  * acknowledged_at), so the warning returns.
  *
- * @param int $actor_id Acknowledging user id (0/system when unknown).
+ * Concurrency: the acknowledgement is written to its OWN option
+ * (WLDELAY_AUDIT_ACK_OPTION), never to the health option the failure recorder
+ * mutates, so a failure that lands while an admin is acknowledging cannot be
+ * overwritten (and its count cannot be lost). The acknowledgement records the
+ * generation the admin actually saw ($observed_count): a newer, still-unseen
+ * failure pushes the health 'count' past that watermark, so the warning stays
+ * raised rather than being silently dismissed.
+ *
+ * @param int      $actor_id       Acknowledging user id (0/system when unknown).
+ * @param int|null $observed_count Failure generation the admin saw (health
+ *                                 'count' at render time). Null acknowledges the
+ *                                 current generation.
  * @return bool True when an outstanding gap was acknowledged.
  */
-function wldelay_acknowledge_audit_gap( $actor_id = 0 ) {
+function wldelay_acknowledge_audit_gap( $actor_id = 0, $observed_count = null ) {
     if ( ! function_exists( 'get_option' ) || ! function_exists( 'update_option' ) ) {
         return false;
     }
 
-    $marker = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
-    if ( ! is_array( $marker ) || empty( $marker ) ) {
+    $health = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
+    if ( ! is_array( $health ) || empty( $health ) ) {
         return false; // Nothing outstanding to acknowledge.
     }
 
-    $marker['acknowledged_at'] = current_time( 'mysql', true );
-    $marker['acknowledged_by'] = (int) $actor_id;
-    update_option( WLDELAY_AUDIT_HEALTH_OPTION, $marker, false );
+    $count    = isset( $health['count'] ) ? (int) $health['count'] : 0;
+    $ack      = wldelay_get_audit_ack_watermark();
+    $prev_ack = isset( $ack['acknowledged_count'] ) ? (int) $ack['acknowledged_count'] : 0;
+
+    if ( $count <= $prev_ack ) {
+        return false; // No unacknowledged failure outstanding.
+    }
+
+    // Acknowledge only up to the generation the admin actually saw. Clamp into
+    // [$prev_ack, $count] so the watermark never regresses and never jumps past
+    // a failure the admin could not have seen.
+    $ack_count = ( null === $observed_count ) ? $count : (int) $observed_count;
+    if ( $ack_count > $count ) {
+        $ack_count = $count;
+    }
+    if ( $ack_count < $prev_ack ) {
+        $ack_count = $prev_ack;
+    }
+
+    update_option(
+        WLDELAY_AUDIT_ACK_OPTION,
+        array(
+            'acknowledged_at'    => current_time( 'mysql', true ),
+            'acknowledged_by'    => (int) $actor_id,
+            'acknowledged_count' => $ack_count,
+        ),
+        false // Not autoloaded: only read on the plugin admin screen.
+    );
 
     return true;
 }
 
 /**
+ * Raw acknowledgement watermark (separate option from the health marker).
+ *
+ * @return array Empty array when nothing has been acknowledged.
+ */
+function wldelay_get_audit_ack_watermark() {
+    if ( ! function_exists( 'get_option' ) ) {
+        return array();
+    }
+
+    $ack = get_option( WLDELAY_AUDIT_ACK_OPTION, array() );
+
+    return is_array( $ack ) ? $ack : array();
+}
+
+/**
  * Current audit-integrity health state.
  *
+ * Reports a read-only MERGE of the failure marker and the (separate)
+ * acknowledgement watermark so callers see one coherent record. The two are
+ * stored apart only to keep their writers from clobbering each other; for
+ * display/inspection they are recombined here without any write.
+ *
  * @return array|false Marker array (gap_since/failed_at/last_action/count/
- *                     recovered_at/acknowledged_at), or false when no gap has
- *                     ever been recorded.
+ *                     recovered_at/acknowledged_at/acknowledged_by/
+ *                     acknowledged_count), or false when no gap has ever been
+ *                     recorded.
  */
 function wldelay_get_audit_health() {
     if ( ! function_exists( 'get_option' ) ) {
@@ -385,23 +460,45 @@ function wldelay_get_audit_health() {
     }
 
     $marker = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
+    if ( ! is_array( $marker ) || empty( $marker ) ) {
+        return false;
+    }
 
-    return ( is_array( $marker ) && ! empty( $marker ) ) ? $marker : false;
+    $ack = wldelay_get_audit_ack_watermark();
+    if ( ! empty( $ack ) ) {
+        $marker = array_merge( $marker, $ack );
+    }
+
+    return $marker;
 }
 
 /**
  * Whether the audit trail is known to be incomplete: a write has failed and the
  * resulting gap has NOT yet been acknowledged by an administrator.
  *
- * Stays true across a later successful write (the lost rows do not come back) —
- * only an explicit acknowledgement, or never having failed, makes it false.
+ * Derived by comparing the failure generation (health 'count') against the
+ * acknowledged generation. Stays true across a later successful write (the lost
+ * rows do not come back), and a fresh failure that bumps 'count' past the
+ * acknowledged watermark reopens it automatically — only an acknowledgement
+ * that covers the current generation makes it false.
  *
  * @return bool
  */
 function wldelay_audit_log_is_degraded() {
-    $marker = wldelay_get_audit_health();
+    if ( ! function_exists( 'get_option' ) ) {
+        return false;
+    }
 
-    return is_array( $marker ) && empty( $marker['acknowledged_at'] );
+    $health = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
+    if ( ! is_array( $health ) || empty( $health ) ) {
+        return false; // Never failed.
+    }
+
+    $count     = isset( $health['count'] ) ? (int) $health['count'] : 0;
+    $ack       = wldelay_get_audit_ack_watermark();
+    $ack_count = isset( $ack['acknowledged_count'] ) ? (int) $ack['acknowledged_count'] : 0;
+
+    return $count > $ack_count;
 }
 
 // Register the deferred audit-write handler at boot so any request can enqueue a
@@ -862,8 +959,18 @@ function wldelay_render_audit_health_notice() {
  * @return string
  */
 function wldelay_get_audit_ack_gap_url() {
+    // Embed the failure generation the admin is currently looking at so the
+    // handler acknowledges only that generation. A failure that lands after the
+    // page was rendered bumps the live count past this value and keeps the
+    // warning raised rather than being dismissed unseen.
+    $health = wldelay_get_audit_health();
+    $gen    = is_array( $health ) && isset( $health['count'] ) ? (int) $health['count'] : 0;
+
     $url = add_query_arg(
-        array( 'action' => 'wldelay_ack_audit_gap' ),
+        array(
+            'action'           => 'wldelay_ack_audit_gap',
+            'wldelay_audit_gen' => $gen,
+        ),
         admin_url( 'admin-post.php' )
     );
 
@@ -886,7 +993,11 @@ function wldelay_handle_ack_audit_gap() {
 
     $actor_id = function_exists( 'get_current_user_id' ) ? (int) get_current_user_id() : 0;
 
-    if ( wldelay_acknowledge_audit_gap( $actor_id ) ) {
+    // Generation the admin saw when the acknowledge link was rendered. Only that
+    // generation is dismissed; a newer failure keeps the warning raised.
+    $observed_gen = isset( $_GET['wldelay_audit_gen'] ) ? absint( wp_unslash( $_GET['wldelay_audit_gen'] ) ) : null;
+
+    if ( wldelay_acknowledge_audit_gap( $actor_id, $observed_gen ) ) {
         // Audit the acknowledgement itself so the dismissal is on the record.
         wldelay_audit_log(
             'audit_gap_acknowledged',
