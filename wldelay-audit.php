@@ -914,17 +914,38 @@ function wldelay_get_audit_log_for_actor( $actor_login, $limit, $max_id, $after_
  * Captured once on export page 1 and held across pages so the run sees a fixed
  * snapshot; rows inserted after (id above the ceiling) are excluded (F-3-1).
  *
+ * Returns FALSE (NOT 0) when the read FAILS at the DB layer. A failed query and
+ * "actor has no rows" both make get_var() return null → (int) 0; collapsing a
+ * failed read to 0 would mark the group done=true on page 1 and emit a spurious
+ * empty group while the actor's rows are still on disk. The export caller turns
+ * a FALSE ceiling into a WP_Error so WordPress aborts the request instead of
+ * handing the admin a partial archive (F-3-1).
+ *
  * @param string $actor_login Exact actor_login to match.
- * @return int Highest matching id, or 0 when the actor has no rows.
+ * @return int|false Highest matching id, 0 when the actor has no rows, or FALSE
+ *                   when the read failed at the DB layer.
  */
 function wldelay_get_max_audit_log_id_for_actor( $actor_login ) {
     global $wpdb;
 
     $table_name = wldelay_get_audit_table_name();
 
-    return (int) $wpdb->get_var(
+    // Clear last_error so a stale error from an earlier query on this request is
+    // not misread as a failure of this read.
+    $wpdb->last_error = '';
+
+    $max = $wpdb->get_var(
         $wpdb->prepare( "SELECT MAX(id) FROM $table_name WHERE actor_login = %s", (string) $actor_login )
     );
+
+    // get_var() returns null both for "no rows" AND for a SELECT that errored.
+    // Distinguish via last_error: a failed read returns FALSE so the exporter
+    // can abort with a WP_Error (F-3-1).
+    if ( '' !== (string) $wpdb->last_error ) {
+        return false;
+    }
+
+    return (int) $max;
 }
 
 /**

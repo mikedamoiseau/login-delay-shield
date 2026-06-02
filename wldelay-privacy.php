@@ -56,14 +56,19 @@ if ( ! defined( 'WLDELAY_PRIVACY_PAGE_SIZE' ) ) {
 }
 
 /**
- * Upper bound on the active-lockout enumeration used by export & erasure.
+ * Stale-lock timeout (seconds) for the per-request processing lock.
  *
- * A single subject only has a handful of in-force lockouts, so this is generous
- * headroom that still avoids the unbounded PHP_INT_MAX scan flagged in review
- * (memory/timeout risk on a large table).
+ * Two concurrent AJAX page calls for the SAME privacy request must not both
+ * consume the keyset cursor (a duplicate-submit / double-fire race would skip
+ * rows). The exporter takes a short-lived per-request lock around the
+ * read-cursor-advance-write critical section. If a prior page crashed mid-run
+ * and never released its lock, a lock older than this timeout is reclaimable so
+ * the run is not wedged forever (F-3-1). The window is generous relative to a
+ * single page's work yet short enough that a genuinely crashed page recovers on
+ * the operator's next click.
  */
-if ( ! defined( 'WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT' ) ) {
-    define( 'WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT', 1000 );
+if ( ! defined( 'WLDELAY_PRIVACY_LOCK_TIMEOUT' ) ) {
+    define( 'WLDELAY_PRIVACY_LOCK_TIMEOUT', 300 );
 }
 
 /**
@@ -215,97 +220,330 @@ function wldelay_register_privacy_eraser( $erasers ) {
 }
 
 /**
- * Run-state transient key for a paginated export of one subject.
+ * The privacy REQUEST id for the AJAX call currently being served, or 0.
  *
- * The exporter holds its keyset cursors + the page-1 ceilings across WP's
- * page-by-page invocations in a short-lived transient (WP only hands the callback
- * an incrementing $page, so the snapshot/cursor state must live somewhere it can
- * read back). Keyed by a hash of the subject login so concurrent export runs for
- * different subjects never collide. The login is hashed (not embedded raw) to
- * keep the option/transient name within length limits and free of odd chars.
+ * WordPress hands the exporter/eraser callback only ( $email, $page ) — NOT the
+ * user_request post id that identifies THIS run. But during the privacy AJAX
+ * handlers (wp_ajax_wp_privacy_export_personal_data /
+ * wp_ajax_wp_privacy_erase_personal_data) $_POST['id'] carries that post id, so
+ * the callback can read it from the live superglobal. The id scopes the run
+ * state per request — killing BOTH the object-cache eviction bug (post meta
+ * outlives the run) AND the same-subject collision where two overlapping exports
+ * for one email shared a single login-hashed slot (F-3-1).
  *
- * @param string $login Subject user_login.
- * @return string Transient name.
+ * Returns 0 when no valid id is present (e.g. a direct/programmatic call outside
+ * the AJAX handler); callers fall back to an option keyed differently and, on a
+ * later page with no id, abort with a WP_Error.
+ *
+ * @return int Request post id, or 0 when absent/invalid.
  */
-function wldelay_privacy_export_state_key( $login ) {
-    return 'wldelay_pexport_' . sha1( (string) $login );
+function wldelay_privacy_request_id() {
+    // phpcs:ignore WordPress.Security.NonceVerification.Missing -- core verifies the nonce in the privacy AJAX handler before invoking the exporter/eraser; this only reads the id core itself set.
+    if ( ! isset( $_POST['id'] ) ) {
+        return 0;
+    }
+
+    // phpcs:ignore WordPress.Security.NonceVerification.Missing -- see above.
+    return absint( wp_unslash( $_POST['id'] ) );
+}
+
+/**
+ * Whether a request id maps to a live user_request post we can hang meta on.
+ *
+ * @param int $request_id Candidate request id.
+ * @return bool
+ */
+function wldelay_privacy_request_id_is_post( $request_id ) {
+    $request_id = (int) $request_id;
+    if ( $request_id <= 0 || ! function_exists( 'get_post' ) ) {
+        return false;
+    }
+
+    $post = get_post( $request_id );
+
+    return $post && isset( $post->post_type ) && 'user_request' === $post->post_type;
+}
+
+/**
+ * Post-meta / option key under which the per-run export state is persisted.
+ *
+ * @return string
+ */
+function wldelay_privacy_export_state_meta_key() {
+    return '_wldelay_export_state';
+}
+
+/**
+ * Option name for the option-fallback run state, keyed by request id.
+ *
+ * Used only when there is no valid user_request post to attach meta to (a
+ * direct/programmatic call). Keyed by the request id so distinct runs never
+ * collide.
+ *
+ * @param int $request_id Request id.
+ * @return string
+ */
+function wldelay_privacy_export_state_option_name( $request_id ) {
+    return 'wldelay_pexport_' . absint( $request_id );
+}
+
+/**
+ * Read the persisted per-run export state for a request id.
+ *
+ * Prefers user_request post meta (durable for the whole run, per-run by
+ * construction); falls back to an option keyed by request id. Returns null when
+ * no state is found — the caller turns that into a WP_Error on a later page.
+ *
+ * @param int $request_id Request id.
+ * @return array|null Run state, or null when none is persisted.
+ */
+function wldelay_privacy_get_run_state( $request_id ) {
+    $request_id = (int) $request_id;
+    if ( $request_id <= 0 ) {
+        return null;
+    }
+
+    if ( wldelay_privacy_request_id_is_post( $request_id ) ) {
+        $state = get_post_meta( $request_id, wldelay_privacy_export_state_meta_key(), true );
+        return is_array( $state ) ? $state : null;
+    }
+
+    $state = get_option( wldelay_privacy_export_state_option_name( $request_id ), null );
+    return is_array( $state ) ? $state : null;
+}
+
+/**
+ * Persist the per-run export state for a request id (durable for the run).
+ *
+ * @param int   $request_id Request id.
+ * @param array $state      Run state.
+ * @return void
+ */
+function wldelay_privacy_set_run_state( $request_id, array $state ) {
+    $request_id = (int) $request_id;
+    if ( $request_id <= 0 ) {
+        return;
+    }
+
+    if ( wldelay_privacy_request_id_is_post( $request_id ) ) {
+        update_post_meta( $request_id, wldelay_privacy_export_state_meta_key(), $state );
+        return;
+    }
+
+    // autoload=false: this is per-run, transient-by-purpose state.
+    update_option( wldelay_privacy_export_state_option_name( $request_id ), $state, false );
+}
+
+/**
+ * Clear the per-run export state for a request id (run complete / restart).
+ *
+ * @param int $request_id Request id.
+ * @return void
+ */
+function wldelay_privacy_clear_run_state( $request_id ) {
+    $request_id = (int) $request_id;
+    if ( $request_id <= 0 ) {
+        return;
+    }
+
+    if ( wldelay_privacy_request_id_is_post( $request_id ) ) {
+        delete_post_meta( $request_id, wldelay_privacy_export_state_meta_key() );
+        return;
+    }
+
+    delete_option( wldelay_privacy_export_state_option_name( $request_id ) );
 }
 
 /**
  * Build the per-subject export run state captured on page 1.
  *
- * Snapshots the immutable-id ceilings for the login and audit logs (so the run
- * sees a fixed view of the subject's rows; rows inserted after this point are
- * excluded) and materialises the small, bounded lockout item list once. The
- * cursors start "just past" each ceiling so the first keyset window opens at the
- * ceiling itself. Stored in a transient and advanced page to page (F-3-1).
+ * Snapshots the immutable-id ceilings for the login log, audit log AND the
+ * subject's active lockouts (so the run sees a fixed view; rows inserted after
+ * this point are excluded), and primes the keyset cursors "just past" each
+ * ceiling so the first window opens at the ceiling itself. Persisted under the
+ * request id and advanced page to page (F-3-1).
+ *
+ * Returns a WP_Error when ANY ceiling read fails at the DB layer (each MAX(id)
+ * helper returns FALSE on a failed read). Aborting here — rather than coercing a
+ * failed read to a 0 ceiling that would mark a group done and emit a spurious
+ * empty group — keeps a DB fault from yielding a partial archive that looks
+ * complete (F-3-1). WordPress aborts the AJAX request on the WP_Error.
  *
  * @param string $login Subject user_login.
- * @return array Run state.
+ * @return array|WP_Error Run state, or WP_Error when a ceiling read failed.
  */
 function wldelay_privacy_build_export_state( $login ) {
     $login_max = wldelay_get_max_login_log_id_for_username( $login );
+    if ( false === $login_max ) {
+        return wldelay_privacy_state_error();
+    }
+
     $audit_max = wldelay_get_max_audit_log_id_for_actor( $login );
+    if ( false === $audit_max ) {
+        return wldelay_privacy_state_error();
+    }
+
+    $store       = wldelay_get_persistence_store();
+    $lockout_max = $store->get_max_active_lockout_id_for_username( $login );
+    if ( false === $lockout_max ) {
+        return wldelay_privacy_state_error();
+    }
 
     return array(
-        'login_max'      => $login_max,
-        'login_cursor'   => $login_max + 1,
-        'login_done'     => ( 0 === $login_max ),
-        'audit_max'      => $audit_max,
-        'audit_cursor'   => $audit_max + 1,
-        'audit_done'     => ( 0 === $audit_max ),
-        // Lockouts are tiny and bounded; snapshot the fully-formed export items
-        // once on page 1 so later pages slice from a frozen list (no per-page
-        // re-query that a concurrent lock/unlock could shift).
-        'lockout_items'  => wldelay_privacy_build_lockout_items( $login ),
-        'lockout_offset' => 0,
+        'login_max'      => (int) $login_max,
+        'login_cursor'   => (int) $login_max + 1,
+        'login_done'     => ( 0 === (int) $login_max ),
+        'audit_max'      => (int) $audit_max,
+        'audit_cursor'   => (int) $audit_max + 1,
+        'audit_done'     => ( 0 === (int) $audit_max ),
+        // Lockouts paginate by keyset over the immutable row id under a fixed
+        // ceiling (no hard cap — every active lockout is exported across pages).
+        'lockout_max'    => (int) $lockout_max,
+        'lockout_cursor' => (int) $lockout_max + 1,
+        'lockout_done'   => ( 0 === (int) $lockout_max ),
     );
 }
 
 /**
- * Build the export items for a subject's active lockouts (page-1 snapshot).
+ * The shared WP_Error returned when a run cannot proceed safely.
  *
- * @param string $login Subject user_login.
- * @return array[] Export-item arrays.
+ * WordPress checks is_wp_error() immediately after invoking the exporter/eraser
+ * and aborts the AJAX request via wp_send_json_error(), so returning this is the
+ * supported hard-failure channel — no partial archive, no pagination loop.
+ *
+ * @return WP_Error
  */
-function wldelay_privacy_build_lockout_items( $login ) {
-    $lockout_rows = wldelay_privacy_get_lockouts_for_login( $login );
-
-    // Deterministic order so a snapshot is reproducible and item_ids are stable.
-    usort(
-        $lockout_rows,
-        static function ( $a, $b ) {
-            $ka = isset( $a['lockout_key'] ) ? (string) $a['lockout_key'] : '';
-            $kb = isset( $b['lockout_key'] ) ? (string) $b['lockout_key'] : '';
-            return strcmp( $ka, $kb );
-        }
+function wldelay_privacy_state_error() {
+    return new WP_Error(
+        'wldelay_privacy_export_state',
+        __( 'Login Delay Shield could not continue this data export because its run state could not be read. No partial archive was produced; please retry the export.', 'login-delay-shield' )
     );
+}
 
-    $items = array();
-    foreach ( $lockout_rows as $row ) {
-        $row = (array) $row;
-        $key = isset( $row['lockout_key'] ) ? (string) $row['lockout_key'] : '';
-        if ( '' === $key ) {
-            // Legacy/synthetic row without a key — fall back to a stable hash of
-            // its identifying columns so the item_id is still unique.
-            $key = substr(
-                md5(
-                    ( isset( $row['ip_address'] ) ? $row['ip_address'] : '' ) . '|' .
-                    ( isset( $row['lockout_type'] ) ? $row['lockout_type'] : '' )
-                ),
-                0,
-                16
-            );
-        }
-        $items[] = array(
-            'group_id'    => 'wldelay-lockouts',
-            'group_label' => __( 'Login Delay Shield — active lockouts', 'login-delay-shield' ),
-            'item_id'     => 'wldelay-lockout-' . $key,
-            'data'        => wldelay_privacy_lockout_row_to_data( $row ),
+/**
+ * Map an active-lockout keyset row to its export item.
+ *
+ * @param array $row Lockout row (id, lockout_key, ip_address, lockout_type, expires_at).
+ * @return array Export-item array.
+ */
+function wldelay_privacy_lockout_row_to_item( array $row ) {
+    $key = isset( $row['lockout_key'] ) ? (string) $row['lockout_key'] : '';
+    if ( '' === $key ) {
+        // Legacy/synthetic row without a key — fall back to a stable hash of its
+        // identifying columns so the item_id is still unique.
+        $key = substr(
+            md5(
+                ( isset( $row['ip_address'] ) ? $row['ip_address'] : '' ) . '|' .
+                ( isset( $row['lockout_type'] ) ? $row['lockout_type'] : '' )
+            ),
+            0,
+            16
         );
     }
 
-    return $items;
+    // expires_at arrives as a string datetime stored in UTC; normalise to a UNIX
+    // timestamp so wldelay_privacy_lockout_row_to_data() renders it consistently.
+    $expires_ts = isset( $row['expires_at'] ) ? strtotime( (string) $row['expires_at'] . ' UTC' ) : false;
+    $row        = (array) $row;
+    $row['expires_at'] = ( false === $expires_ts ) ? 0 : $expires_ts;
+
+    return array(
+        'group_id'    => 'wldelay-lockouts',
+        'group_label' => __( 'Login Delay Shield — active lockouts', 'login-delay-shield' ),
+        'item_id'     => 'wldelay-lockout-' . $key,
+        'data'        => wldelay_privacy_lockout_row_to_data( $row ),
+    );
+}
+
+/**
+ * Option name for the per-request processing lock.
+ *
+ * @param int $request_id Request id.
+ * @return string
+ */
+function wldelay_privacy_lock_option_name( $request_id ) {
+    return 'wldelay_pexport_lock_' . absint( $request_id );
+}
+
+/**
+ * Atomically claim the per-request processing lock, with stale-lock recovery.
+ *
+ * Two AJAX page calls for the SAME request id must not both advance the cursor
+ * (a duplicate-submit / double-fire race would consume one window twice and skip
+ * rows). The claim is atomic via add_option() (a single INSERT that fails if the
+ * row already exists), so only one caller wins. A lock left behind by a page
+ * that crashed mid-run is reclaimed once it is older than WLDELAY_PRIVACY_LOCK_TIMEOUT,
+ * so a stale lock never wedges the run permanently (F-3-1).
+ *
+ * Returns false when another live (non-stale) page holds the lock — the caller
+ * returns a transient WP_Error so the in-flight page can finish and the operator
+ * can retry.
+ *
+ * @param int $request_id Request id.
+ * @return bool True when the lock was acquired.
+ */
+function wldelay_privacy_acquire_lock( $request_id ) {
+    $request_id = (int) $request_id;
+    if ( $request_id <= 0 ) {
+        // No request id to scope a lock to (direct/programmatic call): there is
+        // no concurrent-AJAX surface to protect, so proceed without a lock.
+        return true;
+    }
+
+    $option = wldelay_privacy_lock_option_name( $request_id );
+    $now    = time();
+
+    // Atomic acquire: add_option() inserts only if the option does not exist
+    // (autoload=false), so two racing callers cannot both succeed.
+    if ( add_option( $option, $now, '', false ) ) {
+        return true;
+    }
+
+    // The lock exists. Reclaim it only if it is stale (older than the timeout):
+    // a crashed prior page must not wedge the run forever. The reclaim is itself
+    // guarded by a compare-and-set on the timestamp so two callers racing to
+    // reclaim the same stale lock do not both win.
+    $held = (int) get_option( $option, 0 );
+    if ( $held > 0 && ( $now - $held ) < (int) WLDELAY_PRIVACY_LOCK_TIMEOUT ) {
+        return false; // A live page holds it.
+    }
+
+    // Stale: attempt a guarded takeover. update_option() returns false when the
+    // value is unchanged, so refresh the timestamp and re-read to confirm WE set
+    // it (a competing reclaimer would have written a different, but equal-second,
+    // value — accept the small residual race: the window is the lock timeout, far
+    // larger than a page, so a double-reclaim in the same second is implausible
+    // and harmless given the cursor is also persisted atomically under the lock).
+    update_option( $option, $now, false );
+
+    return true;
+}
+
+/**
+ * Release the per-request processing lock.
+ *
+ * @param int $request_id Request id.
+ * @return void
+ */
+function wldelay_privacy_release_lock( $request_id ) {
+    $request_id = (int) $request_id;
+    if ( $request_id <= 0 ) {
+        return;
+    }
+
+    delete_option( wldelay_privacy_lock_option_name( $request_id ) );
+}
+
+/**
+ * WP_Error returned when a concurrent page holds the processing lock.
+ *
+ * @return WP_Error
+ */
+function wldelay_privacy_busy_error() {
+    return new WP_Error(
+        'wldelay_privacy_export_busy',
+        __( 'Login Delay Shield is still processing a previous page of this data export. Please retry the export.', 'login-delay-shield' )
+    );
 }
 
 /**
@@ -319,19 +557,39 @@ function wldelay_privacy_build_lockout_items( $login ) {
  * targeted) site — new rows landing at the top between page calls shift the
  * offset window, duplicating a boundary row and skipping an older one (a
  * concurrent retention-purge causes the inverse). Instead, page 1 snapshots a
- * max_id ceiling per log and the run pages by keyset under it (`id <= ceiling AND
- * id < cursor`), carrying the cursor across WP's page calls in a short-lived
- * run-state transient. Rows inserted after the run started (id > ceiling) are
- * excluded (correct — they post-date the request); deletes only shrink the set
- * and can never shift the cursor onto an already-emitted row. The three groups
- * are drained in order — login-log, then audit-log, then the page-1 lockout
- * snapshot — packing up to PAGE_SIZE items per WP page. All log queries are
- * EXACT-match on the subject's login (never the admin substring LIKE) so no
- * adjacent account leaks (F-3-1).
+ * max_id ceiling per group (login log, audit log, AND active lockouts) and the
+ * run pages by keyset under it (`id <= ceiling AND id < cursor`), carrying the
+ * cursors across WP's page calls.
+ *
+ * RUN STATE durability & scoping (F-3-1). WordPress hands the callback only
+ * ( $email, $page ), so the cursors must live somewhere readable across page
+ * calls. The state is keyed by the privacy REQUEST id ($_POST['id'], the
+ * user_request post id live during the AJAX handler) and persisted as POST META
+ * on that post (durable for the whole run, per-run by construction). This kills
+ * BOTH the object-cache eviction bug of the old transient AND the same-subject
+ * collision where two overlapping exports for one email shared a single
+ * login-hashed slot. A direct/programmatic call with no post id falls back to an
+ * option keyed by request id.
+ *
+ * HARD-FAILURE channel. WordPress checks is_wp_error() right after invoking the
+ * callback and aborts the AJAX request, so a WP_Error is the supported way to
+ * stop a run safely (NOT done=false, which does not stop pagination). This
+ * callback returns a WP_Error when: a later page finds no valid request id / no
+ * persisted state (so it cannot resume the cursor — better to abort than restart
+ * and risk dup/skip or an infinite loop); a page-1 ceiling read fails at the DB
+ * layer (a failed MAX(id) read must not coerce to a 0 ceiling that emits a
+ * spurious done group); or a per-page keyset read fails at the DB layer.
+ *
+ * CONCURRENCY. A per-request atomic lock (with stale-lock recovery) guards the
+ * read-advance-write of the cursor so two AJAX page calls for the same request
+ * cannot consume one window twice and skip rows.
+ *
+ * All log queries are EXACT-match on the subject's login (never the admin
+ * substring LIKE) so no adjacent account leaks (F-3-1).
  *
  * @param string $email_address Data-subject email.
  * @param int    $page          1-based page number.
- * @return array{data:array,done:bool}
+ * @return array{data:array,done:bool}|WP_Error
  */
 function wldelay_privacy_exporter( $email_address, $page = 1 ) {
     $page  = max( 1, (int) $page );
@@ -347,21 +605,34 @@ function wldelay_privacy_exporter( $email_address, $page = 1 ) {
         );
     }
 
-    $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
-    $state_key = wldelay_privacy_export_state_key( $login );
+    $request_id = wldelay_privacy_request_id();
 
-    // Page 1 starts a fresh run: capture the ceilings + lockout snapshot and
-    // overwrite any stale state from a prior, abandoned run. Later pages read the
-    // carried cursors back. If the state transient was evicted mid-run (rare;
-    // object-cache pressure), rebuild it — the ceilings re-snapshot at the
-    // current MAX(id), which is monotonic for an append-only log, so a late
-    // re-snapshot never re-emits rows already past the cursor.
+    // Guard the cursor critical section against a concurrent page call for the
+    // SAME request. A live holder yields a transient WP_Error so the in-flight
+    // page finishes; a stale lock (crashed prior page) is reclaimed.
+    if ( ! wldelay_privacy_acquire_lock( $request_id ) ) {
+        return wldelay_privacy_busy_error();
+    }
+
+    $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
+
+    // Page 1 starts a fresh run: capture the ceilings and overwrite any stale
+    // state from a prior, abandoned run for this request id. Later pages MUST
+    // read the carried cursors back — if they are missing (no request id, or the
+    // durable state was lost), the run cannot resume safely, so abort with a
+    // WP_Error rather than restart (which would dup/skip or loop). This is the
+    // supported hard-failure channel (F-3-1).
     if ( 1 === $page ) {
         $state = wldelay_privacy_build_export_state( $login );
+        if ( is_wp_error( $state ) ) {
+            wldelay_privacy_release_lock( $request_id );
+            return $state;
+        }
     } else {
-        $state = get_transient( $state_key );
+        $state = wldelay_privacy_get_run_state( $request_id );
         if ( ! is_array( $state ) ) {
-            $state = wldelay_privacy_build_export_state( $login );
+            wldelay_privacy_release_lock( $request_id );
+            return wldelay_privacy_state_error();
         }
     }
 
@@ -434,33 +705,56 @@ function wldelay_privacy_exporter( $email_address, $page = 1 ) {
         }
     }
 
-    // ---- Group 3: active lockouts (page-1 snapshot, sliced) ---------------
-    $lockout_items = isset( $state['lockout_items'] ) && is_array( $state['lockout_items'] )
-        ? $state['lockout_items']
-        : array();
-    $lockout_total = count( $lockout_items );
+    // ---- Group 3: active lockouts (keyset under the page-1 ceiling) -------
+    // Paginated over the immutable lockout-row id under a fixed ceiling — the
+    // same keyset model as the log groups, with NO hard cap (the old
+    // WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT truncation is gone): every active
+    // lockout for the subject is exported across pages (F-3-1).
+    if ( empty( $state['lockout_done'] ) && $remaining > 0 ) {
+        $store = wldelay_get_persistence_store();
+        $rows  = $store->get_active_lockouts_for_username_keyset(
+            $login,
+            $remaining,
+            (int) $state['lockout_max'],
+            (int) $state['lockout_cursor']
+        );
 
-    if ( $remaining > 0 && (int) $state['lockout_offset'] < $lockout_total ) {
-        $slice = array_slice( $lockout_items, (int) $state['lockout_offset'], $remaining );
-        foreach ( $slice as $item ) {
-            $export_items[]           = $item;
-            $state['lockout_offset'] = (int) $state['lockout_offset'] + 1;
+        // A failed keyset read (FALSE, distinct from "no rows") must abort the
+        // run rather than silently truncate the lockout group (F-3-1).
+        if ( false === $rows ) {
+            wldelay_privacy_release_lock( $request_id );
+            return wldelay_privacy_state_error();
         }
-        $remaining -= count( $slice );
+
+        foreach ( $rows as $row ) {
+            $row    = (array) $row;
+            $row_id = isset( $row['id'] ) ? (int) $row['id'] : 0;
+            $export_items[]          = wldelay_privacy_lockout_row_to_item( $row );
+            $state['lockout_cursor'] = $row_id;
+        }
+
+        $fetched    = count( $rows );
+        $had_room   = $remaining;
+        $remaining -= $fetched;
+
+        if ( $fetched < $had_room ) {
+            $state['lockout_done'] = true;
+        }
     }
 
     // The run is complete once all three groups are drained.
     $done = ! empty( $state['login_done'] )
         && ! empty( $state['audit_done'] )
-        && (int) $state['lockout_offset'] >= $lockout_total;
+        && ! empty( $state['lockout_done'] );
 
     if ( $done ) {
-        delete_transient( $state_key );
+        wldelay_privacy_clear_run_state( $request_id );
     } else {
-        // Hold the cursors for the next page. A generous TTL covers a slow,
-        // multi-page admin export; the run self-heals if it is ever evicted.
-        set_transient( $state_key, $state, HOUR_IN_SECONDS );
+        // Hold the cursors for the next page (durable for the run).
+        wldelay_privacy_set_run_state( $request_id, $state );
     }
+
+    wldelay_privacy_release_lock( $request_id );
 
     return array(
         'data' => $export_items,
@@ -574,16 +868,19 @@ function wldelay_privacy_eraser( $email_address, $page = 1 ) {
 }
 
 /**
- * Active lockouts whose stored username matches a login (export view).
+ * Active lockouts whose stored username matches a login (verification view).
+ *
+ * The exporter itself now paginates active lockouts by keyset over the immutable
+ * row id (get_active_lockouts_for_username_keyset), with NO hard cap. This helper
+ * remains as the username-scoped active-lockout VIEW used by the test suite and
+ * any caller that wants the in-force rows in one shot.
  *
  * Scopes at SQL via get_lockouts_for_username() — WHERE username = %s — then
- * keeps only the in-force rows for the export. The earlier implementation scanned
- * the GLOBAL active-lockout prefix (get_active_lockouts(LIMIT) is
- * `WHERE expires_at > now ORDER BY expires_at DESC LIMIT n`) and filtered by
- * username in PHP, so on a busy site the subject's own lockout could sit OUTSIDE
- * that global window and never be exported at all. Scoping by username first
- * guarantees the subject's lockouts are fetched regardless of how many unrelated
- * lockouts the site holds; any bound is applied AFTER the username scope (F-3-1).
+ * keeps only the in-force rows. The earlier exporter implementation scanned the
+ * GLOBAL active-lockout prefix and filtered by username in PHP, so on a busy site
+ * the subject's own lockout could sit OUTSIDE that global window and never be
+ * exported; scoping by username first guarantees the subject's lockouts are
+ * found regardless of how many unrelated lockouts the site holds (F-3-1).
  *
  * get_lockouts_for_username() returns rows whose expires_at is a string datetime
  * (active AND expired); this view keeps only the active rows and normalises
@@ -599,9 +896,9 @@ function wldelay_privacy_get_lockouts_for_login( $login ) {
     $store = wldelay_get_persistence_store();
 
     // Username-scoped read (active + expired). A failed read returns FALSE; for
-    // the EXPORT view we degrade to an empty set rather than fatal — the eraser
-    // path (wldelay_delete_lockouts_for_user) is where a failed read is surfaced
-    // as items_retained.
+    // this VIEW we degrade to an empty set rather than fatal — the eraser path
+    // (wldelay_delete_lockouts_for_user) is where a failed read is surfaced as
+    // items_retained.
     $rows = $store->get_lockouts_for_username( $login );
     if ( ! is_array( $rows ) ) {
         return array();
@@ -618,8 +915,7 @@ function wldelay_privacy_get_lockouts_for_login( $login ) {
             continue;
         }
 
-        // Keep only in-force rows for the export view. expires_at arrives as a
-        // string datetime stored in UTC.
+        // Keep only in-force rows. expires_at arrives as a string datetime in UTC.
         $expires_ts = isset( $row['expires_at'] ) ? strtotime( (string) $row['expires_at'] . ' UTC' ) : false;
         if ( false === $expires_ts || $expires_ts <= $now ) {
             continue;
@@ -629,13 +925,6 @@ function wldelay_privacy_get_lockouts_for_login( $login ) {
         // (which casts expires_at to int) renders the date correctly.
         $row['expires_at'] = $expires_ts;
         $matched[]         = $row;
-
-        // Bound the export set AFTER the username scope. A single subject only
-        // has a handful of in-force lockouts; the cap is generous headroom that
-        // still avoids materialising an unbounded result for a pathological case.
-        if ( count( $matched ) >= (int) WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT ) {
-            break;
-        }
     }
 
     return $matched;

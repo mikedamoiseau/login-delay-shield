@@ -42,9 +42,21 @@ class PrivacyTest extends WP_UnitTestCase {
                 'user_email' => $this->email,
             )
         );
+
+        // The exporter scopes its per-run state to the privacy REQUEST id, which
+        // WordPress exposes as $_POST['id'] during the AJAX handler. Tests call the
+        // callback directly, so simulate that superglobal. A non-user_request id
+        // exercises the option-fallback state store; tests that need the post-meta
+        // path set a real user_request post id explicitly.
+        $_POST['id'] = 4242;
     }
 
     public function tearDown(): void {
+        unset( $_POST['id'] );
+        // Clear any per-run export state / processing lock the option-fallback
+        // path may have left behind so tests do not leak state into each other.
+        wldelay_privacy_clear_run_state( 4242 );
+        wldelay_privacy_release_lock( 4242 );
         WLDelay_Test_Fixture::reset();
         $this->truncate_plugin_tables();
         parent::tearDown();
@@ -591,11 +603,12 @@ class PrivacyTest extends WP_UnitTestCase {
         $table = wldelay_get_lockout_table_name();
         $now   = time();
 
-        // Seed MORE unrelated active lockouts than the scan window, each with a
-        // LATER expiry than the subject's so a global "ORDER BY expires_at DESC
-        // LIMIT n" prefix would never reach the subject's row.
-        $window = (int) WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT;
-        $decoys = $window + 25;
+        // Seed many unrelated active lockouts, each with a LATER expiry than the
+        // subject's so a global "ORDER BY expires_at DESC LIMIT n" prefix would
+        // never reach the subject's row. The username-scoped keyset read ignores
+        // global ordering entirely, so the count only needs to comfortably exceed
+        // one export page to prove the scoping (the old hard scan cap is gone).
+        $decoys = ( (int) WLDELAY_PRIVACY_PAGE_SIZE ) + 25;
         for ( $i = 0; $i < $decoys; $i++ ) {
             $ip = '10.0.' . intdiv( $i, 250 ) . '.' . ( $i % 250 );
             $wpdb->insert(
@@ -742,5 +755,362 @@ class PrivacyTest extends WP_UnitTestCase {
             1,
             (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $lockout_table WHERE username = %s", $this->login ) ) // phpcs:ignore WordPress.DB
         );
+    }
+
+    // ----------------------------------------------------------------------
+    // M6 point 1+2: durable run state lost mid-run -> WP_Error abort, no
+    // dup / no infinite loop. The persisted run state is deleted between
+    // page 1 and page 2; the exporter must return a WP_Error (the supported
+    // hard-failure channel) rather than silently restarting the cursor.
+    // ----------------------------------------------------------------------
+
+    public function test_exporter_returns_wp_error_when_run_state_lost_between_pages() {
+        $request_id = (int) $_POST['id'];
+
+        // Seed more than one page so a page 2 is genuinely expected.
+        $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
+        $total     = $page_size + 5;
+        for ( $i = 0; $i < $total; $i++ ) {
+            $this->seed_login_log( $this->login, '203.0.113.' . ( $i % 250 ) );
+        }
+
+        $page1 = wldelay_privacy_exporter( $this->email, 1 );
+        $this->assertIsArray( $page1 );
+        $this->assertFalse( $page1['done'], 'More rows remain after page 1.' );
+
+        // Simulate the durable state being lost (object-cache eviction / manual
+        // clear) between page calls.
+        wldelay_privacy_clear_run_state( $request_id );
+
+        $page2 = wldelay_privacy_exporter( $this->email, 2 );
+
+        $this->assertWPError( $page2, 'A lost run state on a later page must abort with a WP_Error.' );
+        $this->assertSame( 'wldelay_privacy_export_state', $page2->get_error_code() );
+    }
+
+    /**
+     * M6 point 1+2: a later page with NO valid request id (the $_POST['id']
+     * superglobal absent, e.g. a programmatic call that cannot resume the
+     * cursor) must also abort with a WP_Error rather than restart.
+     */
+    public function test_exporter_returns_wp_error_on_later_page_without_request_id() {
+        $this->seed_login_log( $this->login );
+
+        unset( $_POST['id'] );
+
+        $page2 = wldelay_privacy_exporter( $this->email, 2 );
+
+        $this->assertWPError( $page2 );
+        $this->assertSame( 'wldelay_privacy_export_state', $page2->get_error_code() );
+    }
+
+    // ----------------------------------------------------------------------
+    // M6 point 3: a broken SHOW TABLES probe is a FAILED read, not "table
+    // absent". get_lockouts_for_username() returns FALSE and the eraser
+    // reports items_retained + a message (no silent "nothing to erase").
+    // ----------------------------------------------------------------------
+
+    public function test_eraser_reports_retained_on_table_probe_failure() {
+        global $wpdb;
+
+        $lockout_table = wldelay_get_lockout_table_name();
+
+        // Break ONLY the SHOW TABLES existence probe for the lockout table.
+        $break = static function ( $query ) use ( $lockout_table ) {
+            if ( 0 === stripos( ltrim( $query ), 'SHOW TABLES' ) && false !== strpos( $query, $lockout_table ) ) {
+                return 'SHOW TABLES LIKE'; // Syntax error -> probe errors out.
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        // Force a fresh probe so the broken SHOW TABLES is actually run.
+        wldelay_reset_persistence_runtime_cache();
+
+        $suppress = $wpdb->suppress_errors( true );
+
+        // Confirm the store distinguishes a failed probe from "no rows".
+        $store = wldelay_get_persistence_store();
+        $this->assertFalse(
+            $store->get_lockouts_for_username( $this->login ),
+            'A failed existence probe must return FALSE, not array().'
+        );
+
+        wldelay_reset_persistence_runtime_cache();
+        $result = wldelay_privacy_eraser( $this->email, 1 );
+
+        $wpdb->suppress_errors( $suppress );
+        remove_filter( 'query', $break );
+        wldelay_reset_persistence_runtime_cache();
+
+        $this->assertTrue( $result['items_retained'], 'A failed table probe must flag items_retained.' );
+        $this->assertNotEmpty( $result['messages'], 'A failed table probe must surface an actionable message.' );
+    }
+
+    // ----------------------------------------------------------------------
+    // M6 point 2: a failed ceiling (MAX id) read must abort the export with a
+    // WP_Error, not coerce to a 0 ceiling and emit a spurious empty done group.
+    // ----------------------------------------------------------------------
+
+    public function test_exporter_returns_wp_error_on_failed_ceiling_read() {
+        global $wpdb;
+
+        $this->seed_login_log( $this->login );
+
+        $log_table = wldelay_get_log_table_name();
+
+        // Break ONLY the MAX(id) ceiling read against the login-log table.
+        $break = static function ( $query ) use ( $log_table ) {
+            if ( false !== stripos( $query, 'SELECT MAX(id)' ) && false !== strpos( $query, $log_table ) ) {
+                return 'SELECT MAX(id) FROM'; // Syntax error -> get_var errors out.
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        $suppress = $wpdb->suppress_errors( true );
+        $result   = wldelay_privacy_exporter( $this->email, 1 );
+        $wpdb->suppress_errors( $suppress );
+
+        remove_filter( 'query', $break );
+
+        $this->assertWPError( $result, 'A failed ceiling read must abort with a WP_Error.' );
+        $this->assertSame( 'wldelay_privacy_export_state', $result->get_error_code() );
+    }
+
+    // ----------------------------------------------------------------------
+    // M6 point 4: a forced durable DELETE failure in the IP-recovery / unlock
+    // path must be SURFACED (false), not coerced to 0 and reported as success.
+    // ----------------------------------------------------------------------
+
+    public function test_unlock_ip_propagates_durable_delete_failure() {
+        global $wpdb;
+
+        $lockout_table = wldelay_get_lockout_table_name();
+        $ip            = '192.0.2.99';
+
+        // A real durable lockout row so the snapshot is non-empty and a DELETE
+        // is attempted.
+        $wpdb->insert(
+            $lockout_table,
+            array(
+                'lockout_key'   => wldelay_get_lockout_storage_key( $ip, $this->login, 'login' ),
+                'ip_address'    => $ip,
+                'username'      => $this->login,
+                'lockout_type'  => 'login',
+                'source'        => 'wp-login',
+                'transient_key' => '',
+                'generation'    => '',
+                'created_at'    => gmdate( 'Y-m-d H:i:s', time() ),
+                'expires_at'    => gmdate( 'Y-m-d H:i:s', time() + 600 ),
+            )
+        );
+
+        // Break ONLY the DELETE against the lockout table; the snapshot SELECT
+        // must succeed so we hit the DELETE-failure branch.
+        $break = static function ( $query ) use ( $lockout_table ) {
+            if ( 0 === stripos( ltrim( $query ), 'DELETE' ) && false !== strpos( $query, $lockout_table ) ) {
+                return 'DELETE FROM'; // Syntax error -> $wpdb->delete returns false.
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        $suppress = $wpdb->suppress_errors( true );
+        $result   = wldelay_delete_lockout_for_ip( $ip, $this->login );
+        $wpdb->suppress_errors( $suppress );
+
+        remove_filter( 'query', $break );
+
+        $this->assertFalse(
+            $result,
+            'A failed durable delete must propagate as FALSE, not coerce to a success count.'
+        );
+
+        // The row genuinely remains on disk (delete failed).
+        $this->assertSame(
+            1,
+            (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $lockout_table WHERE username = %s", $this->login ) ) // phpcs:ignore WordPress.DB
+        );
+    }
+
+    /**
+     * M6 point 4: the same forced failure through the flush path must propagate
+     * as FALSE so the CLI flush surfaces it rather than reporting a clean flush.
+     */
+    public function test_flush_propagates_durable_delete_failure() {
+        global $wpdb;
+
+        $lockout_table = wldelay_get_lockout_table_name();
+        $ip            = '192.0.2.111';
+
+        $wpdb->insert(
+            $lockout_table,
+            array(
+                'lockout_key'   => wldelay_get_lockout_storage_key( $ip, $this->login, 'login' ),
+                'ip_address'    => $ip,
+                'username'      => $this->login,
+                'lockout_type'  => 'login',
+                'source'        => 'wp-login',
+                'transient_key' => '',
+                'generation'    => '',
+                'created_at'    => gmdate( 'Y-m-d H:i:s', time() ),
+                'expires_at'    => gmdate( 'Y-m-d H:i:s', time() + 600 ),
+            )
+        );
+
+        $break = static function ( $query ) use ( $lockout_table ) {
+            if ( 0 === stripos( ltrim( $query ), 'DELETE' ) && false !== strpos( $query, $lockout_table ) ) {
+                return 'DELETE FROM';
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        $suppress = $wpdb->suppress_errors( true );
+        $result   = wldelay_flush_lockout_transients();
+        $wpdb->suppress_errors( $suppress );
+
+        remove_filter( 'query', $break );
+
+        $this->assertFalse(
+            $result,
+            'A failed durable delete during flush must propagate as FALSE.'
+        );
+    }
+
+    // ----------------------------------------------------------------------
+    // M6 point 1: interleaved same-subject runs (two distinct request ids for
+    // one email) must NOT share a cursor. page1(A), page1(B), page2(A) must
+    // continue A's OWN cursor — no cross-run corruption.
+    // ----------------------------------------------------------------------
+
+    public function test_interleaved_same_subject_runs_keep_independent_cursors() {
+        $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
+        $total     = $page_size + 7;
+        for ( $i = 0; $i < $total; $i++ ) {
+            $this->seed_login_log( $this->login, '203.0.113.' . ( $i % 250 ) );
+        }
+
+        $req_a = 5001;
+        $req_b = 5002;
+
+        // --- Run A, page 1 ---
+        $_POST['id'] = $req_a;
+        $a1          = wldelay_privacy_exporter( $this->email, 1 );
+        $this->assertCount( $page_size, $a1['data'] );
+        $this->assertFalse( $a1['done'] );
+
+        // --- Run B, page 1 (a DIFFERENT export of the SAME email) ---
+        $_POST['id'] = $req_b;
+        $b1          = wldelay_privacy_exporter( $this->email, 1 );
+        $this->assertCount( $page_size, $b1['data'] );
+        $this->assertFalse( $b1['done'] );
+
+        // --- Run A, page 2 — must resume A's cursor, not B's ---
+        $_POST['id'] = $req_a;
+        $a2          = wldelay_privacy_exporter( $this->email, 2 );
+        $this->assertTrue( $a2['done'], 'Run A completes on its own page 2.' );
+
+        // Run A across both pages emitted exactly the subject's rows, no dup.
+        $a_ids = array();
+        foreach ( array_merge( $a1['data'], $a2['data'] ) as $item ) {
+            if ( 'wldelay-login-log' === $item['group_id'] ) {
+                $a_ids[] = $item['item_id'];
+            }
+        }
+        $this->assertCount( $total, $a_ids, 'Run A emitted every subject login row across its pages.' );
+        $this->assertCount( $total, array_unique( $a_ids ), 'Run A emitted no duplicate rows — B did not steal A\'s cursor.' );
+
+        // Cleanup the two extra runs' option-fallback state.
+        wldelay_privacy_clear_run_state( $req_a );
+        wldelay_privacy_clear_run_state( $req_b );
+        wldelay_privacy_release_lock( $req_a );
+        wldelay_privacy_release_lock( $req_b );
+    }
+
+    // ----------------------------------------------------------------------
+    // M6 point 5: more active lockouts for the subject than the OLD scan cap
+    // (1000) — all are exported across pages, no truncation.
+    // ----------------------------------------------------------------------
+
+    public function test_exporter_paginates_all_active_lockouts_no_cap() {
+        global $wpdb;
+
+        $table     = wldelay_get_lockout_table_name();
+        $now       = time();
+        $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
+
+        // Seed more active lockouts than fit on a single page so pagination of
+        // the lockout group is genuinely exercised (and well clear of any single
+        // cap). Each row is the subject's, on a distinct IP/type-key.
+        $lockout_total = $page_size + 13;
+        for ( $i = 0; $i < $lockout_total; $i++ ) {
+            $ip = '198.51.' . intdiv( $i, 250 ) . '.' . ( $i % 250 );
+            $wpdb->insert(
+                $table,
+                array(
+                    'lockout_key'   => wldelay_get_lockout_storage_key( $ip, $this->login, 'login' ),
+                    'ip_address'    => $ip,
+                    'username'      => $this->login,
+                    'lockout_type'  => 'login',
+                    'source'        => 'wp-login',
+                    'transient_key' => '',
+                    'generation'    => '',
+                    'created_at'    => gmdate( 'Y-m-d H:i:s', $now ),
+                    'expires_at'    => gmdate( 'Y-m-d H:i:s', $now + 3600 ),
+                )
+            );
+        }
+
+        // Drain every page until done, collecting lockout item_ids.
+        $lockout_ids = array();
+        $page        = 1;
+        $guard       = 0;
+        do {
+            $result = wldelay_privacy_exporter( $this->email, $page );
+            $this->assertIsArray( $result, 'Export pages must not error in the happy path.' );
+            foreach ( $result['data'] as $item ) {
+                if ( 'wldelay-lockouts' === $item['group_id'] ) {
+                    $lockout_ids[] = $item['item_id'];
+                }
+            }
+            $page++;
+            $guard++;
+        } while ( empty( $result['done'] ) && $guard < 1000 );
+
+        $this->assertTrue( $result['done'], 'Pagination terminated.' );
+        $this->assertCount( $lockout_total, $lockout_ids, 'Every active lockout was exported across pages — no truncation.' );
+        $this->assertCount( $lockout_total, array_unique( $lockout_ids ), 'No duplicate lockout item_ids across pages.' );
+    }
+
+    // ----------------------------------------------------------------------
+    // M6 point 6: a STALE processing lock (older than the timeout) is reclaimed
+    // so a crashed prior page does not wedge the run forever.
+    // ----------------------------------------------------------------------
+
+    public function test_stale_processing_lock_is_reclaimed() {
+        $request_id = 6001;
+
+        // Plant a stale lock: a timestamp older than the timeout, as a crashed
+        // prior page would have left behind.
+        $stale = time() - ( (int) WLDELAY_PRIVACY_LOCK_TIMEOUT ) - 10;
+        update_option( wldelay_privacy_lock_option_name( $request_id ), $stale, false );
+
+        // A fresh-but-live lock for a DIFFERENT request must NOT be acquirable.
+        $live_id = 6002;
+        update_option( wldelay_privacy_lock_option_name( $live_id ), time(), false );
+
+        $this->assertTrue(
+            wldelay_privacy_acquire_lock( $request_id ),
+            'A stale lock must be reclaimable.'
+        );
+        $this->assertFalse(
+            wldelay_privacy_acquire_lock( $live_id ),
+            'A live (non-stale) lock must NOT be acquirable by a second caller.'
+        );
+
+        wldelay_privacy_release_lock( $request_id );
+        wldelay_privacy_release_lock( $live_id );
     }
 }

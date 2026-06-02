@@ -581,9 +581,16 @@ function wldelay_derive_failure_transient_key( $lockout_transient_name ) {
  * In IP+username strategy mode, this also clears tuple keys for the given
  * username (if provided), while keeping backward compatibility with IP-only mode.
  *
+ * A FALSE return (NOT a count) means the durable conditional delete failed at
+ * the DB layer ($wpdb->delete() returned FALSE, distinct from "0 rows"): the
+ * target lockout rows may still be on disk. Callers (admin unlock / WP-CLI
+ * unlock-ip) must surface that as a failure rather than reporting a clean
+ * removal, mirroring the GDPR eraser's items_retained handling (F-3-1).
+ *
  * @param string $ip IP address.
  * @param string $username Optional username.
- * @return int Number of transients removed.
+ * @return int|false Number of transients + durable rows removed, or FALSE when
+ *                   the durable conditional delete failed at the DB layer.
  */
 function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     if ( empty( $ip ) ) {
@@ -697,9 +704,17 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     // leaving the user locked on a durable row that recovery had reported gone
     // (F-2-1 hardening). Count these removals so recovery still reports success
     // when the transient was evicted but a durable row was in force.
-    $deleted += $store->remove_lockouts_matching_generation( $snapshot );
+    //
+    // A FALSE return (NOT a count) means a durable $wpdb->delete() failed. Do
+    // NOT let it coerce to 0 via +=, which would mask a failed durable delete
+    // and report a clean unlock while the row is still on disk. Propagate FALSE
+    // so the unlock handler surfaces the failure (F-3-1).
+    $durable_removed = $store->remove_lockouts_matching_generation( $snapshot );
+    if ( false === $durable_removed ) {
+        return false;
+    }
 
-    return $deleted;
+    return $deleted + $durable_removed;
 }
 
 /**
@@ -850,7 +865,12 @@ function wldelay_delete_lockouts_for_user( $username ) {
 /**
  * Flush all lockout and failure transients managed by this plugin.
  *
- * @return int Number of transients removed.
+ * A FALSE return (NOT a count) means the durable conditional delete failed at
+ * the DB layer: some lockout rows may still be on disk. The CLI flush command
+ * surfaces that as an error rather than reporting a clean flush (F-3-1).
+ *
+ * @return int|false Number of transients + durable rows removed, or FALSE when
+ *                   the durable conditional delete failed at the DB layer.
  */
 function wldelay_flush_lockout_transients() {
     global $wpdb;
@@ -945,9 +965,16 @@ function wldelay_flush_lockout_transients() {
     // transient and leaving that user locked even though flush reported success
     // (F-2-1 hardening). A row refreshed mid-flush carries a new generation, so
     // it survives and is reaped by the next flush / its own expiry.
-    $deleted += $store->remove_lockouts_matching_generation( $snapshot );
+    //
+    // A FALSE return (NOT a count) means a durable $wpdb->delete() failed. Do
+    // NOT coerce it to 0 via +=, which would report a clean flush while rows
+    // remain on disk; propagate FALSE so the CLI command surfaces it (F-3-1).
+    $durable_removed = $store->remove_lockouts_matching_generation( $snapshot );
+    if ( false === $durable_removed ) {
+        return false;
+    }
 
-    return $deleted;
+    return $deleted + $durable_removed;
 }
 
 /**
@@ -972,16 +999,31 @@ function wldelay_handle_unlock_current_ip() {
 
     $deleted = wldelay_delete_lockout_for_ip( $ip, $username );
 
+    // FALSE (NOT a count) means the durable conditional delete failed at the DB
+    // layer: the lockout row may still be on disk, so the user could still be
+    // locked. Surface a distinct failure status rather than reporting success or
+    // a benign "none" (F-3-1).
+    $failed = ( false === $deleted );
+
     // Record the manual unlock in the audit trail (F-2-7). Logged on every
-    // attempt, not only on a hit, so the action itself is auditable.
+    // attempt, not only on a hit, so the action itself is auditable. A failed
+    // delete records 0 removed rows.
     if ( function_exists( 'wldelay_audit_lockout_cleared' ) ) {
-        wldelay_audit_lockout_cleared( $ip, $username, (int) $deleted );
+        wldelay_audit_lockout_cleared( $ip, $username, $failed ? 0 : (int) $deleted );
+    }
+
+    if ( $failed ) {
+        $status = 'failed';
+    } elseif ( $deleted > 0 ) {
+        $status = 'success';
+    } else {
+        $status = 'none';
     }
 
     $redirect_url = add_query_arg(
         array(
             'page' => 'login-delay-shield-admin',
-            'wldelay_unlock_ip' => $deleted > 0 ? 'success' : 'none',
+            'wldelay_unlock_ip' => $status,
         ),
         admin_url( 'options-general.php' )
     );
@@ -1246,17 +1288,38 @@ function wldelay_get_login_log_for_username( $username, $limit, $max_id, $after_
  * fixed snapshot of the subject's rows; rows inserted after this point (id above
  * the ceiling) are excluded from the run (F-3-1).
  *
+ * Returns FALSE (NOT 0) when the read FAILS at the DB layer. A failed query and
+ * "subject has no rows" both make get_var() return null → (int) 0; collapsing a
+ * failed read to 0 would mark the group done=true on page 1 and emit a spurious
+ * empty group while the subject's rows are still on disk. The export caller turns
+ * a FALSE ceiling into a WP_Error so WordPress aborts the request instead of
+ * handing the admin a partial archive (F-3-1).
+ *
  * @param string $username Exact username to match.
- * @return int Highest matching id, or 0 when the subject has no rows.
+ * @return int|false Highest matching id, 0 when the subject has no rows, or
+ *                   FALSE when the read failed at the DB layer.
  */
 function wldelay_get_max_login_log_id_for_username( $username ) {
     global $wpdb;
 
     $table_name = wldelay_get_log_table_name();
 
-    return (int) $wpdb->get_var(
+    // Clear last_error so a stale error from an earlier query on this request is
+    // not misread as a failure of this read.
+    $wpdb->last_error = '';
+
+    $max = $wpdb->get_var(
         $wpdb->prepare( "SELECT MAX(id) FROM $table_name WHERE username = %s", (string) $username )
     );
+
+    // get_var() returns null both for "no rows" (MAX of an empty set) AND for a
+    // SELECT that errored. Distinguish via last_error: a failed read returns
+    // FALSE so the exporter can abort with a WP_Error (F-3-1).
+    if ( '' !== (string) $wpdb->last_error ) {
+        return false;
+    }
+
+    return (int) $max;
 }
 
 /**
@@ -1589,10 +1652,20 @@ function wldelay_render_unlock_notice() {
     }
 
     $status = sanitize_text_field( wp_unslash( $_GET['wldelay_unlock_ip'] ) );
-    $class = ( $status === 'success' ) ? 'notice-success' : 'notice-warning';
-    $message = ( $status === 'success' )
-        ? __( 'Current IP lockout removed.', 'login-delay-shield' )
-        : __( 'No active lockout was found for your current IP.', 'login-delay-shield' );
+
+    if ( 'success' === $status ) {
+        $class   = 'notice-success';
+        $message = __( 'Current IP lockout removed.', 'login-delay-shield' );
+    } elseif ( 'failed' === $status ) {
+        // A durable delete failed at the DB layer; the lockout may still be in
+        // force. Report an error (not a benign "none") so the admin retries
+        // rather than assuming the IP was cleared (F-3-1).
+        $class   = 'notice-error';
+        $message = __( 'Login Delay Shield could not clear the lockout for your current IP — a database error occurred and the lockout may still be in force. Check the database and try again.', 'login-delay-shield' );
+    } else {
+        $class   = 'notice-warning';
+        $message = __( 'No active lockout was found for your current IP.', 'login-delay-shield' );
+    }
 
     echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
 }
@@ -1625,6 +1698,34 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
             }
 
             $deleted = wldelay_delete_lockout_for_ip( $ip );
+
+            // FALSE (NOT a count) means the durable conditional delete failed at
+            // the DB layer: the lockout row may still be on disk. Surface a hard
+            // error rather than reporting a clean removal (F-3-1). WP_CLI::error()
+            // halts with a non-zero exit so a script driving the unlock can tell
+            // it did not succeed.
+            if ( false === $deleted ) {
+                if ( function_exists( 'wldelay_audit_log' ) ) {
+                    wldelay_audit_log(
+                        'lockout_cleared',
+                        array(
+                            'object'    => $ip,
+                            'new_value' => array(
+                                'removed_rows' => 0,
+                                'source'       => 'wp-cli',
+                                'failed'       => true,
+                            ),
+                        )
+                    );
+                }
+                WP_CLI::error(
+                    sprintf(
+                        /* translators: %s: IP address */
+                        __( 'A database error occurred while clearing the lockout for %s; it may still be in force. Check the database and retry.', 'login-delay-shield' ),
+                        $ip
+                    )
+                );
+            }
 
             // Record the CLI unlock in the audit trail (F-2-7). Logged on every
             // invocation, not only on a hit, so the privileged action itself is
@@ -1680,6 +1781,28 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
          */
         public function flush_lockouts() {
             $deleted = wldelay_flush_lockout_transients();
+
+            // FALSE (NOT a count) means the durable conditional delete failed at
+            // the DB layer: some lockout rows may still be on disk. Surface a
+            // hard error rather than reporting a clean flush (F-3-1).
+            if ( false === $deleted ) {
+                if ( function_exists( 'wldelay_audit_log' ) ) {
+                    wldelay_audit_log(
+                        'lockouts_flushed',
+                        array(
+                            'object'    => 'all',
+                            'new_value' => array(
+                                'removed_rows' => 0,
+                                'source'       => 'wp-cli',
+                                'failed'       => true,
+                            ),
+                        )
+                    );
+                }
+                WP_CLI::error(
+                    __( 'A database error occurred while flushing lockouts; some may still be in force. Check the database and retry.', 'login-delay-shield' )
+                );
+            }
 
             // Audit the bulk clear under a distinct action so a wholesale flush
             // is never mistaken for a single-IP unlock in the forensic trail

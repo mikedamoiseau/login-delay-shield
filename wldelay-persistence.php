@@ -180,6 +180,51 @@ interface WLDelay_Persistence {
     public function get_lockouts_for_username( $username );
 
     /**
+     * Highest lockout-row id among a username's ACTIVE lockouts — the keyset
+     * export ceiling.
+     *
+     * The GDPR export paginates the subject's active lockouts by the immutable
+     * row id (same keyset model as the login/audit groups) so it never truncates
+     * at a hard cap and stays stable across WordPress's page-by-page calls.
+     * Captured once on page 1 and held across pages; rows inserted after (id
+     * above the ceiling) are excluded — they post-date the request.
+     *
+     * A failed READ must be distinguishable from "no active lockouts":
+     * collapsing a DB error to 0 would mark the group done on page 1 while the
+     * subject's lockout PII is still on disk, so a DB error returns FALSE here
+     * and the exporter aborts with a WP_Error (F-3-1).
+     *
+     * @param string $username Username (the value persisted at lock time).
+     * @return int|false Highest active-lockout id, 0 when none, or FALSE when
+     *                   the read failed at the DB layer.
+     */
+    public function get_max_active_lockout_id_for_username( $username );
+
+    /**
+     * Keyset page of a username's ACTIVE lockouts, ordered by immutable id DESC.
+     *
+     * Paginates the export over the row id under a fixed ceiling:
+     * `WHERE username = %s AND expires_at > now AND id <= ceiling AND id < cursor
+     * ORDER BY id DESC LIMIT n`. No hard cap (the WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT
+     * truncation is gone): every active lockout for the subject is exported across
+     * pages (F-3-1).
+     *
+     * A failed READ returns FALSE (distinct from "no rows") so the exporter can
+     * abort with a WP_Error rather than silently truncating (F-3-1).
+     *
+     * @param string $username Username (the value persisted at lock time).
+     * @param int    $limit    Maximum rows for this page.
+     * @param int    $max_id   Ceiling: only rows with id <= this are considered.
+     * @param int    $after_id Keyset cursor: only rows with id < this are returned
+     *                         (smallest id from the previous page; max_id + 1 / 0
+     *                         on the first page).
+     * @return array[]|false Active-lockout rows (id, lockout_key, ip_address,
+     *                       username, lockout_type, expires_at), ordered id DESC,
+     *                       or FALSE when the read failed at the DB layer.
+     */
+    public function get_active_lockouts_for_username_keyset( $username, $limit, $max_id, $after_id = 0 );
+
+    /**
      * Remove every lockout, active or expired.
      *
      * @return int Number of rows removed.
@@ -427,33 +472,60 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
     /**
      * Cached table-existence flags for the current request, keyed by table
      * name so the cache is scoped per blog prefix. A single bool would carry
-     * site A's result into site B after switch_to_blog() (F-2-1).
+     * site A's result into site B after switch_to_blog() (F-2-1). The value is
+     * the TRI-STATE returned by table_exists(): true (present), false (absent),
+     * or null (the probe itself errored — F-3-1).
      *
-     * @var array<string,bool>
+     * @var array<string,bool|null>
      */
     private $table_exists = array();
 
     /**
-     * Whether the lockout table exists.
+     * Whether the lockout table exists — TRI-STATE.
      *
      * Read methods are on the authentication hot path; if the table is missing
      * (e.g. mid-upgrade, or before activation provisioned it) they must degrade
      * gracefully to "not locked" rather than raising a DB error. Cached per
      * request so the SHOW TABLES check runs at most once.
      *
-     * @return bool
+     * The probe runs under suppressed errors, so a failed SHOW TABLES returns a
+     * falsey value indistinguishable from "table absent" unless last_error is
+     * inspected. GDPR erasure must NOT collapse a probe FAILURE into "table
+     * absent → nothing to erase": that would let the eraser report a clean
+     * completion while the subject's PII is still on disk. Return:
+     *   - true  : the table exists,
+     *   - false : the table is genuinely absent,
+     *   - null  : the existence probe ERRORED (caller must treat as a failed read).
+     * The hot-path callers (get_lockout / add_lockout / …) treat both false and
+     * null as "cannot serve", so their behaviour is unchanged; only the
+     * erasure-facing read distinguishes null to surface items_retained (F-3-1).
+     *
+     * @return bool|null True (present), false (absent), or null (probe errored).
      */
     private function table_exists() {
         global $wpdb;
         $table = wldelay_get_lockout_table_name();
 
-        if ( isset( $this->table_exists[ $table ] ) ) {
+        if ( array_key_exists( $table, $this->table_exists ) ) {
             return $this->table_exists[ $table ];
         }
 
         $suppress = $wpdb->suppress_errors( true );
-        $found    = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+        // Clear last_error so a stale error from an earlier query on this
+        // request is not misread as a failure of this probe.
+        $wpdb->last_error = '';
+        $found            = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+        $probe_error      = (string) $wpdb->last_error;
         $wpdb->suppress_errors( $suppress );
+
+        if ( '' !== $probe_error ) {
+            // The probe itself failed (not "table absent"). Record null so the
+            // erasure-facing read can distinguish a failed probe from a genuine
+            // absence; do NOT cache it as a definitive answer that masks a later
+            // recovery once the DB is healthy.
+            $this->table_exists[ $table ] = null;
+            return null;
+        }
 
         $this->table_exists[ $table ] = ( $found === $table );
 
@@ -807,7 +879,20 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
     public function get_lockouts_for_username( $username ) {
         global $wpdb;
 
-        if ( ! $this->table_exists() ) {
+        $exists = $this->table_exists();
+
+        // TRI-STATE: a null probe means the existence check ITSELF errored
+        // (suppressed SHOW TABLES failure). That is a failed read, NOT "table
+        // absent": collapsing it to array() would let the eraser report a clean
+        // completion while the subject's lockout PII remains on disk. Return
+        // FALSE so the caller surfaces items_retained (F-3-1).
+        if ( null === $exists ) {
+            return false;
+        }
+
+        // Table genuinely absent (e.g. pre-activation / mid-upgrade): there is
+        // no lockout PII to erase, so an empty set is the correct, honest answer.
+        if ( false === $exists ) {
             return array();
         }
 
@@ -834,6 +919,99 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         // errored. Distinguish them via last_error: a failed read returns FALSE
         // so the eraser can flag items_retained rather than claiming the
         // subject's lockout PII was removed when it may still be on disk (F-3-1).
+        if ( ! is_array( $rows ) || '' !== (string) $wpdb->last_error ) {
+            return false;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function get_max_active_lockout_id_for_username( $username ) {
+        global $wpdb;
+
+        $exists = $this->table_exists();
+
+        // Tri-state: a null probe means the existence check itself errored (a
+        // failed read), so the exporter must abort rather than emit a spurious
+        // done group (F-3-1).
+        if ( null === $exists ) {
+            return false;
+        }
+        if ( false === $exists ) {
+            return 0;
+        }
+
+        $table = wldelay_get_lockout_table_name();
+        $now   = gmdate( 'Y-m-d H:i:s', time() );
+
+        $wpdb->last_error = '';
+
+        $max = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT MAX(id) FROM $table WHERE username = %s AND expires_at > %s",
+                (string) $username,
+                $now
+            )
+        );
+
+        if ( '' !== (string) $wpdb->last_error ) {
+            return false;
+        }
+
+        return (int) $max;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function get_active_lockouts_for_username_keyset( $username, $limit, $max_id, $after_id = 0 ) {
+        global $wpdb;
+
+        $exists = $this->table_exists();
+
+        if ( null === $exists ) {
+            return false;
+        }
+        if ( false === $exists ) {
+            return array();
+        }
+
+        $limit    = max( 1, (int) $limit );
+        $max_id   = max( 0, (int) $max_id );
+        $after_id = max( 0, (int) $after_id );
+
+        if ( 0 === $max_id ) {
+            return array();
+        }
+
+        // The cursor defaults to "just past the ceiling" on the first page so
+        // the first keyset window starts at the ceiling itself.
+        if ( 0 === $after_id ) {
+            $after_id = $max_id + 1;
+        }
+
+        $table = wldelay_get_lockout_table_name();
+        $now   = gmdate( 'Y-m-d H:i:s', time() );
+
+        $wpdb->last_error = '';
+
+        // id is the immutable PK, so the keyset window is stable under
+        // concurrent insert/delete — same model as the login/audit export.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT id, lockout_key, ip_address, username, lockout_type, expires_at FROM $table WHERE username = %s AND expires_at > %s AND id <= %d AND id < %d ORDER BY id DESC LIMIT %d",
+                (string) $username,
+                $now,
+                $max_id,
+                $after_id,
+                $limit
+            ),
+            ARRAY_A
+        );
+
         if ( ! is_array( $rows ) || '' !== (string) $wpdb->last_error ) {
             return false;
         }
