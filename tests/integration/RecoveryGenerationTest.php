@@ -157,8 +157,9 @@ class RecoveryGenerationTest extends WP_UnitTestCase {
 
     /**
      * Backward compatibility: a legacy registry record without a 'gen' is still
-     * enumerated and is still removable by the conditional unregister (missing
-     * gen is treated as "always matches" so old records are never stranded).
+     * enumerated and is still removable by the conditional unregister. The
+     * atomic compare-and-delete matches the exact serialized legacy (key,exp)
+     * value, so an unchanged legacy record is cleaned and never stranded.
      */
     public function test_legacy_record_without_generation_is_enumerated_and_flushable() {
         $key    = wldelay_get_lockout_transient_key( '198.51.100.22' );
@@ -342,5 +343,97 @@ class RecoveryGenerationTest extends WP_UnitTestCase {
 
         $this->assertSame( 1, $removed, 'A legacy empty-generation row must still be removable' );
         $this->assertFalse( $this->store->is_locked( $ip, '' ) );
+    }
+
+    /* ---------------------------------------------------------------------
+     * Atomic compare-and-delete (Codex F1/F2/F3, Codex-2 F1/F2)
+     * ------------------------------------------------------------------ */
+
+    /**
+     * The registry cleanup is a single compare-and-delete keyed on the exact
+     * serialized snapshot value, so there is no read-then-delete window. We
+     * assert the post-condition directly: a record whose stored value differs
+     * from the snapshot (the outcome of a concurrent relock landing in the
+     * window) is NOT deleted. This is the interleaving the helper could not
+     * survive before — a relock between read and unconditional delete.
+     */
+    public function test_atomic_unregister_does_not_delete_a_value_changed_after_snapshot() {
+        $key = wldelay_get_lockout_transient_key( '198.51.100.30' );
+        wldelay_register_transient_key( $key, time() + HOUR_IN_SECONDS );
+        $snapshot = wldelay_get_transient_registry_record( $key );
+
+        // Simulate the concurrent relock that lands AFTER the snapshot is taken
+        // but BEFORE the delete: the live record now carries a new generation.
+        wldelay_register_transient_key( $key, time() + HOUR_IN_SECONDS );
+
+        $removed = wldelay_unregister_transient_record_if_unchanged( $key, $snapshot );
+
+        $this->assertFalse(
+            $removed,
+            'A record whose value changed after the snapshot must not be deleted'
+        );
+        $this->assertContains(
+            $key,
+            wldelay_get_registered_transient_keys(),
+            'The relocked record (and its live transient) must stay discoverable'
+        );
+    }
+
+    /**
+     * Upgrade window (Codex F2): a legacy no-gen record that a concurrent relock
+     * upgraded to a gen-bearing value during recovery must NOT be deleted by a
+     * legacy snapshot. The atomic delete matches the exact serialized legacy
+     * value, never the upgraded one, so the race cannot reopen mid-rollout.
+     */
+    public function test_legacy_snapshot_does_not_delete_a_concurrently_upgraded_record() {
+        $key    = wldelay_get_lockout_transient_key( '198.51.100.31' );
+        $record = wldelay_get_transient_registry_key_prefix() . md5( $key );
+
+        // Pre-hardening legacy record (no gen) — what recovery snapshots.
+        update_option(
+            $record,
+            array( 'key' => $key, 'exp' => time() + HOUR_IN_SECONDS ),
+            false
+        );
+        $snapshot = wldelay_get_transient_registry_record( $key );
+        $this->assertArrayNotHasKey( 'gen', $snapshot );
+
+        // Concurrent relock upgrades the record to the gen-bearing format.
+        wldelay_register_transient_key( $key, time() + HOUR_IN_SECONDS );
+
+        $removed = wldelay_unregister_transient_record_if_unchanged( $key, $snapshot );
+
+        $this->assertFalse(
+            $removed,
+            'A legacy snapshot must not delete a record a relock upgraded to gen-bearing'
+        );
+        $this->assertContains( $key, wldelay_get_registered_transient_keys() );
+    }
+
+    /**
+     * Null-snapshot path (Codex F2 / Codex-2 F2): when no per-key record existed
+     * at snapshot time, the helper must NOT unconditionally delete a per-key
+     * record — a concurrent relock that created one inside the recovery window
+     * must survive. The legacy shared array is cleared wholesale by the flush
+     * path, so the per-key slot is correctly left to the live writer.
+     */
+    public function test_null_snapshot_does_not_clobber_a_concurrently_created_record() {
+        $key = wldelay_get_lockout_transient_key( '198.51.100.32' );
+
+        // No per-key record exists when recovery snapshots.
+        $this->assertNull( wldelay_get_transient_registry_record( $key ) );
+        $snapshot = wldelay_get_transient_registry_record( $key );
+
+        // Concurrent relock creates a fresh per-key record inside the window.
+        wldelay_register_transient_key( $key, time() + HOUR_IN_SECONDS );
+
+        $removed = wldelay_unregister_transient_record_if_unchanged( $key, $snapshot );
+
+        $this->assertFalse( $removed, 'A null snapshot must be a no-op, not an unconditional delete' );
+        $this->assertContains(
+            $key,
+            wldelay_get_registered_transient_keys(),
+            'The concurrently created record must survive a null-snapshot cleanup'
+        );
     }
 }

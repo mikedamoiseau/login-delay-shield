@@ -353,28 +353,72 @@ function wldelay_get_transient_registry_record( $transient_name ) {
 }
 
 /**
+ * Atomically delete an option ONLY when its stored value is byte-for-byte the
+ * value captured in a snapshot.
+ *
+ * The compare and the delete are a single SQL statement
+ * (DELETE ... WHERE option_name = %s AND option_value = %s), so there is no
+ * read-then-delete window for a concurrent writer to slip a new value into. A
+ * relock that rewrote the option between the snapshot and this call changed
+ * option_value, so the WHERE no longer matches and the row survives. The object
+ * cache is invalidated only when a row was actually removed, keeping a later
+ * get_option() from resurrecting the deleted value from cache (F-2-1 hardening).
+ *
+ * @param string $option_name    Full option name.
+ * @param string $expected_value Serialized option_value captured at snapshot
+ *                               time (as stored in the options table).
+ * @return bool True when the row was removed (value still matched).
+ */
+function wldelay_delete_option_if_value_unchanged( $option_name, $expected_value ) {
+    global $wpdb;
+
+    $deleted = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+            $option_name,
+            $expected_value
+        )
+    );
+
+    if ( $deleted ) {
+        // Keep the object cache coherent with the row we just removed; otherwise
+        // a later get_option() would resurrect the deleted value from cache.
+        wp_cache_delete( $option_name, 'options' );
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Conditionally unregister a transient record only when it is UNCHANGED since a
  * snapshot.
  *
  * Recovery (flush / IP unlock) snapshots the record it intends to remove, clears
- * the transient, then calls this with the snapshot. The record is deleted only
- * when the live record still matches the snapshot's key + exp + gen. A
- * concurrent same-second relock rewrites the record with a NEW gen, so the
- * compare fails and the refreshed record (and its live external-cache transient)
- * is left discoverable for the next flush — closing the orphaning race a
- * key+second-resolution-exp record could not detect (F-2-1 hardening).
+ * the transient, then calls this with the snapshot. The record is deleted
+ * through an ATOMIC compare-and-delete keyed on the exact serialized snapshot
+ * value — there is no read-then-delete window. A concurrent same-second relock
+ * rewrites the record with a NEW gen (and therefore a new serialized value), so
+ * the delete no longer matches and the refreshed record (and its live
+ * external-cache transient) is left discoverable for the next flush — closing
+ * the orphaning race a key+second-resolution-exp record could not detect, and
+ * the read-compare-then-unconditional-delete window the earlier helper still
+ * left open (F-2-1 hardening; Codex & Codex-2 review).
  *
- * Backward compatibility: a snapshot or live record without a 'gen' (legacy
- * key+exp record, or a plain-string round-2 record that snapshots as null) is
- * treated as "gen always matches", so legacy records are never stranded — they
- * still get cleaned by recovery. Likewise a null snapshot (the caller could not
- * read a per-key record, e.g. a legacy shared-array entry) falls back to an
- * unconditional unregister so nothing is left behind.
+ * Backward compatibility: a legacy no-gen snapshot serializes to the legacy
+ * (key,exp) form, so the atomic delete matches ONLY an unchanged legacy record
+ * and never a record a relock upgraded to a gen-bearing value — the upgrade
+ * window cannot reopen the race. A null snapshot means no per-key record existed
+ * when the caller snapshotted (legacy shared-array entry or untracked
+ * transient): there is nothing to compare-and-delete, and deleting the per-key
+ * record unconditionally would clobber one a concurrent relock created inside
+ * the recovery window, so this is a no-op. The legacy shared array is cleared
+ * wholesale by the flush path, so the per-key slot is correctly left untouched.
  *
  * @param string     $transient_name Transient key name (without WordPress prefix).
  * @param array|null $snapshot       Record captured before the transient was
- *                                   cleared, or null to force an unconditional
- *                                   unregister (legacy entry).
+ *                                   cleared, or null when no per-key record
+ *                                   existed at snapshot time.
  * @return bool True when the record was removed.
  */
 function wldelay_unregister_transient_record_if_unchanged( $transient_name, $snapshot ) {
@@ -382,43 +426,17 @@ function wldelay_unregister_transient_record_if_unchanged( $transient_name, $sna
         return false;
     }
 
-    // No snapshot to compare against (legacy shared-array-only entry): fall back
-    // to an unconditional unregister so the record is not stranded.
+    // No per-key record existed at snapshot time: nothing to compare-and-delete.
+    // An unconditional delete here would clobber a record a concurrent relock
+    // created inside the recovery window (Codex/Codex-2 review).
     if ( ! is_array( $snapshot ) ) {
-        wldelay_unregister_transient_key( $transient_name );
-        return true;
-    }
-
-    $current = wldelay_get_transient_registry_record( $transient_name );
-
-    // The per-key record is already gone — nothing to remove, and a concurrent
-    // writer that has not yet re-created it must not be clobbered.
-    if ( null === $current ) {
         return false;
     }
 
-    $key_matches = isset( $current['key'], $snapshot['key'] )
-        && $current['key'] === $snapshot['key'];
-    $exp_matches = isset( $current['exp'], $snapshot['exp'] )
-        && (int) $current['exp'] === (int) $snapshot['exp'];
+    $record_name = wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name );
 
-    // Treat a missing gen (legacy record on either side) as "always matches" so
-    // old records still get cleaned. Only when BOTH carry a gen do we require
-    // them to be equal — that is what distinguishes a concurrent relock.
-    $snapshot_gen = isset( $snapshot['gen'] ) ? (string) $snapshot['gen'] : null;
-    $current_gen  = isset( $current['gen'] ) ? (string) $current['gen'] : null;
-    $gen_matches  = ( null === $snapshot_gen || null === $current_gen )
-        ? true
-        : ( $snapshot_gen === $current_gen );
-
-    if ( $key_matches && $exp_matches && $gen_matches ) {
-        wldelay_unregister_transient_key( $transient_name );
-        return true;
-    }
-
-    // The record changed (a concurrent relock rewrote it with a new gen/exp):
-    // leave it so its live transient stays discoverable by the next flush.
-    return false;
+    // Atomic compare-and-delete against the exact serialized snapshot value.
+    return wldelay_delete_option_if_value_unchanged( $record_name, maybe_serialize( $snapshot ) );
 }
 
 /**
@@ -512,8 +530,15 @@ function wldelay_purge_expired_transient_registry_records() {
             && (int) $value['exp'] > 0
             && (int) $value['exp'] <= $now
         ) {
-            delete_option( $row->option_name );
-            $removed++;
+            // Atomic compare-and-delete against the exact serialized value read
+            // above, not an unconditional delete_option() by name. A concurrent
+            // relock that refreshed this record (new exp/gen) between the SELECT
+            // and here changed option_value, so the delete no longer matches and
+            // the refreshed live record survives — the reaper can no longer
+            // strand a freshly re-registered cache-only transient (Codex F3).
+            if ( wldelay_delete_option_if_value_unchanged( $row->option_name, $row->option_value ) ) {
+                $removed++;
+            }
         }
     }
 
@@ -571,52 +596,67 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     $reset_lockout_ip_key = wldelay_get_password_reset_lockout_transient_key( $ip, '' );
     $reset_fails_ip_key   = wldelay_get_password_reset_failure_transient_key( $ip, '' );
 
+    // Snapshot each registry record BEFORE clearing its transient, then
+    // conditionally unregister through the atomic compare-and-delete. These
+    // directly-derived IP/pair keys previously called unconditional
+    // wldelay_unregister_transient_key(), so a concurrent failed login that
+    // re-registered a key between delete_transient() and the unregister had its
+    // fresh record deleted — orphaning a cache-only transient/failure counter
+    // that unlock then reported gone (Codex F4 / Codex-2 F1).
+    $lockout_ip_snapshot = wldelay_get_transient_registry_record( $lockout_ip_key );
     if ( delete_transient( $lockout_ip_key ) ) {
         $deleted++;
     }
-    wldelay_unregister_transient_key( $lockout_ip_key );
+    wldelay_unregister_transient_record_if_unchanged( $lockout_ip_key, $lockout_ip_snapshot );
 
+    $fails_ip_snapshot = wldelay_get_transient_registry_record( $fails_ip_key );
     if ( delete_transient( $fails_ip_key ) ) {
         $deleted++;
     }
-    wldelay_unregister_transient_key( $fails_ip_key );
+    wldelay_unregister_transient_record_if_unchanged( $fails_ip_key, $fails_ip_snapshot );
 
+    $reset_lockout_ip_snapshot = wldelay_get_transient_registry_record( $reset_lockout_ip_key );
     if ( delete_transient( $reset_lockout_ip_key ) ) {
         $deleted++;
     }
-    wldelay_unregister_transient_key( $reset_lockout_ip_key );
+    wldelay_unregister_transient_record_if_unchanged( $reset_lockout_ip_key, $reset_lockout_ip_snapshot );
 
+    $reset_fails_ip_snapshot = wldelay_get_transient_registry_record( $reset_fails_ip_key );
     if ( delete_transient( $reset_fails_ip_key ) ) {
         $deleted++;
     }
-    wldelay_unregister_transient_key( $reset_fails_ip_key );
+    wldelay_unregister_transient_record_if_unchanged( $reset_fails_ip_key, $reset_fails_ip_snapshot );
 
     if ( ! empty( $username ) ) {
         $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
 
-        $lockout_pair_key = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
+        $lockout_pair_key      = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
+        $lockout_pair_snapshot = wldelay_get_transient_registry_record( $lockout_pair_key );
         if ( $lockout_pair_key !== $lockout_ip_key && delete_transient( $lockout_pair_key ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $lockout_pair_key );
+        wldelay_unregister_transient_record_if_unchanged( $lockout_pair_key, $lockout_pair_snapshot );
 
-        $fails_pair_key = wldelay_get_failure_transient_key( $ip, $username, $pair_options );
+        $fails_pair_key      = wldelay_get_failure_transient_key( $ip, $username, $pair_options );
+        $fails_pair_snapshot = wldelay_get_transient_registry_record( $fails_pair_key );
         if ( $fails_pair_key !== $fails_ip_key && delete_transient( $fails_pair_key ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $fails_pair_key );
+        wldelay_unregister_transient_record_if_unchanged( $fails_pair_key, $fails_pair_snapshot );
 
-        $reset_lockout_pair_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $pair_options );
+        $reset_lockout_pair_key      = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $pair_options );
+        $reset_lockout_pair_snapshot = wldelay_get_transient_registry_record( $reset_lockout_pair_key );
         if ( $reset_lockout_pair_key !== $reset_lockout_ip_key && delete_transient( $reset_lockout_pair_key ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $reset_lockout_pair_key );
+        wldelay_unregister_transient_record_if_unchanged( $reset_lockout_pair_key, $reset_lockout_pair_snapshot );
 
-        $reset_fails_pair_key = wldelay_get_password_reset_failure_transient_key( $ip, $username, $pair_options );
+        $reset_fails_pair_key      = wldelay_get_password_reset_failure_transient_key( $ip, $username, $pair_options );
+        $reset_fails_pair_snapshot = wldelay_get_transient_registry_record( $reset_fails_pair_key );
         if ( $reset_fails_pair_key !== $reset_fails_ip_key && delete_transient( $reset_fails_pair_key ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $reset_fails_pair_key );
+        wldelay_unregister_transient_record_if_unchanged( $reset_fails_pair_key, $reset_fails_pair_snapshot );
     }
 
     $store = wldelay_get_persistence_store();
@@ -728,12 +768,13 @@ function wldelay_flush_lockout_transients() {
         }
 
         // Snapshot the record BEFORE clearing the transient, then conditionally
-        // unregister. A concurrent same-second relock rewrites the record with a
-        // new gen; the compare-and-delete leaves that refreshed record in place
-        // so its live external-cache transient stays discoverable by the next
-        // flush instead of being orphaned (F-2-1 hardening). A legacy record
-        // (no gen, or a shared-array-only entry snapshotting as null) still gets
-        // cleaned — see wldelay_unregister_transient_record_if_unchanged().
+        // unregister via the atomic compare-and-delete. A concurrent same-second
+        // relock rewrites the record with a new gen; the compare-and-delete
+        // leaves that refreshed record in place so its live external-cache
+        // transient stays discoverable by the next flush instead of being
+        // orphaned (F-2-1 hardening). The legacy shared array is cleared
+        // wholesale below, so a shared-array-only entry (null snapshot) needs no
+        // per-key delete — see wldelay_unregister_transient_record_if_unchanged().
         $record_snapshot = wldelay_get_transient_registry_record( $transient_name );
         if ( delete_transient( $transient_name ) ) {
             $deleted++;
