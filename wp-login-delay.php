@@ -5130,3 +5130,247 @@ function wldelay_filter_retrieve_password_message( $message, $key, $user_login, 
     return str_replace( $old_url, $new_url, $message );
 }
 add_filter( 'retrieve_password_message', 'wldelay_filter_retrieve_password_message', 10, 4 );
+
+// ==========================================================================
+// Login page lockout feedback (F-1-4)
+//
+// Pure frontend presentation over the existing auth/lockout data. Surfaces a
+// distinct, accessible status block on wp-login.php when the current IP is
+// locked, with a live countdown and a help link. No backend/auth behaviour
+// change and no new option keys — every value is derived from the existing
+// lockout helpers.
+// ==========================================================================
+
+/**
+ * Resolve the "Need help getting in?" link target for the login feedback block.
+ *
+ * Defaults to the site's lost-password URL (respecting any custom-login-slug
+ * filter already applied to lostpassword_url) and is filterable so site owners
+ * can point it at a support/docs page instead.
+ *
+ * @return string Help URL (unescaped; escape at output).
+ */
+function wldelay_login_help_url() {
+    /**
+     * Filter the help link shown in the login lockout feedback block.
+     *
+     * @param string $url Default help URL (the site's lost-password URL).
+     */
+    return apply_filters( 'wldelay_login_help_url', wp_lostpassword_url() );
+}
+
+/**
+ * Format a remaining-seconds value as a compact M:SS countdown string.
+ *
+ * Used for the static (no-JS) seed text; the inline JS reproduces the same
+ * format as it ticks down so the displayed value is consistent.
+ *
+ * @param int $seconds Remaining seconds (>= 0).
+ * @return string e.g. "1:59" or "0:08".
+ */
+function wldelay_format_countdown( $seconds ) {
+    $seconds = max( 0, (int) $seconds );
+    $minutes = (int) floor( $seconds / 60 );
+    $rest    = $seconds % 60;
+
+    return sprintf( '%d:%02d', $minutes, $rest );
+}
+
+/**
+ * Build the distinct, accessible lockout feedback block markup.
+ *
+ * Returns an empty string when the lockout feature is disabled or the current
+ * IP is not locked, so callers can safely concatenate the result. All dynamic
+ * values (remaining seconds, countdown text, help URL) are escaped here.
+ *
+ * @return string HTML for the block, or '' when nothing should render.
+ */
+function wldelay_render_login_lockout_block() {
+    $options = wldelay_get_options();
+
+    if ( empty( $options['wldelay_lockout_enabled'] ) ) {
+        return '';
+    }
+
+    $username = wldelay_get_requested_login_username();
+
+    if ( ! wldelay_is_ip_locked( null, $username ) ) {
+        return '';
+    }
+
+    $remaining = wldelay_get_lockout_remaining_seconds( null, $username );
+
+    // Human-readable static fallback (shown when JS is off). human_time_diff
+    // gives a friendly "2 minutes" phrasing matching the WP error line.
+    $human_remaining = ( $remaining > 0 )
+        ? human_time_diff( time(), time() + $remaining )
+        : '';
+
+    $countdown_seed = wldelay_format_countdown( $remaining );
+
+    if ( $remaining > 0 ) {
+        $intro = sprintf(
+            /* translators: %s: human-readable remaining lockout time, e.g. "2 minutes". */
+            __( 'Too many failed login attempts. You can try again in %s.', 'login-delay-shield' ),
+            $human_remaining
+        );
+    } else {
+        $intro = __( 'You can try again now.', 'login-delay-shield' );
+    }
+
+    $help_url   = wldelay_login_help_url();
+    $help_label = __( 'Need help getting in?', 'login-delay-shield' );
+    $ready_text = __( 'You can try again now.', 'login-delay-shield' );
+    $prefix     = __( 'Try again in', 'login-delay-shield' );
+
+    $html  = '<div class="wldelay-login-status wldelay-login-status--locked" role="alert" aria-live="assertive">';
+    $html .= '<p class="wldelay-login-status__intro">' . esc_html( $intro ) . '</p>';
+    // The countdown line carries the seed seconds + ready text for the JS.
+    $html .= '<p class="wldelay-login-status__countdown"'
+        . ' data-wldelay-remaining="' . esc_attr( (string) max( 0, (int) $remaining ) ) . '"'
+        . ' data-wldelay-prefix="' . esc_attr( $prefix ) . '"'
+        . ' data-wldelay-ready="' . esc_attr( $ready_text ) . '">'
+        . esc_html( $prefix ) . ' <span class="wldelay-login-status__time">' . esc_html( $countdown_seed ) . '</span>'
+        . '</p>';
+    $html .= '<p class="wldelay-login-status__help">'
+        . '<a href="' . esc_url( $help_url ) . '">' . esc_html( $help_label ) . '</a>'
+        . '</p>';
+    $html .= '</div>';
+
+    return $html;
+}
+
+/**
+ * login_message filter: prepend the rich lockout block above the login form.
+ *
+ * Augments (does not replace) WordPress's own messaging. Returns the input
+ * unchanged when nothing should render, so a normal login page is untouched.
+ *
+ * @param string $message Existing login message markup.
+ * @return string
+ */
+function wldelay_login_message_lockout( $message ) {
+    $block = wldelay_render_login_lockout_block();
+
+    if ( '' === $block ) {
+        return $message;
+    }
+
+    return $block . $message;
+}
+add_filter( 'login_message', 'wldelay_login_message_lockout' );
+
+/**
+ * wp_login_errors filter: present the attempts-remaining warning in the same
+ * distinct styling so the user notices it.
+ *
+ * The auth code adds the 'wldelay_attempts_remaining' code to the WP_Error; we
+ * only wrap a marker class around the existing (unchanged) message so the login
+ * page CSS can style it as a warning variant. The message text is not altered.
+ *
+ * @param WP_Error $errors      Login errors.
+ * @param string   $redirect_to Redirect target (unused).
+ * @return WP_Error
+ */
+function wldelay_login_errors_warning( $errors, $redirect_to = '' ) {
+    if ( ! is_wp_error( $errors ) ) {
+        return $errors;
+    }
+
+    $messages = $errors->get_error_messages( 'wldelay_attempts_remaining' );
+    if ( empty( $messages ) ) {
+        return $errors;
+    }
+
+    // Re-wrap each attempts-remaining message with a warning marker. The text
+    // is escaped because WordPress prints login error messages without
+    // additional escaping.
+    $errors->remove( 'wldelay_attempts_remaining' );
+    foreach ( $messages as $msg ) {
+        $errors->add(
+            'wldelay_attempts_remaining',
+            '<span class="wldelay-login-warning">' . esc_html( $msg ) . '</span>'
+        );
+    }
+
+    return $errors;
+}
+add_filter( 'wp_login_errors', 'wldelay_login_errors_warning', 10, 2 );
+
+/**
+ * Inline login-page CSS for the feedback block.
+ *
+ * Scoped to login hooks only — admin.css is NOT loaded here. Kept small and
+ * CSP-friendly (no external assets).
+ */
+function wldelay_login_feedback_styles() {
+    $options = wldelay_get_options();
+    if ( empty( $options['wldelay_lockout_enabled'] ) ) {
+        return;
+    }
+
+    $css = '
+.wldelay-login-status{margin:0 0 16px;padding:14px 16px;border-left:4px solid #d63638;background:#fcf0f1;border-radius:3px;color:#1d2327;}
+.wldelay-login-status__intro{margin:0 0 6px;font-weight:600;}
+.wldelay-login-status__countdown{margin:0 0 6px;font-size:13px;}
+.wldelay-login-status__time{font-variant-numeric:tabular-nums;font-weight:600;}
+.wldelay-login-status__help{margin:0;font-size:13px;}
+.wldelay-login-status.is-ready{border-left-color:#00a32a;background:#edfaef;}
+.wldelay-login-warning{display:inline-block;border-left:4px solid #dba617;padding-left:8px;}
+';
+
+    wp_register_style( 'wldelay-login-feedback', false );
+    wp_enqueue_style( 'wldelay-login-feedback' );
+    wp_add_inline_style( 'wldelay-login-feedback', $css );
+}
+add_action( 'login_enqueue_scripts', 'wldelay_login_feedback_styles' );
+
+/**
+ * Inline, unobtrusive countdown JS printed in the login footer.
+ *
+ * Reads the seed seconds from the block's data attribute and ticks the time
+ * down each second, updating the visible M:SS text. On reaching zero it swaps
+ * in the "ready" message and re-enables the submit button. No external assets,
+ * no eval — CSP friendly. With JS off, the static seeded text remains visible.
+ */
+function wldelay_login_feedback_script() {
+    // Only emit the script when a block is actually rendered, to avoid adding
+    // inert script to every login page view.
+    if ( '' === wldelay_render_login_lockout_block() ) {
+        return;
+    }
+
+    ?>
+<script>
+(function(){
+    var el = document.querySelector('.wldelay-login-status__countdown');
+    if(!el){return;}
+    var remaining = parseInt(el.getAttribute('data-wldelay-remaining'), 10);
+    if(isNaN(remaining)){return;}
+    var prefix = el.getAttribute('data-wldelay-prefix') || '';
+    var ready = el.getAttribute('data-wldelay-ready') || '';
+    var timeEl = el.querySelector('.wldelay-login-status__time');
+    var box = el.closest('.wldelay-login-status');
+    function fmt(s){var m=Math.floor(s/60);var r=s%60;return m + ':' + (r<10?'0':'') + r;}
+    function finish(){
+        el.textContent = ready;
+        if(box){box.classList.add('is-ready');}
+        var btn = document.getElementById('wp-submit');
+        if(btn){btn.disabled = false;}
+        var form = document.getElementById('loginform');
+        if(form){
+            var inputs = form.querySelectorAll('input, button');
+            for(var i=0;i<inputs.length;i++){inputs[i].disabled = false;}
+        }
+    }
+    if(remaining <= 0){finish();return;}
+    var timer = setInterval(function(){
+        remaining -= 1;
+        if(remaining <= 0){clearInterval(timer);finish();return;}
+        if(timeEl){timeEl.textContent = fmt(remaining);}
+    }, 1000);
+})();
+</script>
+    <?php
+}
+add_action( 'login_footer', 'wldelay_login_feedback_script' );
