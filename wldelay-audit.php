@@ -106,6 +106,7 @@ function wldelay_create_audit_table() {
  *     @type mixed  $old_value Previous value (scalar or array; arrays are JSON-encoded).
  *     @type mixed  $new_value New value (scalar or array; arrays are JSON-encoded).
  * }
+ * @return int|false Inserted row id, or false when the audit write failed.
  */
 function wldelay_audit_log( $action, array $args = array() ) {
     $action = substr( (string) $action, 0, 50 );
@@ -144,7 +145,10 @@ function wldelay_audit_log( $action, array $args = array() ) {
     // path rather than being deferred. Admin/security actions are low-frequency
     // (a handful per session, never in a hot loop), so the synchronous write
     // adds no meaningful latency.
-    wldelay_audit_write_row( $row );
+    //
+    // The write result is returned so callers (and the integrity marker below)
+    // can react to a failed audit INSERT rather than discarding it.
+    return wldelay_audit_write_row( $row );
 }
 
 /**
@@ -217,18 +221,124 @@ function wldelay_audit_write_row( array $row ) {
         // the operator log so the gap is detectable rather than silent. Not
         // gated on WP_DEBUG: production sites (WP_DEBUG off) must still see a
         // failed audit write. Mirrors wldelay_note_persistence_failure().
+        $last_error = is_object( $wpdb ) && isset( $wpdb->last_error ) ? $wpdb->last_error : 'unknown error';
+
         error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
             sprintf(
                 'WP Login Delay: audit-log write failed for action "%s" (%s) — entry not recorded.',
                 isset( $data['action'] ) ? $data['action'] : '',
-                is_object( $wpdb ) && isset( $wpdb->last_error ) ? $wpdb->last_error : 'unknown error'
+                $last_error
             )
         );
+
+        // Persist an admin-visible integrity marker so the gap is detectable
+        // from the plugin UI, not just the operator log (which may be
+        // unavailable or unmonitored in production). The marker is stored as a
+        // standalone option — NOT in the audit table — so it survives the very
+        // failure it records (table outage / schema fault).
+        wldelay_record_audit_write_failure( isset( $data['action'] ) ? (string) $data['action'] : '', $last_error );
 
         return false;
     }
 
+    // A verified successful write clears any prior integrity marker: the audit
+    // pipeline is demonstrably healthy again.
+    wldelay_clear_audit_write_failure();
+
     return (int) $wpdb->insert_id;
+}
+
+/**
+ * Option key for the audit-integrity health marker.
+ *
+ * Stored as a standalone wp_option (NOT a row in the audit table) so the signal
+ * survives the failure it records — a table outage or schema fault that blocks
+ * audit INSERTs must not also blank the "trail is incomplete" warning.
+ */
+if ( ! defined( 'WLDELAY_AUDIT_HEALTH_OPTION' ) ) {
+    define( 'WLDELAY_AUDIT_HEALTH_OPTION', 'wldelay_audit_health' );
+}
+
+/**
+ * Record that an audit write failed, for admin-visible surfacing.
+ *
+ * Fires an action (parity with wldelay_note_persistence_failure so monitoring
+ * can hook it) and persists a durable marker capturing the last failure time,
+ * the action that was lost, and a running failure count since the last
+ * recovery. Best-effort: if the options store is itself the failure, the marker
+ * may not stick — the error_log line is the backstop in that case.
+ *
+ * @param string $action Action key whose audit row could not be written.
+ * @param string $error  DB error string (for operator context; not displayed raw).
+ */
+function wldelay_record_audit_write_failure( $action, $error = '' ) {
+    if ( function_exists( 'do_action' ) ) {
+        /**
+         * Fires when an audit-log row could not be written.
+         *
+         * @param string $action Action key whose audit row was lost.
+         * @param string $error  DB error string.
+         */
+        do_action( 'wldelay_audit_write_failed', $action, $error );
+    }
+
+    if ( ! function_exists( 'update_option' ) || ! function_exists( 'get_option' ) ) {
+        return;
+    }
+
+    $existing = get_option( WLDELAY_AUDIT_HEALTH_OPTION, array() );
+    $count    = ( is_array( $existing ) && isset( $existing['count'] ) ) ? (int) $existing['count'] : 0;
+
+    update_option(
+        WLDELAY_AUDIT_HEALTH_OPTION,
+        array(
+            'failed_at'   => current_time( 'mysql', true ),
+            'last_action' => substr( (string) $action, 0, 50 ),
+            'count'       => $count + 1,
+        ),
+        false // Not autoloaded: only read on the plugin admin screen.
+    );
+}
+
+/**
+ * Clear the audit-integrity marker after a verified successful write.
+ */
+function wldelay_clear_audit_write_failure() {
+    if ( ! function_exists( 'get_option' ) || ! function_exists( 'delete_option' ) ) {
+        return;
+    }
+
+    // Cheap guard: only touch the store when a marker is actually set, so the
+    // common (healthy) path stays a single read.
+    if ( false !== get_option( WLDELAY_AUDIT_HEALTH_OPTION, false ) ) {
+        delete_option( WLDELAY_AUDIT_HEALTH_OPTION );
+    }
+}
+
+/**
+ * Current audit-integrity health state.
+ *
+ * @return array|false Marker array (failed_at/last_action/count), or false when
+ *                     the audit pipeline is healthy.
+ */
+function wldelay_get_audit_health() {
+    if ( ! function_exists( 'get_option' ) ) {
+        return false;
+    }
+
+    $marker = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
+
+    return ( is_array( $marker ) && ! empty( $marker ) ) ? $marker : false;
+}
+
+/**
+ * Whether the audit trail is known to be incomplete (a write has failed and
+ * not yet recovered).
+ *
+ * @return bool
+ */
+function wldelay_audit_log_is_degraded() {
+    return false !== wldelay_get_audit_health();
 }
 
 // Register the deferred audit-write handler at boot so any request can enqueue a
@@ -649,4 +759,38 @@ function wldelay_audit_lockout_cleared( $ip, $username = '', $removed = 0 ) {
             'new_value' => array( 'removed_rows' => (int) $removed ),
         )
     );
+}
+
+/**
+ * Admin notice: warn that the audit trail is known to be incomplete.
+ *
+ * Renders a dismissible-free error notice on the plugin settings screen when an
+ * audit write has failed and not yet recovered. This is the admin-visible
+ * integrity signal: without it the read-only Audit Log UI would look
+ * authoritative while silently missing security-relevant events. Scoped to the
+ * plugin page (the inline warning above the log carries the same signal in
+ * context) and to users who can act on it.
+ */
+function wldelay_render_audit_health_notice() {
+    if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    if ( ! isset( $_GET['page'] ) || 'login-delay-shield-admin' !== $_GET['page'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        return;
+    }
+
+    if ( ! wldelay_audit_log_is_degraded() ) {
+        return;
+    }
+
+    echo '<div class="notice notice-error"><p><strong>'
+        . esc_html__( 'Login Delay Shield', 'login-delay-shield' ) . '</strong> — '
+        . esc_html__( 'One or more audit-log entries could not be written. The audit trail below may be incomplete. Check your database/error log; the warning clears automatically once auditing succeeds again.', 'login-delay-shield' )
+        . '</p></div>';
+}
+
+// Guarded so the module stays loadable in the unit suite (no WP runtime).
+if ( function_exists( 'add_action' ) ) {
+    add_action( 'admin_notices', 'wldelay_render_audit_health_notice' );
 }

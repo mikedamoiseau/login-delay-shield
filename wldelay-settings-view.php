@@ -814,6 +814,12 @@ class LDS_Settings_View {
         <div class="wldelay-audit" aria-labelledby="wldelay-audit-title">
             <h3 id="wldelay-audit-title" class="screen-reader-text"><?php esc_html_e( 'Audit log entries', 'login-delay-shield' ); ?></h3>
 
+            <?php if ( function_exists( 'wldelay_audit_log_is_degraded' ) && wldelay_audit_log_is_degraded() ) : ?>
+                <div class="notice notice-error inline" role="alert">
+                    <p><?php esc_html_e( 'One or more audit-log entries could not be written, so this trail may be incomplete. The warning clears automatically once an audit write succeeds again.', 'login-delay-shield' ); ?></p>
+                </div>
+            <?php endif; ?>
+
             <div class="wldelay-telemetry-filters">
                 <input form="wldelay-audit-filter-form" type="hidden" name="page" value="login-delay-shield-admin" />
                 <div class="wldelay-filter-grid">

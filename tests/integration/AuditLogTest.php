@@ -23,6 +23,10 @@ class AuditLogTest extends WP_UnitTestCase {
         if ( function_exists( 'wldelay_reset_deferred_tasks' ) ) {
             wldelay_reset_deferred_tasks();
         }
+
+        // Clear any audit-integrity marker left by a prior test so the
+        // degraded-state assertions start from a healthy baseline.
+        delete_option( 'wldelay_audit_health' );
     }
 
     /**
@@ -294,6 +298,78 @@ class AuditLogTest extends WP_UnitTestCase {
 
         // The mangled write must not have left a row behind.
         $this->assertSame( 0, (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ) );
+
+        // The failure must raise the admin-visible integrity marker so the
+        // read-only UI can warn that the trail is incomplete (review fix).
+        $this->assertTrue(
+            wldelay_audit_log_is_degraded(),
+            'A failed audit write must set the integrity marker'
+        );
+        $health = wldelay_get_audit_health();
+        $this->assertSame( 'settings_changed', $health['last_action'] );
+        $this->assertSame( 1, (int) $health['count'] );
+    }
+
+    /**
+     * Once the audit pipeline recovers, a verified successful write clears the
+     * integrity marker so the admin warning does not linger forever (review fix:
+     * the marker tracks current health, not a permanent flag).
+     */
+    public function test_integrity_marker_clears_after_successful_write() {
+        // Seed a failure marker directly (as a prior failed write would).
+        wldelay_record_audit_write_failure( 'settings_changed', 'simulated outage' );
+        $this->assertTrue( wldelay_audit_log_is_degraded(), 'Precondition: marker is set' );
+
+        // A successful write proves the pipeline is healthy again.
+        $id = wldelay_audit_write_row( array(
+            'action'     => 'settings_changed',
+            'actor_id'   => 1,
+            'created_at' => current_time( 'mysql', true ),
+        ) );
+
+        $this->assertNotFalse( $id, 'The recovery write must succeed' );
+        $this->assertFalse(
+            wldelay_audit_log_is_degraded(),
+            'A successful write must clear the integrity marker'
+        );
+    }
+
+    /**
+     * A privileged settings change made while the audit table is unwritable must
+     * still complete (fail-open: a DB hiccup must not lock an admin out of their
+     * own settings), but it must leave the admin-visible integrity marker set so
+     * the gap is detectable from the UI rather than silent (review fix).
+     */
+    public function test_settings_change_during_audit_failure_is_flagged() {
+        $user_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $user_id );
+
+        $table = wldelay_get_audit_table_name();
+        $break = static function ( $query ) use ( $table ) {
+            if ( 0 === stripos( ltrim( $query ), 'INSERT' ) && false !== strpos( $query, $table ) ) {
+                return 'INSERT INTO'; // Syntax error -> the audit write fails.
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        global $wpdb;
+        $suppress = $wpdb->suppress_errors( true );
+
+        // The mutation itself must succeed even though its audit row cannot be
+        // written.
+        $changed = update_option( WLDELAY_OPTION_NAME, array( 'wldelay_delay' => 9 ) );
+
+        $wpdb->suppress_errors( $suppress );
+        remove_filter( 'query', $break );
+
+        $this->assertTrue( $changed, 'The settings mutation must complete (fail-open)' );
+        $this->assertTrue(
+            wldelay_audit_log_is_degraded(),
+            'A failed audit write during a settings change must flag the trail as incomplete'
+        );
+
+        wp_set_current_user( 0 );
     }
 
     /**
