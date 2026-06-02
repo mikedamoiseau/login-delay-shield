@@ -17,6 +17,21 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 // installs without depending on a user-facing release version bump.
 define( 'WLDELAY_DB_VERSION', '6' );
 
+// Dashboard widget sub-cache keys (F-4-1). The widget data was previously held
+// in a single transient that was deleted on every failed login, which thrashed
+// the expensive 7-day trends aggregate under a brute-force attack. The data is
+// now split into two independent transients with their own TTLs so a failed
+// attempt invalidates only the cheap fast-moving "recent attempts" list while
+// the expensive aggregate rides its own TTL (slight staleness is acceptable on
+// a dashboard).
+define( 'WLDELAY_DASH_RECENT_CACHE', 'wldelay_dash_recent' );
+define( 'WLDELAY_DASH_TRENDS_CACHE', 'wldelay_dash_trends' );
+// Recent attempts change on every failed login; keep the TTL short.
+define( 'WLDELAY_DASH_RECENT_TTL', MINUTE_IN_SECONDS );
+// Trends are expensive aggregates; let them age out on their own longer TTL and
+// never get invalidated by an individual failed attempt.
+define( 'WLDELAY_DASH_TRENDS_TTL', 5 * MINUTE_IN_SECONDS );
+
 /*
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
@@ -2274,24 +2289,21 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 }
 
 function wldelay_dashboard_widget_content() {
-    $cache_key = 'wldelay_dashboard_attempts';
-    $dashboard_data = get_transient( $cache_key );
-
-    if (
-        false === $dashboard_data ||
-        ! is_array( $dashboard_data ) ||
-        ! isset( $dashboard_data['attempts'] ) ||
-        ! isset( $dashboard_data['trends'] )
-    ) {
-        $dashboard_data = array(
-            'attempts' => wldelay_get_recent_failed_attempts( 10 ),
-            'trends'   => wldelay_get_failed_login_trends( 7 ),
-        );
-        set_transient( $cache_key, $dashboard_data, 2 * MINUTE_IN_SECONDS );
+    // Independent sub-caches (F-4-1): the cheap recent-attempts list and the
+    // expensive 7-day trends aggregate each have their own key and TTL, and each
+    // is rebuilt independently on miss so invalidating one never recomputes the
+    // other.
+    $attempts = get_transient( WLDELAY_DASH_RECENT_CACHE );
+    if ( false === $attempts || ! is_array( $attempts ) ) {
+        $attempts = wldelay_get_recent_failed_attempts( 10 );
+        set_transient( WLDELAY_DASH_RECENT_CACHE, $attempts, WLDELAY_DASH_RECENT_TTL );
     }
 
-    $attempts = $dashboard_data['attempts'];
-    $trends   = $dashboard_data['trends'];
+    $trends = get_transient( WLDELAY_DASH_TRENDS_CACHE );
+    if ( false === $trends || ! is_array( $trends ) ) {
+        $trends = wldelay_get_failed_login_trends( 7 );
+        set_transient( WLDELAY_DASH_TRENDS_CACHE, $trends, WLDELAY_DASH_TRENDS_TTL );
+    }
 
     if ( empty( $attempts ) ) {
         echo '<p>' . esc_html__( 'No failed login attempts recorded.', 'login-delay-shield' ) . '</p>';
@@ -2839,9 +2851,12 @@ function wldelay_cleanup_old_logs() {
         }
     } while ( $deleted === $batch_size );
 
-    // Invalidate dashboard widget cache after cleanup
+    // A bulk log deletion changes both fast-moving and aggregate data, so unlike
+    // a single failed attempt this correctly invalidates BOTH sub-caches (F-4-1)
+    // — the 7-day trends are genuinely stale once old rows are gone.
     if ( $total_deleted > 0 ) {
-        delete_transient( 'wldelay_dashboard_attempts' );
+        delete_transient( WLDELAY_DASH_RECENT_CACHE );
+        delete_transient( WLDELAY_DASH_TRENDS_CACHE );
     }
 }
 add_action( 'wldelay_cleanup_logs', 'wldelay_cleanup_old_logs' );
@@ -4161,8 +4176,11 @@ function wldelay_log_failed_attempt( $ip, $username, $source = null ) {
         array( '%s', '%s', '%s', '%s' )
     );
 
-    // Invalidate dashboard widget cache so new attempts appear immediately
-    delete_transient( 'wldelay_dashboard_attempts' );
+    // Invalidate ONLY the cheap recent-attempts sub-cache so the new attempt
+    // appears immediately (F-4-1). The expensive 7-day trends aggregate is
+    // intentionally left to expire on its own TTL — invalidating it per attempt
+    // is what thrashed the cache under brute-force load.
+    delete_transient( WLDELAY_DASH_RECENT_CACHE );
 
     wldelay_write_fail2ban_log( 'failed login', $ip, $username, $source );
 }

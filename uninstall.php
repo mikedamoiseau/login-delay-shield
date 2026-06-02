@@ -90,7 +90,12 @@ function wldelay_uninstall_cleanup_site() {
             }
         }
     }
-    delete_transient( 'wldelay_dashboard_attempts' );
+    // Dashboard widget sub-caches (F-4-1). Literal keys: plugin constants are not
+    // loaded during uninstall. Older installs used the single
+    // 'wldelay_dashboard_attempts' transient, which no longer exists, so it is
+    // not cleared here — it ages out on its own TTL well before uninstall.
+    delete_transient( 'wldelay_dash_recent' );
+    delete_transient( 'wldelay_dash_trends' );
 
     // Remove plugin options.
     delete_option( 'wldelay_options' );
