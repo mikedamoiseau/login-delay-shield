@@ -28,6 +28,7 @@ class AuditLogTest extends WP_UnitTestCase {
         // degraded-state assertions start from a healthy baseline.
         delete_option( 'wldelay_audit_health' );
         delete_option( 'wldelay_audit_ack' );
+        delete_option( 'wldelay_audit_recovery' );
     }
 
     /**
@@ -343,6 +344,73 @@ class AuditLogTest extends WP_UnitTestCase {
         $health = wldelay_get_audit_health();
         $this->assertNotEmpty( $health['recovered_at'], 'Recovery time must be recorded' );
         $this->assertSame( 1, (int) $health['count'], 'Failure count is preserved as forensic evidence' );
+    }
+
+    /**
+     * A recovery note that completes AFTER a fresh failure has landed must not
+     * silence that newer, unacknowledged gap, nor revert the failure count.
+     * Guards the round-6 race: recovery used to read-modify-write the SAME
+     * health option as the failure recorder, so a stale recovery could overwrite
+     * a newer failure (count 2 -> 1) and — if the older generation was
+     * acknowledged — flip is_degraded() to false. Recovery now writes its own
+     * option and is generation-tagged, so it can never clobber the health marker
+     * (review fix).
+     */
+    public function test_recovery_cannot_clobber_a_concurrent_failure() {
+        // Generation 1: a failure the admin sees and acknowledges.
+        wldelay_record_audit_write_failure( 'settings_changed', 'outage one' );
+        $this->assertTrue( wldelay_acknowledge_audit_gap( 1, 1 ) );
+        $this->assertFalse( wldelay_audit_log_is_degraded(), 'Precondition: generation 1 acknowledged' );
+
+        // Generation 2: a fresh, unacknowledged failure lands (the "concurrent"
+        // failure). The warning must reopen.
+        wldelay_record_audit_write_failure( 'lockout_cleared', 'outage two' );
+        $this->assertTrue( wldelay_audit_log_is_degraded(), 'A fresh failure reopens the warning' );
+
+        // A recovery write now completes — modelling the recovery whose stale
+        // read raced the generation-2 failure. Under the old shared-option
+        // design this reverted count to 1 and silenced the gap.
+        wldelay_note_audit_write_recovered();
+
+        // The newer gap must remain raised and the count must not regress.
+        $this->assertTrue(
+            wldelay_audit_log_is_degraded(),
+            'Recovery must NOT silence the newer, unacknowledged gap'
+        );
+        $health = wldelay_get_audit_health();
+        $this->assertSame( 2, (int) $health['count'], 'Recovery must not revert the failure count' );
+
+        // Recovery DID correspond to generation 2 here, so its stamp may surface;
+        // what matters is the gap stays open until generation 2 is acknowledged.
+        $this->assertTrue( wldelay_acknowledge_audit_gap( 1, 2 ) );
+        $this->assertFalse( wldelay_audit_log_is_degraded(), 'Acknowledging the current generation clears it' );
+    }
+
+    /**
+     * A recovery recorded for an OLD generation is suppressed once a newer
+     * failure supersedes it: the merged health record must not present a stale
+     * "recovered" stamp on a still-open, never-recovered newer gap (review fix —
+     * generation-gated recovery merge).
+     */
+    public function test_stale_recovery_stamp_is_suppressed_after_newer_failure() {
+        // Generation 1 fails, then recovers — recovered_count = 1.
+        wldelay_record_audit_write_failure( 'settings_changed', 'outage one' );
+        wldelay_note_audit_write_recovered();
+        $health = wldelay_get_audit_health();
+        $this->assertNotEmpty( $health['recovered_at'], 'Recovery for generation 1 is recorded' );
+
+        // Generation 2 fails and never recovers.
+        wldelay_record_audit_write_failure( 'lockout_cleared', 'outage two' );
+
+        // The generation-1 recovery is now stale (recovered_count 1 < count 2)
+        // and must not surface as if the generation-2 gap had healed.
+        $health = wldelay_get_audit_health();
+        $this->assertSame( 2, (int) $health['count'] );
+        $this->assertArrayNotHasKey(
+            'recovered_at',
+            $health,
+            'A stale recovery stamp must be suppressed after a newer failure'
+        );
     }
 
     /**

@@ -280,6 +280,24 @@ if ( ! defined( 'WLDELAY_AUDIT_ACK_OPTION' ) ) {
 }
 
 /**
+ * Option key for the audit-pipeline recovery note.
+ *
+ * A THIRD standalone option, separate from both the health marker and the
+ * acknowledgement watermark, for the same reason they are split: the recovery
+ * note is a read-modify-write, and if it shared the health option it could
+ * clobber a concurrent failure (recovery reads count=1, a fresh failure writes
+ * count=2, recovery writes its stale count=1 back — erasing the newer gap and,
+ * if generation 1 was acknowledged, flipping the warning off). Each of the
+ * three mutators now owns exactly one option, so no writer can overwrite
+ * another's generation. Recovery is tagged with the failure generation it
+ * observed (recovered_count) so the merge can suppress a stale recovery once a
+ * newer failure supersedes it.
+ */
+if ( ! defined( 'WLDELAY_AUDIT_RECOVERY_OPTION' ) ) {
+    define( 'WLDELAY_AUDIT_RECOVERY_OPTION', 'wldelay_audit_recovery' );
+}
+
+/**
  * Record that an audit write failed, for admin-visible surfacing.
  *
  * Fires an action (parity with wldelay_note_persistence_failure so monitoring
@@ -326,9 +344,10 @@ function wldelay_record_audit_write_failure( $action, $error = '' ) {
             // A fresh failure bumps the generation past any acknowledged
             // watermark, so wldelay_audit_log_is_degraded() reopens the warning
             // automatically — no need to touch the (separate) ack option here.
-            // Drop the prior recovery note so a stale recovered_at can't imply
-            // this new failure already healed.
-            'recovered_at' => null,
+            // The (separate) recovery note is likewise left untouched: bumping
+            // 'count' past its recorded recovered_count makes it stale, and the
+            // merge in wldelay_get_audit_health() suppresses a stale recovery,
+            // so a prior recovered_at cannot imply this new failure healed.
         ),
         false // Not autoloaded: only read on the plugin admin screen.
     );
@@ -337,10 +356,16 @@ function wldelay_record_audit_write_failure( $action, $error = '' ) {
 /**
  * Note that the audit pipeline recovered (a write succeeded after a failure).
  *
- * Records the recovery time on the existing integrity marker but deliberately
- * does NOT delete it: the rows lost during the outage stay lost, so the
- * trail-incomplete warning must persist until an administrator acknowledges the
- * gap. Cheap on the healthy path — when no marker exists this is a single read.
+ * Writes ONLY the standalone recovery option (WLDELAY_AUDIT_RECOVERY_OPTION),
+ * never the health marker, so a recovery can never clobber a concurrent failure
+ * (the round-6 race: recovery's stale read-modify-write of the health option
+ * could revert a newer failure's count and silence an unacknowledged gap). The
+ * note is tagged with the failure generation it observed (recovered_count) so a
+ * later, larger failure count makes this recovery stale; the merge in
+ * wldelay_get_audit_health() then suppresses it. Recovery deliberately does NOT
+ * clear the gap: the rows lost during the outage stay lost, so the
+ * trail-incomplete warning persists until an administrator acknowledges it.
+ * Cheap on the healthy path — when no marker exists this is a single read.
  */
 function wldelay_note_audit_write_recovered() {
     if ( ! function_exists( 'get_option' ) || ! function_exists( 'update_option' ) ) {
@@ -352,12 +377,42 @@ function wldelay_note_audit_write_recovered() {
         return; // Healthy: nothing to annotate.
     }
 
-    if ( ! empty( $marker['recovered_at'] ) ) {
-        return; // Recovery already noted since the last failure; no write needed.
+    // The generation this recovery corresponds to (the failure count at the
+    // moment the write succeeded). Read-only on the health option — no write,
+    // so a concurrent failure cannot be clobbered.
+    $count = isset( $marker['count'] ) ? (int) $marker['count'] : 0;
+
+    $recovery = get_option( WLDELAY_AUDIT_RECOVERY_OPTION, array() );
+    $recovery = is_array( $recovery ) ? $recovery : array();
+    $prev_rec = isset( $recovery['recovered_count'] ) ? (int) $recovery['recovered_count'] : 0;
+
+    if ( $prev_rec >= $count ) {
+        return; // Recovery already noted for this generation; no write needed.
     }
 
-    $marker['recovered_at'] = current_time( 'mysql', true );
-    update_option( WLDELAY_AUDIT_HEALTH_OPTION, $marker, false );
+    update_option(
+        WLDELAY_AUDIT_RECOVERY_OPTION,
+        array(
+            'recovered_at'    => current_time( 'mysql', true ),
+            'recovered_count' => $count,
+        ),
+        false // Not autoloaded: only read on the plugin admin screen.
+    );
+}
+
+/**
+ * Raw recovery note (separate option from the health marker and ack watermark).
+ *
+ * @return array Empty array when no recovery has been recorded.
+ */
+function wldelay_get_audit_recovery_note() {
+    if ( ! function_exists( 'get_option' ) ) {
+        return array();
+    }
+
+    $recovery = get_option( WLDELAY_AUDIT_RECOVERY_OPTION, array() );
+
+    return is_array( $recovery ) ? $recovery : array();
 }
 
 /**
@@ -444,10 +499,12 @@ function wldelay_get_audit_ack_watermark() {
 /**
  * Current audit-integrity health state.
  *
- * Reports a read-only MERGE of the failure marker and the (separate)
- * acknowledgement watermark so callers see one coherent record. The two are
- * stored apart only to keep their writers from clobbering each other; for
- * display/inspection they are recombined here without any write.
+ * Reports a read-only MERGE of the failure marker, the (separate)
+ * acknowledgement watermark, and the (separate) recovery note so callers see
+ * one coherent record. The three are stored apart only to keep their writers
+ * from clobbering each other; for display/inspection they are recombined here
+ * without any write. A recovery note whose generation is older than the current
+ * failure count is stale (a newer failure superseded it) and is suppressed.
  *
  * @return array|false Marker array (gap_since/failed_at/last_action/count/
  *                     recovered_at/acknowledged_at/acknowledged_by/
@@ -462,6 +519,21 @@ function wldelay_get_audit_health() {
     $marker = get_option( WLDELAY_AUDIT_HEALTH_OPTION, false );
     if ( ! is_array( $marker ) || empty( $marker ) ) {
         return false;
+    }
+
+    $count = isset( $marker['count'] ) ? (int) $marker['count'] : 0;
+
+    // Fold in the recovery note only when it corresponds to the current failure
+    // generation. A recovered_count below the live count means a fresh failure
+    // landed after the recovery, so the recovery is stale and must not surface a
+    // misleading "recovered" stamp on a still-open gap.
+    $recovery = wldelay_get_audit_recovery_note();
+    if (
+        ! empty( $recovery['recovered_at'] )
+        && isset( $recovery['recovered_count'] )
+        && (int) $recovery['recovered_count'] >= $count
+    ) {
+        $marker['recovered_at'] = $recovery['recovered_at'];
     }
 
     $ack = wldelay_get_audit_ack_watermark();
