@@ -718,6 +718,66 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
 }
 
 /**
+ * Generation-aware, transient-registry-safe removal of a single (IP, username)
+ * lockout subject (F-1-1).
+ *
+ * The Active Lockout Manager unlocks one subject at a time. IP-level recovery
+ * (wldelay_delete_lockout_for_ip) clears EVERY row on the IP, which would also
+ * release a co-tenant sharing a NAT IP; the username-only GDPR path
+ * (wldelay_delete_lockouts_for_user) spans every IP the subject ever locked from.
+ * Neither is the exact (IP, username) scope the admin asked for. This snapshots
+ * the IP's durable rows, narrows them to the matching username (empty username =
+ * the IP-only subject), then drives the SAME M5b machinery the other recovery
+ * paths use: clear each row's transient fast-path via the per-key compare-and-
+ * delete, then conditionally delete only rows whose generation still matches.
+ *
+ * Returns FALSE (not a count) when the durable conditional delete fails at the
+ * DB layer — the row may still be on disk — so the caller surfaces a failure
+ * instead of reporting a clean unlock (F-3-1).
+ *
+ * @param string $ip       IP address.
+ * @param string $username Subject username ('' for the IP-only subject).
+ * @return int|false Transients + durable rows removed, or FALSE on durable failure.
+ */
+function wldelay_delete_lockout_subject( $ip, $username = '' ) {
+    $ip = (string) $ip;
+    if ( '' === $ip ) {
+        return 0;
+    }
+
+    $username = (string) $username;
+    $store    = wldelay_get_persistence_store();
+
+    // Snapshot the IP's durable rows ONCE (lockout_key + generation captured) and
+    // narrow to the requested subject. Matching on the stored username keeps a
+    // co-tenant on the same IP locked; a concurrent relock that refreshes the
+    // subject's row writes a new generation, so the compare-and-delete below
+    // leaves it in force rather than orphaning it (M5b).
+    $snapshot = $store->get_lockouts_for_ip( $ip );
+
+    $subject_rows = array();
+    foreach ( $snapshot as $row ) {
+        $row_username = isset( $row['username'] ) ? (string) $row['username'] : '';
+        if ( $row_username === $username ) {
+            $subject_rows[] = $row;
+        }
+    }
+
+    if ( empty( $subject_rows ) ) {
+        return 0;
+    }
+
+    $deleted = wldelay_clear_lockout_transients_for_snapshot( $ip, $subject_rows );
+
+    $durable_removed = $store->remove_lockouts_matching_generation( $subject_rows );
+    if ( false === $durable_removed ) {
+        return false;
+    }
+
+    return $deleted + $durable_removed;
+}
+
+/**
  * Clear the transient fast-path keys for a set of snapshotted durable rows.
  *
  * Shared by IP-level recovery (wldelay_delete_lockout_for_ip) and the
@@ -1036,6 +1096,147 @@ function wldelay_handle_unlock_current_ip() {
     exit;
 }
 add_action( 'admin_post_wldelay_unlock_current_ip', 'wldelay_handle_unlock_current_ip' );
+
+/**
+ * Handle admin action to unlock a single active lockout subject (F-1-1).
+ *
+ * Self-service recovery for "I locked out a real user": removes the targeted
+ * (IP, username) lockout only, leaving any co-tenant lockout on a shared NAT IP
+ * in force. Routes through wldelay_delete_lockout_for_ip() so the durable row,
+ * the transient fast-path and the transient registry are all reconciled in the
+ * generation-aware way M5b established.
+ */
+function wldelay_handle_unlock_lockout() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+    }
+
+    check_admin_referer( 'wldelay_unlock_lockout' );
+
+    $ip       = isset( $_POST['wldelay_lockout_ip'] ) ? sanitize_text_field( wp_unslash( $_POST['wldelay_lockout_ip'] ) ) : '';
+    $username = isset( $_POST['wldelay_lockout_username'] ) ? wldelay_normalize_username( wp_unslash( $_POST['wldelay_lockout_username'] ) ) : '';
+
+    // Scoped to this exact (IP, username) subject so unlocking one user does not
+    // release a co-tenant sharing a NAT IP.
+    $deleted = wldelay_delete_lockout_subject( $ip, $username );
+
+    // FALSE (NOT a count) means the durable conditional delete failed at the DB
+    // layer: the lockout row may still be on disk. Treat it as a distinct
+    // failure rather than reporting a clean removal (F-3-1 / unlock-current-IP
+    // pattern).
+    $failed = ( false === $deleted );
+
+    if ( function_exists( 'wldelay_audit_lockout_cleared' ) ) {
+        wldelay_audit_lockout_cleared( $ip, $username, $failed ? 0 : (int) $deleted );
+    }
+
+    if ( $failed ) {
+        $status = 'failed';
+    } elseif ( $deleted > 0 ) {
+        $status = 'success';
+    } else {
+        $status = 'none';
+    }
+
+    $redirect_url = add_query_arg(
+        array(
+            'page'                 => 'login-delay-shield-admin',
+            'wldelay_unlock_subject' => $status,
+        ),
+        admin_url( 'options-general.php' )
+    );
+
+    wp_safe_redirect( $redirect_url );
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        return;
+    }
+    exit;
+}
+add_action( 'admin_post_wldelay_unlock_lockout', 'wldelay_handle_unlock_lockout' );
+
+/**
+ * Handle admin action to clear every currently-active lockout (F-1-1).
+ *
+ * Enumerates the durable store and removes each subject through the SAME
+ * generation-aware, transient-registry-safe path the per-row unlock uses, so a
+ * cache-only transient is flushed too. Deliberately NOT a raw clear_all() on the
+ * table (which would leave orphaned transients and bypass the compare-and-delete
+ * contract, consistent with M5b). A single durable-delete failure makes the
+ * whole operation report a partial failure rather than a clean flush (F-3-1).
+ */
+function wldelay_handle_clear_all_lockouts() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+    }
+
+    check_admin_referer( 'wldelay_clear_all_lockouts' );
+
+    $store    = wldelay_get_persistence_store();
+    $lockouts = $store->get_active_lockouts( PHP_INT_MAX );
+
+    $removed = 0;
+    $failed  = false;
+
+    foreach ( $lockouts as $lockout ) {
+        $ip       = isset( $lockout['ip_address'] ) ? (string) $lockout['ip_address'] : '';
+        $username = isset( $lockout['username'] ) ? (string) $lockout['username'] : '';
+
+        if ( '' === $ip ) {
+            continue;
+        }
+
+        $deleted = wldelay_delete_lockout_subject( $ip, $username );
+
+        if ( false === $deleted ) {
+            // A durable delete failed: the row may persist. Record the failure but
+            // keep clearing the rest so one bad row does not strand the others.
+            $failed = true;
+            continue;
+        }
+
+        $removed += (int) $deleted;
+    }
+
+    if ( function_exists( 'wldelay_audit_log' ) ) {
+        wldelay_audit_log(
+            'lockout_cleared',
+            array(
+                'object'    => __( 'All active lockouts', 'login-delay-shield' ),
+                'new_value' => array(
+                    'removed_rows' => $removed,
+                    'source'       => 'clear-all',
+                    'failed'       => $failed,
+                ),
+            )
+        );
+    }
+
+    if ( $failed ) {
+        $status = 'failed';
+    } elseif ( $removed > 0 ) {
+        $status = 'success';
+    } else {
+        $status = 'none';
+    }
+
+    $redirect_url = add_query_arg(
+        array(
+            'page'                  => 'login-delay-shield-admin',
+            'wldelay_clear_all'     => $status,
+            'wldelay_clear_count'   => $removed,
+        ),
+        admin_url( 'options-general.php' )
+    );
+
+    wp_safe_redirect( $redirect_url );
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        return;
+    }
+    exit;
+}
+add_action( 'admin_post_wldelay_clear_all_lockouts', 'wldelay_handle_clear_all_lockouts' );
 
 /**
  * Mitigate CSV formula injection for values opened in spreadsheet tools.
@@ -1670,6 +1871,69 @@ function wldelay_render_unlock_notice() {
     echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
 }
 add_action( 'admin_notices', 'wldelay_render_unlock_notice' );
+
+/**
+ * Render the admin notice for per-subject and clear-all lockout actions (F-1-1).
+ *
+ * Mirrors wldelay_render_unlock_notice(): scoped to the plugin page and to users
+ * who can act, with aria-live so the status is announced to screen readers.
+ */
+function wldelay_render_lockout_manager_notice() {
+    if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'login-delay-shield-admin' ) {
+        return;
+    }
+
+    $class   = '';
+    $message = '';
+
+    if ( isset( $_GET['wldelay_unlock_subject'] ) ) {
+        $status = sanitize_text_field( wp_unslash( $_GET['wldelay_unlock_subject'] ) );
+
+        if ( 'success' === $status ) {
+            $class   = 'notice-success';
+            $message = __( 'Lockout removed.', 'login-delay-shield' );
+        } elseif ( 'failed' === $status ) {
+            $class   = 'notice-error';
+            $message = __( 'Login Delay Shield could not remove this lockout — a database error occurred and it may still be in force. Check the database and try again.', 'login-delay-shield' );
+        } else {
+            $class   = 'notice-warning';
+            $message = __( 'No active lockout was found for that subject.', 'login-delay-shield' );
+        }
+    } elseif ( isset( $_GET['wldelay_clear_all'] ) ) {
+        $status = sanitize_text_field( wp_unslash( $_GET['wldelay_clear_all'] ) );
+        $count  = isset( $_GET['wldelay_clear_count'] ) ? absint( wp_unslash( $_GET['wldelay_clear_count'] ) ) : 0;
+
+        if ( 'failed' === $status ) {
+            $class = 'notice-error';
+            $message = sprintf(
+                /* translators: %s: number of lockouts that were removed before the error */
+                __( 'Login Delay Shield cleared %s lockout(s), but a database error stopped it from clearing the rest — some lockouts may still be in force. Check the database and try again.', 'login-delay-shield' ),
+                number_format_i18n( $count )
+            );
+        } elseif ( 'success' === $status ) {
+            $class = 'notice-success';
+            $message = sprintf(
+                /* translators: %s: number of lockouts removed */
+                _n( '%s active lockout cleared.', '%s active lockouts cleared.', $count, 'login-delay-shield' ),
+                number_format_i18n( $count )
+            );
+        } else {
+            $class   = 'notice-warning';
+            $message = __( 'There were no active lockouts to clear.', 'login-delay-shield' );
+        }
+    }
+
+    if ( '' === $message ) {
+        return;
+    }
+
+    echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible" role="status" aria-live="polite"><p>' . esc_html( $message ) . '</p></div>';
+}
+add_action( 'admin_notices', 'wldelay_render_lockout_manager_notice' );
 
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
     /**

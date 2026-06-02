@@ -126,6 +126,18 @@ class LDS_Settings_View {
                     </div>
 
                     <div class="wldelay-card">
+                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-active-lockouts-body">
+                            <span class="dashicons dashicons-unlock" aria-hidden="true"></span>
+                            <?php esc_html_e( 'Active Lockouts', 'login-delay-shield' ); ?>
+                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                        </h2>
+                        <div id="wldelay-active-lockouts-body" class="wldelay-card-body">
+                            <p class="description"><?php esc_html_e( 'IP addresses and accounts currently blocked from logging in. Unlock an individual subject if a legitimate user got caught, or clear them all.', 'login-delay-shield' ); ?></p>
+                            <?php $this->render_active_lockouts(); ?>
+                        </div>
+                    </div>
+
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-whitelist-body">
                             <span class="dashicons dashicons-shield-alt" aria-hidden="true"></span>
                             <?php esc_html_e( 'IP Whitelist', 'login-delay-shield' ); ?>
@@ -797,6 +809,128 @@ class LDS_Settings_View {
      * edit or delete controls. All output is escaped; the underlying query
      * functions sanitize the request filters internally.
      */
+    /**
+     * Render the Active Lockout Manager table (F-1-1).
+     *
+     * Lists currently-active lockouts from the durable store, each with a
+     * per-row Unlock form (POST -> admin-post, own nonce) that removes only that
+     * (IP, username) subject, plus a Clear-all form. The list is bounded by the
+     * store's default limit; if it is truncated the table says so.
+     */
+    private function render_active_lockouts() {
+        $limit    = 200;
+        $lockouts = wldelay_get_persistence_store()->get_active_lockouts( $limit );
+        $now      = time();
+        ?>
+        <div class="wldelay-active-lockouts" aria-labelledby="wldelay-active-lockouts-title">
+            <h3 id="wldelay-active-lockouts-title" class="screen-reader-text"><?php esc_html_e( 'Active lockouts', 'login-delay-shield' ); ?></h3>
+
+            <?php if ( empty( $lockouts ) ) : ?>
+                <p class="wldelay-empty-state" role="status" aria-live="polite"><?php esc_html_e( 'No active lockouts. Nothing is currently blocked.', 'login-delay-shield' ); ?></p>
+            <?php else : ?>
+                <table class="widefat striped wldelay-active-lockouts-table">
+                    <caption class="screen-reader-text"><?php esc_html_e( 'Currently active login lockouts', 'login-delay-shield' ); ?></caption>
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php esc_html_e( 'IP address', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Username', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Type', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Source', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Time remaining', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Locked since', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Actions', 'login-delay-shield' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $lockouts as $lockout ) : ?>
+                            <?php
+                            $ip        = isset( $lockout['ip_address'] ) ? (string) $lockout['ip_address'] : '';
+                            $username  = isset( $lockout['username'] ) ? (string) $lockout['username'] : '';
+                            $type      = isset( $lockout['lockout_type'] ) ? (string) $lockout['lockout_type'] : '';
+                            $source    = isset( $lockout['source'] ) ? (string) $lockout['source'] : '';
+                            $expires   = isset( $lockout['expires_at'] ) ? (int) $lockout['expires_at'] : 0;
+                            $created   = isset( $lockout['created_at'] ) ? (int) $lockout['created_at'] : 0;
+                            $remaining = $expires > $now
+                                ? sprintf(
+                                    /* translators: %s: human-readable duration, e.g. "5 mins" */
+                                    __( '%s left', 'login-delay-shield' ),
+                                    human_time_diff( $now, $expires )
+                                )
+                                : __( 'Expiring', 'login-delay-shield' );
+                            $since = $created > 0
+                                ? sprintf(
+                                    /* translators: %s: human-readable duration, e.g. "5 mins" */
+                                    __( '%s ago', 'login-delay-shield' ),
+                                    human_time_diff( $created, $now )
+                                )
+                                : __( 'Unknown', 'login-delay-shield' );
+                            ?>
+                            <tr>
+                                <td><?php echo esc_html( $ip ); ?></td>
+                                <td><?php echo '' !== $username ? esc_html( $username ) : esc_html__( '(any)', 'login-delay-shield' ); ?></td>
+                                <td><?php echo esc_html( $type ); ?></td>
+                                <td><?php echo esc_html( $source ); ?></td>
+                                <td><?php echo esc_html( $remaining ); ?></td>
+                                <td><?php echo esc_html( $since ); ?></td>
+                                <td>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-unlock-form">
+                                        <input type="hidden" name="action" value="wldelay_unlock_lockout" />
+                                        <input type="hidden" name="wldelay_lockout_ip" value="<?php echo esc_attr( $ip ); ?>" />
+                                        <input type="hidden" name="wldelay_lockout_username" value="<?php echo esc_attr( $username ); ?>" />
+                                        <input type="hidden" name="wldelay_lockout_type" value="<?php echo esc_attr( $type ); ?>" />
+                                        <?php wp_nonce_field( 'wldelay_unlock_lockout' ); ?>
+                                        <button type="submit" class="button button-secondary button-small">
+                                            <?php esc_html_e( 'Unlock', 'login-delay-shield' ); ?>
+                                            <span class="screen-reader-text">
+                                                <?php
+                                                if ( '' !== $username ) {
+                                                    printf(
+                                                        /* translators: 1: username, 2: IP address */
+                                                        esc_html__( 'Unlock %1$s on IP %2$s', 'login-delay-shield' ),
+                                                        esc_html( $username ),
+                                                        esc_html( $ip )
+                                                    );
+                                                } else {
+                                                    printf(
+                                                        /* translators: %s: IP address */
+                                                        esc_html__( 'Unlock IP %s', 'login-delay-shield' ),
+                                                        esc_html( $ip )
+                                                    );
+                                                }
+                                                ?>
+                                            </span>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <?php if ( count( $lockouts ) >= $limit ) : ?>
+                    <p class="description" role="status" aria-live="polite">
+                        <?php
+                        printf(
+                            /* translators: %s: maximum number of lockouts shown */
+                            esc_html__( 'Showing the most recent %s lockouts; older active lockouts are not listed.', 'login-delay-shield' ),
+                            esc_html( number_format_i18n( $limit ) )
+                        );
+                        ?>
+                    </p>
+                <?php endif; ?>
+
+                <p>
+                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-clear-all-form">
+                        <input type="hidden" name="action" value="wldelay_clear_all_lockouts" />
+                        <?php wp_nonce_field( 'wldelay_clear_all_lockouts' ); ?>
+                        <button type="submit" class="button button-secondary"><?php esc_html_e( 'Clear all active lockouts', 'login-delay-shield' ); ?></button>
+                    </form>
+                </p>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
     private function render_audit_log() {
         $filters      = wldelay_get_audit_filters_from_request();
         $per_page     = 25;

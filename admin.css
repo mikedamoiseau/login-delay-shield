@@ -941,6 +941,15 @@
     background: #fff;
 }
 
+.wldelay-active-lockouts-table {
+    margin-top: 8px;
+}
+
+.wldelay-unlock-form,
+.wldelay-clear-all-form {
+    margin: 0;
+}
+
 .wldelay-pagination {
     margin-top: 12px;
 }
