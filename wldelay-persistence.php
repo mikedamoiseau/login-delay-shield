@@ -137,13 +137,15 @@ interface WLDelay_Persistence {
      * recovery can reconstruct and clear those transients (F-2-1).
      *
      * @param string $ip IP address.
-     * @return array[] List of records with at least 'lockout_key', 'username',
-     *                 'lockout_type', 'transient_key' and 'generation' keys
-     *                 (empty array when none / no table). 'transient_key' is the
-     *                 exact transient name set at lock time, or '' for legacy
-     *                 rows predating it; 'generation' is the per-write random
-     *                 token used for the recovery compare-and-delete, or '' for
-     *                 rows predating it (F-2-1).
+     * @return array[]|false List of records with at least 'lockout_key',
+     *                 'username', 'lockout_type', 'transient_key' and
+     *                 'generation' keys (empty array when none / table absent).
+     *                 'transient_key' is the exact transient name set at lock
+     *                 time, or '' for legacy rows predating it; 'generation' is
+     *                 the per-write random token used for the recovery
+     *                 compare-and-delete, or '' for rows predating it (F-2-1).
+     *                 Returns FALSE (distinct from an empty array) when the table
+     *                 probe or the SELECT fails at the DB layer (F-3-1).
      */
     public function get_lockouts_for_ip( $ip );
 
@@ -151,7 +153,10 @@ interface WLDelay_Persistence {
      * Enumerate all currently active lockouts.
      *
      * @param int $limit Maximum rows to return.
-     * @return array[] List of lockout records.
+     * @return array[]|false List of lockout records (empty array when none /
+     *                 table absent), or FALSE (distinct from an empty array)
+     *                 when the table probe or the SELECT fails at the DB layer
+     *                 (F-3-1).
      */
     public function get_active_lockouts( $limit = 200 );
 
@@ -815,11 +820,31 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
     public function get_lockouts_for_ip( $ip ) {
         global $wpdb;
 
-        if ( empty( $ip ) || ! $this->table_exists() ) {
+        if ( empty( $ip ) ) {
+            return array();
+        }
+
+        $exists = $this->table_exists();
+
+        // TRI-STATE: a null probe means the existence check ITSELF errored
+        // (suppressed SHOW TABLES failure). That is a failed read, NOT "table
+        // absent": collapsing it to array() would let recovery report "no
+        // lockouts" while rows persist on disk. Return FALSE so the caller can
+        // surface a failure rather than a clean no-op (F-3-1 read contract).
+        if ( null === $exists ) {
+            return false;
+        }
+
+        // Table genuinely absent (e.g. pre-activation / mid-upgrade): no rows.
+        if ( false === $exists ) {
             return array();
         }
 
         $table = wldelay_get_lockout_table_name();
+
+        // Clear last_error so a stale error from an earlier query on this request
+        // is not misread as a failure of this SELECT.
+        $wpdb->last_error = '';
 
         // No expiry filter: recovery clears the transient for every row keyed
         // to this IP, and deleting an already-expired transient is harmless.
@@ -834,7 +859,15 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
             ARRAY_A
         );
 
-        return is_array( $rows ) ? $rows : array();
+        // get_results() returns array() both for "no rows" AND a SELECT that
+        // errored. Distinguish them via last_error: a failed read returns FALSE
+        // so the caller reports a failure instead of a clean "no lockouts" while
+        // rows may still be on disk (F-3-1 read contract).
+        if ( ! is_array( $rows ) || '' !== (string) $wpdb->last_error ) {
+            return false;
+        }
+
+        return $rows;
     }
 
     /**
@@ -843,13 +876,28 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
     public function get_active_lockouts( $limit = 200 ) {
         global $wpdb;
 
-        if ( ! $this->table_exists() ) {
+        $exists = $this->table_exists();
+
+        // TRI-STATE: a null probe means the existence check ITSELF errored. That
+        // is a failed read, NOT "table absent": collapsing it to array() would
+        // let the manager report "no lockouts" / "nothing to clear" while rows
+        // persist on disk. Return FALSE so callers surface a failure (F-3-1).
+        if ( null === $exists ) {
+            return false;
+        }
+
+        // Table genuinely absent (e.g. pre-activation / mid-upgrade): no rows.
+        if ( false === $exists ) {
             return array();
         }
 
         $limit = max( 1, (int) $limit );
         $table = wldelay_get_lockout_table_name();
         $now   = gmdate( 'Y-m-d H:i:s', time() );
+
+        // Clear last_error so a stale error from an earlier query on this request
+        // is not misread as a failure of this SELECT.
+        $wpdb->last_error = '';
 
         $rows = $wpdb->get_results(
             $wpdb->prepare(
@@ -859,6 +907,14 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
             ),
             ARRAY_A
         );
+
+        // get_results() returns array() both for "no rows" AND a SELECT that
+        // errored. Distinguish them via last_error: a failed read returns FALSE
+        // so the manager reports a failure instead of a clean empty list while
+        // rows may still be on disk (F-3-1 read contract).
+        if ( ! is_array( $rows ) || '' !== (string) $wpdb->last_error ) {
+            return false;
+        }
 
         if ( empty( $rows ) ) {
             return array();

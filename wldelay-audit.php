@@ -1174,7 +1174,9 @@ if ( function_exists( 'add_action' ) && defined( 'WLDELAY_OPTION_NAME' ) ) {
  *
  * @param string $ip       Cleared IP address.
  * @param string $username Cleared username (may be empty).
- * @param int    $removed  Number of lockout rows removed.
+ * @param int    $removed  Number of durable lockout ROWS removed (the subject
+ *                         count). Must NOT include transient-cleanup deletions,
+ *                         which would inflate one subject to two (F-1-1 review).
  */
 function wldelay_audit_lockout_cleared( $ip, $username = '', $removed = 0 ) {
     $target = (string) $ip;

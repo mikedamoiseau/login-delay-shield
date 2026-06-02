@@ -950,6 +950,10 @@
     margin: 0;
 }
 
+.wldelay-clear-all {
+    margin-top: 12px;
+}
+
 .wldelay-pagination {
     margin-top: 12px;
 }

@@ -126,18 +126,6 @@ class LDS_Settings_View {
                     </div>
 
                     <div class="wldelay-card">
-                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-active-lockouts-body">
-                            <span class="dashicons dashicons-unlock" aria-hidden="true"></span>
-                            <?php esc_html_e( 'Active Lockouts', 'login-delay-shield' ); ?>
-                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
-                        </h2>
-                        <div id="wldelay-active-lockouts-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'IP addresses and accounts currently blocked from logging in. Unlock an individual subject if a legitimate user got caught, or clear them all.', 'login-delay-shield' ); ?></p>
-                            <?php $this->render_active_lockouts(); ?>
-                        </div>
-                    </div>
-
-                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-whitelist-body">
                             <span class="dashicons dashicons-shield-alt" aria-hidden="true"></span>
                             <?php esc_html_e( 'IP Whitelist', 'login-delay-shield' ); ?>
@@ -205,6 +193,26 @@ class LDS_Settings_View {
 
                 <?php submit_button(); ?>
             </form>
+
+            <?php
+            // Rendered OUTSIDE the settings <form action="options.php">: this card
+            // emits its own POST forms (per-row Unlock + Clear-all targeting
+            // admin-post.php). Nesting a <form> inside another <form> is invalid
+            // HTML — the first inner submit would bind to the outer form (wrong
+            // handler) and the inner </form> would close the settings form early,
+            // breaking Save Settings whenever lockouts exist (F-1-1 review).
+            ?>
+            <div class="wldelay-card">
+                <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-active-lockouts-body">
+                    <span class="dashicons dashicons-unlock" aria-hidden="true"></span>
+                    <?php esc_html_e( 'Active Lockouts', 'login-delay-shield' ); ?>
+                    <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                </h2>
+                <div id="wldelay-active-lockouts-body" class="wldelay-card-body">
+                    <p class="description"><?php esc_html_e( 'IP addresses and accounts currently blocked from logging in. Unlock an individual subject if a legitimate user got caught, or clear them all.', 'login-delay-shield' ); ?></p>
+                    <?php $this->render_active_lockouts(); ?>
+                </div>
+            </div>
         </div>
         <?php
     }
@@ -821,11 +829,23 @@ class LDS_Settings_View {
         $limit    = 200;
         $lockouts = wldelay_get_persistence_store()->get_active_lockouts( $limit );
         $now      = time();
+
+        // A FALSE return is a DB read failure (table probe / SELECT), distinct
+        // from a genuine empty list. Surface it as an error so the admin does not
+        // mistake a fault for "nothing is locked" (F-3-1, read-failure contract).
+        $read_failed = ( false === $lockouts );
+        if ( $read_failed ) {
+            $lockouts = array();
+        }
         ?>
         <div class="wldelay-active-lockouts" aria-labelledby="wldelay-active-lockouts-title">
             <h3 id="wldelay-active-lockouts-title" class="screen-reader-text"><?php esc_html_e( 'Active lockouts', 'login-delay-shield' ); ?></h3>
 
-            <?php if ( empty( $lockouts ) ) : ?>
+            <?php if ( $read_failed ) : ?>
+                <div class="notice notice-error inline" role="alert">
+                    <p><?php esc_html_e( 'The list of active lockouts could not be read from the database. Active lockouts may still be in force — this is not a confirmation that nothing is blocked.', 'login-delay-shield' ); ?></p>
+                </div>
+            <?php elseif ( empty( $lockouts ) ) : ?>
                 <p class="wldelay-empty-state" role="status" aria-live="polite"><?php esc_html_e( 'No active lockouts. Nothing is currently blocked.', 'login-delay-shield' ); ?></p>
             <?php else : ?>
                 <table class="widefat striped wldelay-active-lockouts-table">
@@ -844,9 +864,10 @@ class LDS_Settings_View {
                     <tbody>
                         <?php foreach ( $lockouts as $lockout ) : ?>
                             <?php
-                            $ip        = isset( $lockout['ip_address'] ) ? (string) $lockout['ip_address'] : '';
-                            $username  = isset( $lockout['username'] ) ? (string) $lockout['username'] : '';
-                            $type      = isset( $lockout['lockout_type'] ) ? (string) $lockout['lockout_type'] : '';
+                            $ip          = isset( $lockout['ip_address'] ) ? (string) $lockout['ip_address'] : '';
+                            $username    = isset( $lockout['username'] ) ? (string) $lockout['username'] : '';
+                            $lockout_key = isset( $lockout['lockout_key'] ) ? (string) $lockout['lockout_key'] : '';
+                            $type        = isset( $lockout['lockout_type'] ) ? (string) $lockout['lockout_type'] : '';
                             $source    = isset( $lockout['source'] ) ? (string) $lockout['source'] : '';
                             $expires   = isset( $lockout['expires_at'] ) ? (int) $lockout['expires_at'] : 0;
                             $created   = isset( $lockout['created_at'] ) ? (int) $lockout['created_at'] : 0;
@@ -876,6 +897,8 @@ class LDS_Settings_View {
                                     <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-unlock-form">
                                         <input type="hidden" name="action" value="wldelay_unlock_lockout" />
                                         <input type="hidden" name="wldelay_lockout_ip" value="<?php echo esc_attr( $ip ); ?>" />
+                                        <input type="hidden" name="wldelay_lockout_key" value="<?php echo esc_attr( $lockout_key ); ?>" />
+                                        <?php // Display-only forensic label for the audit entry; matching is by lockout_key, not this value. ?>
                                         <input type="hidden" name="wldelay_lockout_username" value="<?php echo esc_attr( $username ); ?>" />
                                         <input type="hidden" name="wldelay_lockout_type" value="<?php echo esc_attr( $type ); ?>" />
                                         <?php wp_nonce_field( 'wldelay_unlock_lockout' ); ?>
@@ -919,13 +942,13 @@ class LDS_Settings_View {
                     </p>
                 <?php endif; ?>
 
-                <p>
+                <div class="wldelay-clear-all">
                     <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-clear-all-form">
                         <input type="hidden" name="action" value="wldelay_clear_all_lockouts" />
                         <?php wp_nonce_field( 'wldelay_clear_all_lockouts' ); ?>
                         <button type="submit" class="button button-secondary"><?php esc_html_e( 'Clear all active lockouts', 'login-delay-shield' ); ?></button>
                     </form>
-                </p>
+                </div>
             <?php endif; ?>
         </div>
         <?php

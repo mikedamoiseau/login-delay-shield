@@ -694,6 +694,15 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     // NEW generation, so the compare-and-delete below leaves it in force and the
     // user is not silently re-orphaned by recovery (F-2-1 hardening).
     $snapshot = $store->get_lockouts_for_ip( $ip );
+
+    // FALSE (NOT an empty array) means the durable read failed at the DB layer:
+    // rows the IP recovery must clear may still be on disk. Propagate it as a
+    // failure rather than clearing only the (incomplete) transient fast-path and
+    // reporting a clean unlock (F-3-1 read contract).
+    if ( false === $snapshot ) {
+        return false;
+    }
+
     $deleted += wldelay_clear_lockout_transients_for_snapshot( $ip, $snapshot );
 
     // Clear the durable store (F-2-1) for the snapshotted rows only, and only
@@ -718,26 +727,79 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
 }
 
 /**
- * Generation-aware, transient-registry-safe removal of a single (IP, username)
- * lockout subject (F-1-1).
+ * Generation-aware, transient-registry-safe removal of a single lockout subject
+ * identified by its durable lockout_key (F-1-1).
  *
- * The Active Lockout Manager unlocks one subject at a time. IP-level recovery
- * (wldelay_delete_lockout_for_ip) clears EVERY row on the IP, which would also
- * release a co-tenant sharing a NAT IP; the username-only GDPR path
- * (wldelay_delete_lockouts_for_user) spans every IP the subject ever locked from.
- * Neither is the exact (IP, username) scope the admin asked for. This snapshots
- * the IP's durable rows, narrows them to the matching username (empty username =
- * the IP-only subject), then drives the SAME M5b machinery the other recovery
- * paths use: clear each row's transient fast-path via the per-key compare-and-
- * delete, then conditionally delete only rows whose generation still matches.
+ * The Active Lockout Manager's per-row Unlock targets ONE row. Matching on the
+ * stored username is unsafe: the username column is clamped to varchar(255)
+ * (wldelay_add_lockout / F-2-1) while the lockout_key hashes the FULL canonical
+ * identifier, so two distinct subjects on one IP that share a 255-char prefix
+ * collide on the truncated username — unlocking one would release the co-tenant.
+ * The lockout_key is lossless, so matching on it is exact at any identifier
+ * length. The IP is still required to derive the legacy transient keys for rows
+ * predating transient_key (gen-3).
  *
+ * Returns the count of DURABLE rows removed (the subject count surfaced in the
+ * admin notice and the audit removed_rows), NOT inflated by transient-cleanup
+ * deletions (F-1-1 review). Transients are still cleared as a side effect.
  * Returns FALSE (not a count) when the durable conditional delete fails at the
  * DB layer — the row may still be on disk — so the caller surfaces a failure
  * instead of reporting a clean unlock (F-3-1).
  *
+ * @param string $ip          IP address the row belongs to.
+ * @param string $lockout_key Lossless durable lockout key identifying the row.
+ * @return int|false Durable rows removed, or FALSE on read/durable failure.
+ */
+function wldelay_delete_lockout_by_key( $ip, $lockout_key ) {
+    $ip          = (string) $ip;
+    $lockout_key = (string) $lockout_key;
+    if ( '' === $ip || '' === $lockout_key ) {
+        return 0;
+    }
+
+    $store = wldelay_get_persistence_store();
+
+    // Snapshot the IP's durable rows ONCE (lockout_key + generation captured) and
+    // narrow to the exact lockout_key. A FALSE return is a DB read failure, NOT
+    // an empty IP: propagate it so the handler reports a failure rather than
+    // "none" while the row may still be on disk (F-3-1 read contract).
+    $snapshot = $store->get_lockouts_for_ip( $ip );
+    if ( false === $snapshot ) {
+        return false;
+    }
+
+    $subject_rows = array();
+    foreach ( $snapshot as $row ) {
+        $row_key = isset( $row['lockout_key'] ) ? (string) $row['lockout_key'] : '';
+        if ( '' !== $row_key && $row_key === $lockout_key ) {
+            $subject_rows[] = $row;
+        }
+    }
+
+    return wldelay_remove_lockout_subject_rows( $ip, $subject_rows );
+}
+
+/**
+ * Generation-aware, transient-registry-safe removal of a single (IP, username)
+ * lockout subject (F-1-1).
+ *
+ * Used by Clear-all, which enumerates every active row and removes each by its
+ * (IP, username). IP-level recovery (wldelay_delete_lockout_for_ip) clears EVERY
+ * row on the IP, which would also release a co-tenant sharing a NAT IP; the
+ * username-only GDPR path (wldelay_delete_lockouts_for_user) spans every IP the
+ * subject ever locked from. This snapshots the IP's durable rows, narrows them
+ * to the matching username (empty username = the IP-only subject), then drives
+ * the SAME M5b machinery: clear each row's transient fast-path via the per-key
+ * compare-and-delete, then conditionally delete only rows whose generation still
+ * matches.
+ *
+ * Returns the count of DURABLE rows removed (the subject count surfaced in the
+ * notice and audit), NOT inflated by transient-cleanup deletions (F-1-1 review).
+ * Returns FALSE on a read/durable failure so the caller surfaces it (F-3-1).
+ *
  * @param string $ip       IP address.
  * @param string $username Subject username ('' for the IP-only subject).
- * @return int|false Transients + durable rows removed, or FALSE on durable failure.
+ * @return int|false Durable rows removed, or FALSE on read/durable failure.
  */
 function wldelay_delete_lockout_subject( $ip, $username = '' ) {
     $ip = (string) $ip;
@@ -749,11 +811,12 @@ function wldelay_delete_lockout_subject( $ip, $username = '' ) {
     $store    = wldelay_get_persistence_store();
 
     // Snapshot the IP's durable rows ONCE (lockout_key + generation captured) and
-    // narrow to the requested subject. Matching on the stored username keeps a
-    // co-tenant on the same IP locked; a concurrent relock that refreshes the
-    // subject's row writes a new generation, so the compare-and-delete below
-    // leaves it in force rather than orphaning it (M5b).
+    // narrow to the requested subject. A FALSE return is a DB read failure: keep
+    // it distinct from an empty match so the caller reports a failure (F-3-1).
     $snapshot = $store->get_lockouts_for_ip( $ip );
+    if ( false === $snapshot ) {
+        return false;
+    }
 
     $subject_rows = array();
     foreach ( $snapshot as $row ) {
@@ -763,18 +826,36 @@ function wldelay_delete_lockout_subject( $ip, $username = '' ) {
         }
     }
 
+    return wldelay_remove_lockout_subject_rows( $ip, $subject_rows );
+}
+
+/**
+ * Shared core: clear transients + conditionally delete a set of snapshot rows.
+ *
+ * Returns the DURABLE rows removed (subject count) so notices/audit are not
+ * inflated by transient-cleanup deletions. FALSE on durable-delete failure.
+ *
+ * @param string  $ip           IP address the rows belong to.
+ * @param array[] $subject_rows Pre-narrowed snapshot rows for one subject.
+ * @return int|false Durable rows removed, or FALSE on durable failure.
+ */
+function wldelay_remove_lockout_subject_rows( $ip, array $subject_rows ) {
     if ( empty( $subject_rows ) ) {
         return 0;
     }
 
-    $deleted = wldelay_clear_lockout_transients_for_snapshot( $ip, $subject_rows );
+    // Transients are cleared for the side effect of releasing the fast-path; the
+    // return value is deliberately discarded so the reported count reflects only
+    // the durable subject rows removed (F-1-1 review: 1 subject must report 1).
+    wldelay_clear_lockout_transients_for_snapshot( $ip, $subject_rows );
 
+    $store           = wldelay_get_persistence_store();
     $durable_removed = $store->remove_lockouts_matching_generation( $subject_rows );
     if ( false === $durable_removed ) {
         return false;
     }
 
-    return $deleted + $durable_removed;
+    return $durable_removed;
 }
 
 /**
@@ -1007,6 +1088,15 @@ function wldelay_flush_lockout_transients() {
     // A high limit ensures the safety net covers every active row, not just the
     // default page; deleting an already-expired transient is harmless.
     $snapshot = $store->get_active_lockouts( PHP_INT_MAX );
+
+    // FALSE (NOT an empty array) means the durable read failed: the safety-net
+    // sweep cannot run and rows may persist. Propagate it so flush reports a
+    // failure rather than a clean flush while a cache-only transient lingers
+    // (F-3-1 read contract).
+    if ( false === $snapshot ) {
+        return false;
+    }
+
     foreach ( $snapshot as $row ) {
         if ( empty( $row['transient_key'] ) ) {
             continue;
@@ -1113,12 +1203,15 @@ function wldelay_handle_unlock_lockout() {
 
     check_admin_referer( 'wldelay_unlock_lockout' );
 
-    $ip       = isset( $_POST['wldelay_lockout_ip'] ) ? sanitize_text_field( wp_unslash( $_POST['wldelay_lockout_ip'] ) ) : '';
-    $username = isset( $_POST['wldelay_lockout_username'] ) ? wldelay_normalize_username( wp_unslash( $_POST['wldelay_lockout_username'] ) ) : '';
+    $ip          = isset( $_POST['wldelay_lockout_ip'] ) ? sanitize_text_field( wp_unslash( $_POST['wldelay_lockout_ip'] ) ) : '';
+    $lockout_key = isset( $_POST['wldelay_lockout_key'] ) ? sanitize_text_field( wp_unslash( $_POST['wldelay_lockout_key'] ) ) : '';
+    // Forensic label for the audit entry ONLY; never used to match the row.
+    $username    = isset( $_POST['wldelay_lockout_username'] ) ? wldelay_normalize_username( wp_unslash( $_POST['wldelay_lockout_username'] ) ) : '';
 
-    // Scoped to this exact (IP, username) subject so unlocking one user does not
-    // release a co-tenant sharing a NAT IP.
-    $deleted = wldelay_delete_lockout_subject( $ip, $username );
+    // Match on the lossless durable lockout_key, NOT the clamped display
+    // username: two distinct subjects on one IP sharing a 255-char prefix would
+    // otherwise both match and release a co-tenant (F-1-1 SECURITY).
+    $deleted = wldelay_delete_lockout_by_key( $ip, $lockout_key );
 
     // FALSE (NOT a count) means the durable conditional delete failed at the DB
     // layer: the lockout row may still be on disk. Treat it as a distinct
@@ -1156,14 +1249,69 @@ function wldelay_handle_unlock_lockout() {
 add_action( 'admin_post_wldelay_unlock_lockout', 'wldelay_handle_unlock_lockout' );
 
 /**
+ * Sweep every registered lockout transient (and its paired failure counter).
+ *
+ * Clear-all enumerates DURABLE rows to remove each subject, but wldelay_lock_ip()
+ * intentionally KEEPS a registered transient lockout when the durable
+ * add_lockout() fails yet the registry write succeeds — an active lockout with NO
+ * durable row that the durable-row loop can never reach. This sweeps the per-key
+ * transient registry for lockout-prefixed keys (login + password-reset) and
+ * clears each, plus the matching failure counter so the very next failed attempt
+ * does not immediately re-lock. Uses the per-key snapshot + compare-and-delete so
+ * a concurrent same-second relock that refreshed a record keeps its live transient
+ * discoverable rather than being orphaned (F-1-1 / F-2-1 hardening).
+ *
+ * @return int Number of transients removed.
+ */
+function wldelay_sweep_registered_lockout_transients() {
+    $deleted = 0;
+
+    foreach ( wldelay_get_registered_transient_keys() as $transient_name ) {
+        // Only the lockout fast-path keys: the paired failure counter is derived
+        // and cleared alongside each below. A bare fails_/reset_fails_ key with no
+        // lockout is just an in-progress attempt counter, not an active lockout.
+        if (
+            strpos( $transient_name, 'wldelay_lockout_' ) !== 0
+            && strpos( $transient_name, 'wldelay_reset_lockout_' ) !== 0
+        ) {
+            continue;
+        }
+
+        // Snapshot the record BEFORE clearing, then conditionally unregister via
+        // the atomic compare-and-delete (mirrors wldelay_flush_lockout_transients).
+        $record_snapshot = wldelay_get_transient_registry_record( $transient_name );
+        if ( delete_transient( $transient_name ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_record_if_unchanged( $transient_name, $record_snapshot );
+
+        // Clear the paired failure counter so the threshold is reset; otherwise the
+        // next failed attempt re-locks immediately (same rationale as the snapshot
+        // path in wldelay_clear_lockout_transients_for_snapshot).
+        $fails_name = wldelay_derive_failure_transient_key( $transient_name );
+        if ( null !== $fails_name ) {
+            $fails_record_snapshot = wldelay_get_transient_registry_record( $fails_name );
+            if ( delete_transient( $fails_name ) ) {
+                $deleted++;
+            }
+            wldelay_unregister_transient_record_if_unchanged( $fails_name, $fails_record_snapshot );
+        }
+    }
+
+    return $deleted;
+}
+
+/**
  * Handle admin action to clear every currently-active lockout (F-1-1).
  *
  * Enumerates the durable store and removes each subject through the SAME
  * generation-aware, transient-registry-safe path the per-row unlock uses, so a
- * cache-only transient is flushed too. Deliberately NOT a raw clear_all() on the
- * table (which would leave orphaned transients and bypass the compare-and-delete
- * contract, consistent with M5b). A single durable-delete failure makes the
- * whole operation report a partial failure rather than a clean flush (F-3-1).
+ * cache-only transient is flushed too. Also sweeps registered lockout transients
+ * with no durable row (the wldelay_lock_ip() fail-open path). Deliberately NOT a
+ * raw clear_all() on the table (which would leave orphaned transients and bypass
+ * the compare-and-delete contract, consistent with M5b). A single durable-delete
+ * or read failure makes the whole operation report a partial failure rather than
+ * a clean flush (F-3-1).
  */
 function wldelay_handle_clear_all_lockouts() {
     if ( ! current_user_can( 'manage_options' ) ) {
@@ -1175,8 +1323,20 @@ function wldelay_handle_clear_all_lockouts() {
     $store    = wldelay_get_persistence_store();
     $lockouts = $store->get_active_lockouts( PHP_INT_MAX );
 
+    // FALSE (NOT an empty array) is a DB read failure: rows may persist on disk.
+    // Report a failure rather than "nothing to clear" while the user stays locked
+    // (F-3-1 read contract). Still sweep the registry-only transients below so a
+    // cache-only lockout is released even when the durable read is down.
+    $read_failed = ( false === $lockouts );
+    if ( $read_failed ) {
+        $lockouts = array();
+    }
+
+    // Track durable subjects removed SEPARATELY from transient-only sweeps so the
+    // admin notice and audit removed_rows reflect lockout rows, not an inflated
+    // transient+durable sum (F-1-1 review).
     $removed = 0;
-    $failed  = false;
+    $failed  = $read_failed;
 
     foreach ( $lockouts as $lockout ) {
         $ip       = isset( $lockout['ip_address'] ) ? (string) $lockout['ip_address'] : '';
@@ -1189,14 +1349,25 @@ function wldelay_handle_clear_all_lockouts() {
         $deleted = wldelay_delete_lockout_subject( $ip, $username );
 
         if ( false === $deleted ) {
-            // A durable delete failed: the row may persist. Record the failure but
-            // keep clearing the rest so one bad row does not strand the others.
+            // A durable delete (or read) failed: the row may persist. Record the
+            // failure but keep clearing the rest so one bad row does not strand
+            // the others.
             $failed = true;
             continue;
         }
 
         $removed += (int) $deleted;
     }
+
+    // Sweep registered lockout transient keys (and their paired failure counters)
+    // that have NO durable row. wldelay_lock_ip() intentionally KEEPS a registered
+    // transient lockout when the durable add_lockout() fails but the registry write
+    // succeeds — a genuinely-active, durable-row-less lockout. The durable-row loop
+    // above can never reach it, so clear-all would report success while the user
+    // stays locked. Reuse the registry-enumeration + compare-and-delete machinery
+    // to release it (F-1-1 review). These transient deletions are NOT added to
+    // $removed: the notice/audit count tracks durable subjects.
+    wldelay_sweep_registered_lockout_transients();
 
     if ( function_exists( 'wldelay_audit_log' ) ) {
         wldelay_audit_log(
