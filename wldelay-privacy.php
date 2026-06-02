@@ -315,23 +315,34 @@ function wldelay_privacy_get_run_state( $request_id ) {
 /**
  * Persist the per-run export state for a request id (durable for the run).
  *
+ * Writes, then rereads and requires the persisted value to equal what was
+ * written, returning whether persistence is verified. The update_*() boolean is
+ * NOT trusted: it returns false on an unchanged write (false negative) and a
+ * failed write can leave an older value stored under the same request id. If a
+ * page-1 write silently failed, a stale prior-run state would survive and the
+ * next page would resume the wrong cursor/ceiling → silent dup/skip/mixed
+ * snapshot. Reread-compare is the only reliable signal (F-3-1 review).
+ *
  * @param int   $request_id Request id.
  * @param array $state      Run state.
- * @return void
+ * @return bool True only when the state is verified persisted.
  */
 function wldelay_privacy_set_run_state( $request_id, array $state ) {
     $request_id = (int) $request_id;
     if ( $request_id <= 0 ) {
-        return;
+        return false;
     }
 
     if ( wldelay_privacy_request_id_is_post( $request_id ) ) {
         update_post_meta( $request_id, wldelay_privacy_export_state_meta_key(), $state );
-        return;
+    } else {
+        // autoload=false: this is per-run, transient-by-purpose state.
+        update_option( wldelay_privacy_export_state_option_name( $request_id ), $state, false );
     }
 
-    // autoload=false: this is per-run, transient-by-purpose state.
-    update_option( wldelay_privacy_export_state_option_name( $request_id ), $state, false );
+    $persisted = wldelay_privacy_get_run_state( $request_id );
+
+    return is_array( $persisted ) && $persisted == $state;
 }
 
 /**
@@ -623,6 +634,11 @@ function wldelay_privacy_exporter( $email_address, $page = 1 ) {
     // WP_Error rather than restart (which would dup/skip or loop). This is the
     // supported hard-failure channel (F-3-1).
     if ( 1 === $page ) {
+        // Drop any state left by a prior, abandoned run for this request id so a
+        // stale slot can never be mistaken for this run's cursors (belt and
+        // braces alongside the verified write below). (F-3-1 review.)
+        wldelay_privacy_clear_run_state( $request_id );
+
         $state = wldelay_privacy_build_export_state( $login );
         if ( is_wp_error( $state ) ) {
             wldelay_privacy_release_lock( $request_id );
@@ -750,8 +766,15 @@ function wldelay_privacy_exporter( $email_address, $page = 1 ) {
     if ( $done ) {
         wldelay_privacy_clear_run_state( $request_id );
     } else {
-        // Hold the cursors for the next page (durable for the run).
-        wldelay_privacy_set_run_state( $request_id, $state );
+        // Hold the cursors for the next page (durable for the run). Require the
+        // write to be verified persisted; if it is not, abort THIS page with a
+        // WP_Error rather than hand WordPress page data we cannot resume — an
+        // unverified write could leave stale prior-run state that the next page
+        // would resume, silently duplicating/skipping rows (F-3-1 review).
+        if ( ! wldelay_privacy_set_run_state( $request_id, $state ) ) {
+            wldelay_privacy_release_lock( $request_id );
+            return wldelay_privacy_state_error();
+        }
     }
 
     wldelay_privacy_release_lock( $request_id );

@@ -804,6 +804,67 @@ class PrivacyTest extends WP_UnitTestCase {
         $this->assertSame( 'wldelay_privacy_export_state', $page2->get_error_code() );
     }
 
+    /**
+     * M6 review r3: a page that cannot VERIFY its cursor write persisted must
+     * abort with a WP_Error rather than hand WordPress page data it cannot
+     * resume. A failed write can leave stale prior-run state readable, so
+     * wldelay_privacy_set_run_state() writes-then-rereads-and-compares; if the
+     * reread does not match, the exporter aborts on this very page.
+     */
+    public function test_exporter_aborts_when_run_state_write_cannot_be_verified() {
+        $request_id = (int) $_POST['id'];
+
+        // Seed more than one page so page 1 is not-done and must persist state.
+        $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
+        for ( $i = 0; $i < $page_size + 5; $i++ ) {
+            $this->seed_login_log( $this->login, '203.0.113.' . ( $i % 250 ) );
+        }
+
+        // Corrupt the run-state readback so the write can never be verified
+        // (simulates a failed persist that left a stale/divergent value).
+        $option_name = wldelay_privacy_export_state_option_name( $request_id );
+        $corrupt     = static function () {
+            return array( 'login_cursor' => -1, 'corrupted' => true );
+        };
+        add_filter( 'option_' . $option_name, $corrupt );
+
+        $page1 = wldelay_privacy_exporter( $this->email, 1 );
+
+        remove_filter( 'option_' . $option_name, $corrupt );
+
+        $this->assertWPError( $page1, 'An unverifiable cursor write must abort the page with a WP_Error.' );
+        $this->assertSame( 'wldelay_privacy_export_state', $page1->get_error_code() );
+    }
+
+    /**
+     * M6 review r3: wldelay_privacy_set_run_state() returns true only when the
+     * persisted value is verified equal on reread, and false otherwise.
+     */
+    public function test_set_run_state_verifies_persistence() {
+        $request_id = (int) $_POST['id'];
+        $state      = array( 'login_cursor' => 42, 'login_done' => false );
+
+        $this->assertTrue(
+            wldelay_privacy_set_run_state( $request_id, $state ),
+            'A clean write must verify on reread.'
+        );
+        $this->assertSame( $state, wldelay_privacy_get_run_state( $request_id ) );
+
+        // A reread that diverges from what was written must report unverified.
+        $option_name = wldelay_privacy_export_state_option_name( $request_id );
+        $corrupt     = static function () {
+            return array( 'login_cursor' => 999 );
+        };
+        add_filter( 'option_' . $option_name, $corrupt );
+
+        $this->assertFalse(
+            wldelay_privacy_set_run_state( $request_id, $state ),
+            'A divergent reread must report the write as unverified.'
+        );
+
+        remove_filter( 'option_' . $option_name, $corrupt );
+    }
+
     // ----------------------------------------------------------------------
     // M6 point 3: a broken SHOW TABLES probe is a FAILED read, not "table
     // absent". get_lockouts_for_username() returns FALSE and the eraser
