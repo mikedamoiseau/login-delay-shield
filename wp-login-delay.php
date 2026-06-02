@@ -786,8 +786,15 @@ function wldelay_clear_lockout_transients_for_snapshot( $ip, array $snapshot ) {
  * expired row still bearing the subject's username + IP (personal data) is
  * removed too (F-3-1).
  *
+ * Returns FALSE (not a count) when the durable layer fails: a failed SELECT
+ * (get_lockouts_for_username() returning FALSE) or a failed conditional DELETE
+ * (remove_lockouts_matching_generation() returning FALSE) means the subject's
+ * lockout PII may still be on disk. The eraser must surface that as
+ * items_retained rather than claiming a clean erasure (F-3-1).
+ *
  * @param string $username Subject's user_login (the value persisted at lock time).
- * @return int Number of transients + durable rows removed.
+ * @return int|false Number of transients + durable rows removed, or FALSE when a
+ *                   durable read/delete failed at the DB layer.
  */
 function wldelay_delete_lockouts_for_user( $username ) {
     $username = (string) $username;
@@ -797,6 +804,12 @@ function wldelay_delete_lockouts_for_user( $username ) {
 
     $store    = wldelay_get_persistence_store();
     $snapshot = $store->get_lockouts_for_username( $username );
+
+    // A failed SELECT (distinct from "no rows" array()) means we cannot know
+    // which durable rows exist for the subject, so we must not report success.
+    if ( false === $snapshot ) {
+        return false;
+    }
 
     if ( empty( $snapshot ) ) {
         return 0;
@@ -823,9 +836,15 @@ function wldelay_delete_lockouts_for_user( $username ) {
     // concurrent relock that refreshed one of these rows wrote a new generation,
     // so it survives the compare-and-delete — preserving the M5b race fix while
     // leaving every other user's rows untouched (F-3-1).
-    $deleted += $store->remove_lockouts_matching_generation( $snapshot );
+    $durable_removed = $store->remove_lockouts_matching_generation( $snapshot );
 
-    return $deleted;
+    // A failed DELETE (FALSE, distinct from 0 rows) means the durable PII may
+    // remain; propagate it so the eraser flags items_retained (F-3-1).
+    if ( false === $durable_removed ) {
+        return false;
+    }
+
+    return $deleted + $durable_removed;
 }
 
 /**
@@ -1163,55 +1182,107 @@ function wldelay_get_login_log_attempts( $args = array() ) {
 
 
 /**
- * Fetch login-log rows for an EXACT username (privacy export).
+ * Fetch a keyset page of login-log rows for an EXACT username (privacy export).
  *
  * The admin-search path (wldelay_build_login_log_where_clause) matches username
  * with a substring LIKE so an operator can find "admin*" probes. That is wrong
  * for a GDPR export: exporting the subject `ann` would also return rows for
  * `joann`, `ann-admin`, etc., disclosing unrelated users' IPs and timestamps.
  * This path matches `username = %s` exactly so only the subject's own rows are
- * returned. Ordered by attempted_at DESC, id DESC so pagination is deterministic
- * across rows sharing a second; the row id is returned so the caller can derive
- * a stable export item_id (F-3-1).
+ * returned.
  *
- * @param string $username Exact username to match.
- * @param int    $limit    Maximum rows.
- * @param int    $offset   Row offset.
- * @return array Result rows (id, ip_address, username, attempted_at, source).
+ * Pagination is KEYSET over the immutable id, NOT offset. WordPress drives the
+ * exporter in pages, but offset pagination over `attempted_at DESC` is unstable:
+ * on a brute-force-targeted site new rows land at the top BETWEEN page calls, so
+ * the offset window shifts and a boundary row is duplicated while an older row is
+ * skipped (a concurrent retention-purge causes the inverse). The exporter
+ * snapshots a max_id ceiling on page 1 and pages by keyset under it: every page
+ * fetches `WHERE username = %s AND id <= ceiling AND id < cursor ORDER BY id DESC
+ * LIMIT n`. Rows inserted after the run started (id > ceiling) are excluded
+ * (correct — they post-date the request); deletes can only shrink the set, never
+ * shift the cursor onto an already-emitted row. Ordering by id (not attempted_at)
+ * keeps the keyset cursor monotonic and unambiguous (F-3-1).
+ *
+ * @param string $username   Exact username to match.
+ * @param int    $limit      Maximum rows for this page.
+ * @param int    $max_id     Ceiling: only rows with id <= this are considered.
+ * @param int    $after_id   Keyset cursor: only rows with id < this are returned
+ *                           (pass the smallest id from the previous page; pass
+ *                           $max_id + 1 / 0-means-no-cursor for the first page).
+ * @return array Result rows (id, ip_address, username, attempted_at, source),
+ *               ordered id DESC.
  */
-function wldelay_get_login_log_for_username( $username, $limit, $offset = 0 ) {
+function wldelay_get_login_log_for_username( $username, $limit, $max_id, $after_id = 0 ) {
     global $wpdb;
 
     $username = (string) $username;
     $limit    = max( 1, absint( $limit ) );
-    $offset   = max( 0, absint( $offset ) );
+    $max_id   = max( 0, absint( $max_id ) );
+    $after_id = max( 0, absint( $after_id ) );
+
+    if ( 0 === $max_id ) {
+        return array();
+    }
+
+    // The cursor defaults to "just past the ceiling" on the first page so the
+    // first keyset window starts at the ceiling itself.
+    if ( 0 === $after_id ) {
+        $after_id = $max_id + 1;
+    }
 
     $table_name = wldelay_get_log_table_name();
 
-    // $table_name is derived from $wpdb->prefix (not user input). The id
-    // tie-break keeps ordering stable when several attempts share a second.
-    $sql = "SELECT id, ip_address, username, attempted_at, source FROM $table_name WHERE username = %s ORDER BY attempted_at DESC, id DESC LIMIT %d OFFSET %d";
+    // $table_name is derived from $wpdb->prefix (not user input). id is the
+    // immutable PK, so the keyset window is stable under concurrent insert/delete.
+    $sql = "SELECT id, ip_address, username, attempted_at, source FROM $table_name WHERE username = %s AND id <= %d AND id < %d ORDER BY id DESC LIMIT %d";
 
-    return $wpdb->get_results( $wpdb->prepare( $sql, $username, $limit, $offset ) );
+    return $wpdb->get_results( $wpdb->prepare( $sql, $username, $max_id, $after_id, $limit ) );
 }
 
 /**
- * Count login-log rows for an EXACT username (privacy export).
+ * Highest login-log id for an EXACT username — the keyset export ceiling.
  *
- * Companion to wldelay_get_login_log_for_username(): an exact `username = %s`
- * count so export pagination totals match the exact-match fetch and never
- * include substring-adjacent accounts (F-3-1).
+ * Captured once on export page 1 and held across pages so the export run sees a
+ * fixed snapshot of the subject's rows; rows inserted after this point (id above
+ * the ceiling) are excluded from the run (F-3-1).
  *
  * @param string $username Exact username to match.
- * @return int Matching row count.
+ * @return int Highest matching id, or 0 when the subject has no rows.
  */
-function wldelay_count_login_log_for_username( $username ) {
+function wldelay_get_max_login_log_id_for_username( $username ) {
     global $wpdb;
 
     $table_name = wldelay_get_log_table_name();
 
     return (int) $wpdb->get_var(
-        $wpdb->prepare( "SELECT COUNT(*) FROM $table_name WHERE username = %s", (string) $username )
+        $wpdb->prepare( "SELECT MAX(id) FROM $table_name WHERE username = %s", (string) $username )
+    );
+}
+
+/**
+ * Count login-log rows for an EXACT username up to the export ceiling.
+ *
+ * Companion to wldelay_get_login_log_for_username(): an exact `username = %s`
+ * count, bounded by the same max_id ceiling the keyset pages use, so the export's
+ * group total is stable across pages and never includes substring-adjacent
+ * accounts (F-3-1). A 0 ceiling (subject has no rows) yields 0.
+ *
+ * @param string $username Exact username to match.
+ * @param int    $max_id   Ceiling: only rows with id <= this are counted.
+ * @return int Matching row count.
+ */
+function wldelay_count_login_log_for_username( $username, $max_id ) {
+    global $wpdb;
+
+    $max_id = max( 0, absint( $max_id ) );
+    if ( 0 === $max_id ) {
+        return 0;
+    }
+
+    $table_name = wldelay_get_log_table_name();
+
+    return (int) $wpdb->get_var(
+        $wpdb->prepare( "SELECT COUNT(*) FROM $table_name WHERE username = %s AND id <= %d", (string) $username, $max_id )
     );
 }
 

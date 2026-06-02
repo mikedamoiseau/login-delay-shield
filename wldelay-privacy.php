@@ -215,19 +215,119 @@ function wldelay_register_privacy_eraser( $erasers ) {
 }
 
 /**
+ * Run-state transient key for a paginated export of one subject.
+ *
+ * The exporter holds its keyset cursors + the page-1 ceilings across WP's
+ * page-by-page invocations in a short-lived transient (WP only hands the callback
+ * an incrementing $page, so the snapshot/cursor state must live somewhere it can
+ * read back). Keyed by a hash of the subject login so concurrent export runs for
+ * different subjects never collide. The login is hashed (not embedded raw) to
+ * keep the option/transient name within length limits and free of odd chars.
+ *
+ * @param string $login Subject user_login.
+ * @return string Transient name.
+ */
+function wldelay_privacy_export_state_key( $login ) {
+    return 'wldelay_pexport_' . sha1( (string) $login );
+}
+
+/**
+ * Build the per-subject export run state captured on page 1.
+ *
+ * Snapshots the immutable-id ceilings for the login and audit logs (so the run
+ * sees a fixed view of the subject's rows; rows inserted after this point are
+ * excluded) and materialises the small, bounded lockout item list once. The
+ * cursors start "just past" each ceiling so the first keyset window opens at the
+ * ceiling itself. Stored in a transient and advanced page to page (F-3-1).
+ *
+ * @param string $login Subject user_login.
+ * @return array Run state.
+ */
+function wldelay_privacy_build_export_state( $login ) {
+    $login_max = wldelay_get_max_login_log_id_for_username( $login );
+    $audit_max = wldelay_get_max_audit_log_id_for_actor( $login );
+
+    return array(
+        'login_max'      => $login_max,
+        'login_cursor'   => $login_max + 1,
+        'login_done'     => ( 0 === $login_max ),
+        'audit_max'      => $audit_max,
+        'audit_cursor'   => $audit_max + 1,
+        'audit_done'     => ( 0 === $audit_max ),
+        // Lockouts are tiny and bounded; snapshot the fully-formed export items
+        // once on page 1 so later pages slice from a frozen list (no per-page
+        // re-query that a concurrent lock/unlock could shift).
+        'lockout_items'  => wldelay_privacy_build_lockout_items( $login ),
+        'lockout_offset' => 0,
+    );
+}
+
+/**
+ * Build the export items for a subject's active lockouts (page-1 snapshot).
+ *
+ * @param string $login Subject user_login.
+ * @return array[] Export-item arrays.
+ */
+function wldelay_privacy_build_lockout_items( $login ) {
+    $lockout_rows = wldelay_privacy_get_lockouts_for_login( $login );
+
+    // Deterministic order so a snapshot is reproducible and item_ids are stable.
+    usort(
+        $lockout_rows,
+        static function ( $a, $b ) {
+            $ka = isset( $a['lockout_key'] ) ? (string) $a['lockout_key'] : '';
+            $kb = isset( $b['lockout_key'] ) ? (string) $b['lockout_key'] : '';
+            return strcmp( $ka, $kb );
+        }
+    );
+
+    $items = array();
+    foreach ( $lockout_rows as $row ) {
+        $row = (array) $row;
+        $key = isset( $row['lockout_key'] ) ? (string) $row['lockout_key'] : '';
+        if ( '' === $key ) {
+            // Legacy/synthetic row without a key — fall back to a stable hash of
+            // its identifying columns so the item_id is still unique.
+            $key = substr(
+                md5(
+                    ( isset( $row['ip_address'] ) ? $row['ip_address'] : '' ) . '|' .
+                    ( isset( $row['lockout_type'] ) ? $row['lockout_type'] : '' )
+                ),
+                0,
+                16
+            );
+        }
+        $items[] = array(
+            'group_id'    => 'wldelay-lockouts',
+            'group_label' => __( 'Login Delay Shield — active lockouts', 'login-delay-shield' ),
+            'item_id'     => 'wldelay-lockout-' . $key,
+            'data'        => wldelay_privacy_lockout_row_to_data( $row ),
+        );
+    }
+
+    return $items;
+}
+
+/**
  * WP Privacy exporter callback.
  *
  * Resolves the email to a registered user and exports, in WordPress's paginated
  * shape, that user's login-log rows, audit-log rows and active lockouts.
  *
- * Pagination model: the login log is the only group that can grow large (one row
- * per failed attempt), so it is paginated PAGE_SIZE rows at a time. The audit log
- * and active lockouts are small, bounded sets, so they are emitted together once
- * the login log is fully drained — appended to the final login-log page when it
- * has room, or on the page immediately after the last login-log page. WordPress
- * accumulates every page's data until the callback returns done=true, so a
- * subject whose data fits within one page receives all three groups in a single
- * pass.
+ * Pagination model: KEYSET over the immutable row id, NOT offset. Offset
+ * pagination over a DESC-sorted log is unstable on an active (brute-force
+ * targeted) site — new rows landing at the top between page calls shift the
+ * offset window, duplicating a boundary row and skipping an older one (a
+ * concurrent retention-purge causes the inverse). Instead, page 1 snapshots a
+ * max_id ceiling per log and the run pages by keyset under it (`id <= ceiling AND
+ * id < cursor`), carrying the cursor across WP's page calls in a short-lived
+ * run-state transient. Rows inserted after the run started (id > ceiling) are
+ * excluded (correct — they post-date the request); deletes only shrink the set
+ * and can never shift the cursor onto an already-emitted row. The three groups
+ * are drained in order — login-log, then audit-log, then the page-1 lockout
+ * snapshot — packing up to PAGE_SIZE items per WP page. All log queries are
+ * EXACT-match on the subject's login (never the admin substring LIKE) so no
+ * adjacent account leaks (F-3-1).
  *
  * @param string $email_address Data-subject email.
  * @param int    $page          1-based page number.
@@ -248,110 +348,123 @@ function wldelay_privacy_exporter( $email_address, $page = 1 ) {
     }
 
     $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
+    $state_key = wldelay_privacy_export_state_key( $login );
 
-    // Treat the three groups as one concatenated logical sequence:
-    //   [ login-log rows ][ audit-log rows ][ lockout rows ]
-    // and emit a deterministic PAGE_SIZE-row window of it per WP page. Every
-    // group is paginated (no PHP_INT_MAX fetch), so a subject with a large login
-    // OR audit trail never loads the whole table into memory. done=false until
-    // the window reaches the end of the last group, so WP keeps accumulating
-    // pages. All three counts/queries are EXACT-match on the subject's login —
-    // never the admin substring LIKE — so no adjacent account leaks (F-3-1).
-    $login_total = wldelay_count_login_log_for_username( $login );
-    $audit_total = wldelay_count_audit_log_for_actor( $login );
-
-    // Lockouts are a small, bounded set (one per active IP/type for the subject),
-    // materialised once and sliced in PHP. They carry no stable DB id exposed
-    // here, so their export item_id is derived from the durable lockout_key.
-    $lockout_rows  = wldelay_privacy_get_lockouts_for_login( $login );
-    $lockout_total = count( $lockout_rows );
-
-    $total  = $login_total + $audit_total + $lockout_total;
-    $offset = ( $page - 1 ) * $page_size;
-
-    if ( $offset >= $total ) {
-        // Past the end (e.g. WP requested an extra page, or no data at all).
-        return array(
-            'data' => array(),
-            'done' => true,
-        );
+    // Page 1 starts a fresh run: capture the ceilings + lockout snapshot and
+    // overwrite any stale state from a prior, abandoned run. Later pages read the
+    // carried cursors back. If the state transient was evicted mid-run (rare;
+    // object-cache pressure), rebuild it — the ceilings re-snapshot at the
+    // current MAX(id), which is monotonic for an append-only log, so a late
+    // re-snapshot never re-emits rows already past the cursor.
+    if ( 1 === $page ) {
+        $state = wldelay_privacy_build_export_state( $login );
+    } else {
+        $state = get_transient( $state_key );
+        if ( ! is_array( $state ) ) {
+            $state = wldelay_privacy_build_export_state( $login );
+        }
     }
 
-    $window_end   = min( $offset + $page_size, $total );
     $export_items = array();
+    $remaining    = $page_size;
 
-    // ---- Group 1: login-log rows -----------------------------------------
-    if ( $offset < $login_total ) {
-        $g_offset = $offset;
-        $g_limit  = min( $window_end, $login_total ) - $g_offset;
-        $rows     = wldelay_get_login_log_for_username( $login, $g_limit, $g_offset );
+    // ---- Group 1: login-log rows (keyset under the page-1 ceiling) --------
+    if ( empty( $state['login_done'] ) && $remaining > 0 ) {
+        $had_room = $remaining;
+        $rows     = wldelay_get_login_log_for_username(
+            $login,
+            $had_room,
+            (int) $state['login_max'],
+            (int) $state['login_cursor']
+        );
 
         foreach ( $rows as $row ) {
-            $row = (array) $row;
+            $row    = (array) $row;
+            $row_id = isset( $row['id'] ) ? (int) $row['id'] : 0;
             $export_items[] = array(
                 'group_id'    => 'wldelay-login-log',
                 'group_label' => __( 'Login Delay Shield — failed login attempts', 'login-delay-shield' ),
-                // item_id from the stable DB row id, not a positional index, so
+                // item_id from the immutable DB row id, not a positional index, so
                 // it never collides or shifts across pages.
-                'item_id'     => 'wldelay-login-log-' . ( isset( $row['id'] ) ? (int) $row['id'] : 0 ),
+                'item_id'     => 'wldelay-login-log-' . $row_id,
                 'data'        => wldelay_privacy_login_log_row_to_data( $row ),
             );
+            // Advance the keyset cursor to the lowest id emitted so the next page
+            // resumes strictly below it.
+            $state['login_cursor'] = $row_id;
+        }
+
+        $fetched    = count( $rows );
+        $remaining -= $fetched;
+
+        // Fewer rows than the slot offered → the group is drained under the
+        // ceiling. A full slot may still leave rows; they come on the next page.
+        if ( $fetched < $had_room ) {
+            $state['login_done'] = true;
         }
     }
 
-    // ---- Group 2: audit-log rows (exact actor_login match) ----------------
-    $audit_start = $login_total;
-    $audit_end   = $login_total + $audit_total;
-    if ( $offset < $audit_end && $window_end > $audit_start ) {
-        $g_offset = max( 0, $offset - $audit_start );
-        $g_limit  = ( min( $window_end, $audit_end ) - $audit_start ) - $g_offset;
-        if ( $g_limit > 0 ) {
-            $rows = wldelay_get_audit_log_for_actor( $login, $g_limit, $g_offset );
-            foreach ( $rows as $row ) {
-                $row = (array) $row;
-                $export_items[] = array(
-                    'group_id'    => 'wldelay-audit-log',
-                    'group_label' => __( 'Login Delay Shield — security audit log', 'login-delay-shield' ),
-                    'item_id'     => 'wldelay-audit-log-' . ( isset( $row['id'] ) ? (int) $row['id'] : 0 ),
-                    'data'        => wldelay_privacy_audit_log_row_to_data( $row ),
-                );
-            }
-        }
-    }
+    // ---- Group 2: audit-log rows (keyset under the page-1 ceiling) --------
+    if ( empty( $state['audit_done'] ) && $remaining > 0 ) {
+        $rows = wldelay_get_audit_log_for_actor(
+            $login,
+            $remaining,
+            (int) $state['audit_max'],
+            (int) $state['audit_cursor']
+        );
 
-    // ---- Group 3: active lockouts -----------------------------------------
-    $lock_start = $audit_end;
-    if ( $window_end > $lock_start ) {
-        $g_offset = max( 0, $offset - $lock_start );
-        $g_limit  = $window_end - $lock_start - $g_offset;
-        $slice    = array_slice( $lockout_rows, $g_offset, $g_limit );
-        foreach ( $slice as $row ) {
-            $row = (array) $row;
-            $key = isset( $row['lockout_key'] ) ? (string) $row['lockout_key'] : '';
-            if ( '' === $key ) {
-                // Legacy/synthetic row without a key — fall back to a stable
-                // hash of its identifying columns so the item_id is still unique.
-                $key = substr(
-                    md5(
-                        ( isset( $row['ip_address'] ) ? $row['ip_address'] : '' ) . '|' .
-                        ( isset( $row['lockout_type'] ) ? $row['lockout_type'] : '' )
-                    ),
-                    0,
-                    16
-                );
-            }
+        foreach ( $rows as $row ) {
+            $row    = (array) $row;
+            $row_id = isset( $row['id'] ) ? (int) $row['id'] : 0;
             $export_items[] = array(
-                'group_id'    => 'wldelay-lockouts',
-                'group_label' => __( 'Login Delay Shield — active lockouts', 'login-delay-shield' ),
-                'item_id'     => 'wldelay-lockout-' . $key,
-                'data'        => wldelay_privacy_lockout_row_to_data( $row ),
+                'group_id'    => 'wldelay-audit-log',
+                'group_label' => __( 'Login Delay Shield — security audit log', 'login-delay-shield' ),
+                'item_id'     => 'wldelay-audit-log-' . $row_id,
+                'data'        => wldelay_privacy_audit_log_row_to_data( $row ),
             );
+            $state['audit_cursor'] = $row_id;
         }
+
+        $fetched    = count( $rows );
+        $had_room   = $remaining;
+        $remaining -= $fetched;
+
+        if ( $fetched < $had_room ) {
+            $state['audit_done'] = true;
+        }
+    }
+
+    // ---- Group 3: active lockouts (page-1 snapshot, sliced) ---------------
+    $lockout_items = isset( $state['lockout_items'] ) && is_array( $state['lockout_items'] )
+        ? $state['lockout_items']
+        : array();
+    $lockout_total = count( $lockout_items );
+
+    if ( $remaining > 0 && (int) $state['lockout_offset'] < $lockout_total ) {
+        $slice = array_slice( $lockout_items, (int) $state['lockout_offset'], $remaining );
+        foreach ( $slice as $item ) {
+            $export_items[]           = $item;
+            $state['lockout_offset'] = (int) $state['lockout_offset'] + 1;
+        }
+        $remaining -= count( $slice );
+    }
+
+    // The run is complete once all three groups are drained.
+    $done = ! empty( $state['login_done'] )
+        && ! empty( $state['audit_done'] )
+        && (int) $state['lockout_offset'] >= $lockout_total;
+
+    if ( $done ) {
+        delete_transient( $state_key );
+    } else {
+        // Hold the cursors for the next page. A generous TTL covers a slow,
+        // multi-page admin export; the run self-heals if it is ever evicted.
+        set_transient( $state_key, $state, HOUR_IN_SECONDS );
     }
 
     return array(
         'data' => $export_items,
-        'done' => $window_end >= $total,
+        'done' => $done,
     );
 }
 
@@ -442,7 +555,16 @@ function wldelay_privacy_eraser( $email_address, $page = 1 ) {
     // protection for a non-subject. Scoping to the username fixes that and also
     // reaches expired rows (which still bear the subject's username + IP) that
     // an active-only enumeration left behind (F-3-1).
-    if ( wldelay_delete_lockouts_for_user( $login ) > 0 ) {
+    //
+    // A FALSE return (NOT a count) means a durable SELECT or DELETE failed at
+    // the DB layer, so the subject's lockout PII may still be on disk. Mirror
+    // the login/audit branches above: flag items_retained and surface an
+    // actionable message rather than reporting a clean completion (F-3-1).
+    $lockouts_removed = wldelay_delete_lockouts_for_user( $login );
+    if ( false === $lockouts_removed ) {
+        $result['items_retained'] = true;
+        $result['messages'][]     = __( 'Login Delay Shield could not delete the lockout records for this user; they were retained. Check the database and retry the erasure.', 'login-delay-shield' );
+    } elseif ( $lockouts_removed > 0 ) {
         $removed = true;
     }
 
@@ -452,32 +574,67 @@ function wldelay_privacy_eraser( $email_address, $page = 1 ) {
 }
 
 /**
- * Active lockouts whose stored username matches a login.
+ * Active lockouts whose stored username matches a login (export view).
  *
- * Enumerates the durable store's active rows and filters to those whose username
- * column equals the subject's login (the value wldelay_lock_ip persisted via
- * wldelay_get_effective_lockout_username). Returns associative rows carrying at
- * least ip_address, lockout_type and expires_at.
+ * Scopes at SQL via get_lockouts_for_username() — WHERE username = %s — then
+ * keeps only the in-force rows for the export. The earlier implementation scanned
+ * the GLOBAL active-lockout prefix (get_active_lockouts(LIMIT) is
+ * `WHERE expires_at > now ORDER BY expires_at DESC LIMIT n`) and filtered by
+ * username in PHP, so on a busy site the subject's own lockout could sit OUTSIDE
+ * that global window and never be exported at all. Scoping by username first
+ * guarantees the subject's lockouts are fetched regardless of how many unrelated
+ * lockouts the site holds; any bound is applied AFTER the username scope (F-3-1).
+ *
+ * get_lockouts_for_username() returns rows whose expires_at is a string datetime
+ * (active AND expired); this view keeps only the active rows and normalises
+ * expires_at to a UNIX timestamp so the export item formatter renders it
+ * consistently with the rest of the plugin.
  *
  * @param string $login user_login.
- * @return array[] Matching active lockout rows.
+ * @return array[] Matching active lockout rows (empty on a failed read).
  */
 function wldelay_privacy_get_lockouts_for_login( $login ) {
     $login = (string) $login;
 
     $store = wldelay_get_persistence_store();
 
-    // A single subject has at most a handful of in-force lockouts (one per IP /
-    // type they are currently locked from), so a bounded enumeration covers them
-    // without the unbounded PHP_INT_MAX scan that would risk a large-table
-    // memory/timeout. WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT is generous headroom.
-    $rows = $store->get_active_lockouts( WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT );
+    // Username-scoped read (active + expired). A failed read returns FALSE; for
+    // the EXPORT view we degrade to an empty set rather than fatal — the eraser
+    // path (wldelay_delete_lockouts_for_user) is where a failed read is surfaced
+    // as items_retained.
+    $rows = $store->get_lockouts_for_username( $login );
+    if ( ! is_array( $rows ) ) {
+        return array();
+    }
 
+    $now     = time();
     $matched = array();
     foreach ( $rows as $row ) {
         $row = (array) $row;
-        if ( isset( $row['username'] ) && (string) $row['username'] === $login ) {
-            $matched[] = $row;
+
+        // Skip rows for a different username (defensive — the SQL already scopes
+        // to username = %s, but a future store could relax the contract).
+        if ( ! isset( $row['username'] ) || (string) $row['username'] !== $login ) {
+            continue;
+        }
+
+        // Keep only in-force rows for the export view. expires_at arrives as a
+        // string datetime stored in UTC.
+        $expires_ts = isset( $row['expires_at'] ) ? strtotime( (string) $row['expires_at'] . ' UTC' ) : false;
+        if ( false === $expires_ts || $expires_ts <= $now ) {
+            continue;
+        }
+
+        // Normalise to a UNIX timestamp so wldelay_privacy_lockout_row_to_data()
+        // (which casts expires_at to int) renders the date correctly.
+        $row['expires_at'] = $expires_ts;
+        $matched[]         = $row;
+
+        // Bound the export set AFTER the username scope. A single subject only
+        // has a handful of in-force lockouts; the cap is generous headroom that
+        // still avoids materialising an unbounded result for a pathological case.
+        if ( count( $matched ) >= (int) WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT ) {
+            break;
         }
     }
 

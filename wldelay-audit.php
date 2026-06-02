@@ -861,48 +861,94 @@ function wldelay_query_audit_log( array $filters = array(), $page = 1, $per_page
 }
 
 /**
- * Fetch audit-log rows for an EXACT actor_login (privacy export).
+ * Fetch a keyset page of audit-log rows for an EXACT actor_login (privacy export).
  *
  * The admin filter (wldelay_build_audit_where_clause) matches actor with a
  * substring LIKE, which would disclose other actors' rows on a GDPR export
- * (subject `ann` pulling `joann`). This path matches `actor_login = %s` exactly
- * and paginates deterministically (created_at DESC, id DESC) so the exporter
- * never leaks an adjacent account and can page a large audit trail (F-3-1).
+ * (subject `ann` pulling `joann`). This path matches `actor_login = %s` exactly.
+ *
+ * Pagination is KEYSET over the immutable id, NOT offset — same rationale as
+ * wldelay_get_login_log_for_username(): offset pagination over a DESC sort is
+ * unstable when rows arrive or are purged between export page calls (boundary row
+ * duplicated / older row skipped). The exporter snapshots a max_id ceiling on
+ * page 1 and pages by keyset under it: `WHERE actor_login = %s AND id <= ceiling
+ * AND id < cursor ORDER BY id DESC LIMIT n`. Rows inserted after the run started
+ * are excluded; deletes only shrink the set (F-3-1).
  *
  * @param string $actor_login Exact actor_login to match.
- * @param int    $limit       Maximum rows.
- * @param int    $offset      Row offset.
- * @return array Result rows.
+ * @param int    $limit       Maximum rows for this page.
+ * @param int    $max_id      Ceiling: only rows with id <= this are considered.
+ * @param int    $after_id    Keyset cursor: only rows with id < this are returned
+ *                            (smallest id from the previous page; 0 / max_id + 1
+ *                            on the first page).
+ * @return array Result rows, ordered id DESC.
  */
-function wldelay_get_audit_log_for_actor( $actor_login, $limit, $offset = 0 ) {
+function wldelay_get_audit_log_for_actor( $actor_login, $limit, $max_id, $after_id = 0 ) {
     global $wpdb;
 
     $actor_login = (string) $actor_login;
     $limit       = max( 1, absint( $limit ) );
-    $offset      = max( 0, absint( $offset ) );
+    $max_id      = max( 0, absint( $max_id ) );
+    $after_id    = max( 0, absint( $after_id ) );
+
+    if ( 0 === $max_id ) {
+        return array();
+    }
+
+    if ( 0 === $after_id ) {
+        $after_id = $max_id + 1;
+    }
 
     $table_name = wldelay_get_audit_table_name();
 
-    // $table_name is derived from $wpdb->prefix (not user input). The id
-    // tie-break keeps ordering stable across rows sharing a created_at second.
-    $sql = "SELECT * FROM $table_name WHERE actor_login = %s ORDER BY created_at DESC, id DESC LIMIT %d OFFSET %d";
+    // $table_name is derived from $wpdb->prefix (not user input). id is the
+    // immutable PK, so the keyset window is stable under concurrent insert/delete.
+    $sql = "SELECT * FROM $table_name WHERE actor_login = %s AND id <= %d AND id < %d ORDER BY id DESC LIMIT %d";
 
-    return $wpdb->get_results( $wpdb->prepare( $sql, $actor_login, $limit, $offset ) );
+    return $wpdb->get_results( $wpdb->prepare( $sql, $actor_login, $max_id, $after_id, $limit ) );
 }
 
 /**
- * Count audit-log rows for an EXACT actor_login (privacy export).
+ * Highest audit-log id for an EXACT actor_login — the keyset export ceiling.
+ *
+ * Captured once on export page 1 and held across pages so the run sees a fixed
+ * snapshot; rows inserted after (id above the ceiling) are excluded (F-3-1).
  *
  * @param string $actor_login Exact actor_login to match.
- * @return int Matching row count.
+ * @return int Highest matching id, or 0 when the actor has no rows.
  */
-function wldelay_count_audit_log_for_actor( $actor_login ) {
+function wldelay_get_max_audit_log_id_for_actor( $actor_login ) {
     global $wpdb;
 
     $table_name = wldelay_get_audit_table_name();
 
     return (int) $wpdb->get_var(
-        $wpdb->prepare( "SELECT COUNT(*) FROM $table_name WHERE actor_login = %s", (string) $actor_login )
+        $wpdb->prepare( "SELECT MAX(id) FROM $table_name WHERE actor_login = %s", (string) $actor_login )
+    );
+}
+
+/**
+ * Count audit-log rows for an EXACT actor_login up to the export ceiling.
+ *
+ * Bounded by the same max_id ceiling the keyset pages use so the export group
+ * total is stable across pages (F-3-1). A 0 ceiling yields 0.
+ *
+ * @param string $actor_login Exact actor_login to match.
+ * @param int    $max_id      Ceiling: only rows with id <= this are counted.
+ * @return int Matching row count.
+ */
+function wldelay_count_audit_log_for_actor( $actor_login, $max_id ) {
+    global $wpdb;
+
+    $max_id = max( 0, absint( $max_id ) );
+    if ( 0 === $max_id ) {
+        return 0;
+    }
+
+    $table_name = wldelay_get_audit_table_name();
+
+    return (int) $wpdb->get_var(
+        $wpdb->prepare( "SELECT COUNT(*) FROM $table_name WHERE actor_login = %s AND id <= %d", (string) $actor_login, $max_id )
     );
 }
 

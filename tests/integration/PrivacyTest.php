@@ -492,4 +492,255 @@ class PrivacyTest extends WP_UnitTestCase {
             (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $log_table WHERE username = %s", $this->login ) ) // phpcs:ignore WordPress.DB
         );
     }
+
+    // ----------------------------------------------------------------------
+    // Finding A: keyset (snapshot) export pagination is stable under concurrent
+    // insert AND delete between page calls — no duplicate, no skipped row.
+    // ----------------------------------------------------------------------
+
+    /**
+     * Finding A: with offset pagination, a row inserted at the top between
+     * page-1 and page-2 would shift the window so the page-1 boundary row is
+     * re-emitted on page 2 (duplicate) and an older row is skipped; a delete
+     * causes the inverse. The keyset model snapshots a max_id ceiling on page 1
+     * and pages by id < cursor under it, so an insert after the run started is
+     * excluded and a delete can only shrink the set — never duplicate or skip.
+     */
+    public function test_exporter_pagination_is_stable_across_insert_and_delete() {
+        global $wpdb;
+
+        $log_table = wldelay_get_log_table_name();
+        $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
+
+        // Seed two full pages' worth so page 2 has rows of its own.
+        $total = $page_size + 10;
+        for ( $i = 0; $i < $total; $i++ ) {
+            $this->seed_login_log( $this->login, '203.0.113.' . ( $i % 250 ) );
+        }
+
+        // Capture the ids that EXIST when the run starts; the export must emit
+        // exactly these (minus any deleted below), with no dup and no extra.
+        $ids_at_start = array_map(
+            'intval',
+            (array) $wpdb->get_col( $wpdb->prepare( "SELECT id FROM $log_table WHERE username = %s ORDER BY id DESC", $this->login ) ) // phpcs:ignore WordPress.DB
+        );
+        $this->assertCount( $total, $ids_at_start );
+
+        // ---- Page 1 (snapshots the ceiling) ----
+        $page1 = wldelay_privacy_exporter( $this->email, 1 );
+        $this->assertCount( $page_size, $page1['data'] );
+        $this->assertFalse( $page1['done'] );
+
+        // ---- Concurrent activity BETWEEN page 1 and page 2 ----
+        // (1) An attacker hammers the subject again: new rows land at the TOP
+        //     (highest ids). Offset pagination would re-window and duplicate.
+        for ( $i = 0; $i < 5; $i++ ) {
+            $this->seed_login_log( $this->login, '203.0.113.200' );
+        }
+        // (2) A retention purge deletes an OLD row that has NOT yet been emitted
+        //     (one of the lowest ids, which belongs on page 2).
+        $oldest_id = min( $ids_at_start );
+        $wpdb->delete( $log_table, array( 'id' => $oldest_id ), array( '%d' ) );
+
+        // ---- Page 2 ----
+        $page2 = wldelay_privacy_exporter( $this->email, 2 );
+        $this->assertTrue( $page2['done'] );
+
+        // Collect emitted login-log item_ids across both pages.
+        $emitted = array();
+        foreach ( array_merge( $page1['data'], $page2['data'] ) as $item ) {
+            if ( 'wldelay-login-log' === $item['group_id'] ) {
+                $emitted[] = $item['item_id'];
+            }
+        }
+
+        // No duplicates across the page boundary.
+        $this->assertCount( count( $emitted ), array_unique( $emitted ), 'No duplicate rows across pages.' );
+
+        // The emitted set is exactly the start-of-run rows minus the one deleted
+        // before it was emitted: no row inserted after the run leaks in, and the
+        // deleted (not-yet-emitted) row is simply absent — never skipping a
+        // DIFFERENT row in its place.
+        $expected = array();
+        foreach ( $ids_at_start as $id ) {
+            if ( $id === $oldest_id ) {
+                continue; // Legitimately deleted before emission.
+            }
+            $expected[] = 'wldelay-login-log-' . $id;
+        }
+        sort( $expected );
+        sort( $emitted );
+        $this->assertSame( $expected, $emitted, 'Exactly the snapshot rows (minus the deleted one) are emitted — no skip, no dup, no post-run row.' );
+    }
+
+    // ----------------------------------------------------------------------
+    // Finding B: lockout export is scoped at SQL by username, so the subject's
+    // lockout is exported even when it sits outside the global active window.
+    // ----------------------------------------------------------------------
+
+    /**
+     * Finding B: the old exporter fetched the GLOBAL top-N active lockouts and
+     * filtered by username in PHP, so on a busy site the subject's own lockout
+     * could sit outside that window and never be exported. The username-scoped
+     * SQL read fetches the subject's lockout regardless of how many unrelated
+     * lockouts the site holds.
+     */
+    public function test_exporter_lockout_scoped_by_username_outside_global_window() {
+        global $wpdb;
+
+        $table = wldelay_get_lockout_table_name();
+        $now   = time();
+
+        // Seed MORE unrelated active lockouts than the scan window, each with a
+        // LATER expiry than the subject's so a global "ORDER BY expires_at DESC
+        // LIMIT n" prefix would never reach the subject's row.
+        $window = (int) WLDELAY_PRIVACY_LOCKOUT_SCAN_LIMIT;
+        $decoys = $window + 25;
+        for ( $i = 0; $i < $decoys; $i++ ) {
+            $ip = '10.0.' . intdiv( $i, 250 ) . '.' . ( $i % 250 );
+            $wpdb->insert(
+                $table,
+                array(
+                    'lockout_key'   => wldelay_get_lockout_storage_key( $ip, 'decoy_' . $i, 'login' ),
+                    'ip_address'    => $ip,
+                    'username'      => 'decoy_' . $i,
+                    'lockout_type'  => 'login',
+                    'source'        => 'wp-login',
+                    'transient_key' => '',
+                    'generation'    => '',
+                    'created_at'    => gmdate( 'Y-m-d H:i:s', $now ),
+                    // Far-future expiry so these dominate a global expires_at DESC sort.
+                    'expires_at'    => gmdate( 'Y-m-d H:i:s', $now + 86400 ),
+                )
+            );
+        }
+
+        // The subject's own active lockout, with a NEARER expiry so it would be
+        // pushed past the end of a global window.
+        $subject_ip = '192.0.2.77';
+        $wpdb->insert(
+            $table,
+            array(
+                'lockout_key'   => wldelay_get_lockout_storage_key( $subject_ip, $this->login, 'login' ),
+                'ip_address'    => $subject_ip,
+                'username'      => $this->login,
+                'lockout_type'  => 'login',
+                'source'        => 'wp-login',
+                'transient_key' => '',
+                'generation'    => '',
+                'created_at'    => gmdate( 'Y-m-d H:i:s', $now ),
+                'expires_at'    => gmdate( 'Y-m-d H:i:s', $now + 600 ),
+            )
+        );
+
+        $result = wldelay_privacy_exporter( $this->email, 1 );
+
+        $lockout_items = array_filter(
+            $result['data'],
+            static function ( $item ) {
+                return 'wldelay-lockouts' === $item['group_id'];
+            }
+        );
+
+        $this->assertCount( 1, $lockout_items, 'The subject\'s lockout is exported despite the global window being saturated by decoys.' );
+
+        $item = array_shift( $lockout_items );
+        $this->assertSame(
+            'wldelay-lockout-' . wldelay_get_lockout_storage_key( $subject_ip, $this->login, 'login' ),
+            $item['item_id']
+        );
+    }
+
+    // ----------------------------------------------------------------------
+    // Finding C: a failed lockout SELECT or DELETE must surface items_retained
+    // + a message, not a clean completion while the subject's PII remains.
+    // ----------------------------------------------------------------------
+
+    /**
+     * Finding C (read): get_lockouts_for_username() returning FALSE on a failed
+     * SELECT must propagate to the eraser as items_retained, not collapse to an
+     * empty "nothing to erase" result.
+     */
+    public function test_eraser_reports_retained_on_lockout_select_failure() {
+        $lockout_table = wldelay_get_lockout_table_name();
+
+        // Break ONLY the username-scoped SELECT against the lockout table. The
+        // table-existence SHOW TABLES check is left intact so the read reaches
+        // the failing SELECT.
+        $break = static function ( $query ) use ( $lockout_table ) {
+            if (
+                0 === stripos( ltrim( $query ), 'SELECT' )
+                && false !== strpos( $query, $lockout_table )
+                && false !== strpos( $query, 'WHERE username' )
+            ) {
+                return 'SELECT * FROM'; // Syntax error -> get_results errors out.
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        global $wpdb;
+        $suppress = $wpdb->suppress_errors( true );
+        $result   = wldelay_privacy_eraser( $this->email, 1 );
+        $wpdb->suppress_errors( $suppress );
+
+        remove_filter( 'query', $break );
+
+        $this->assertTrue( $result['items_retained'], 'A failed lockout SELECT must flag items_retained.' );
+        $this->assertNotEmpty( $result['messages'], 'A failed lockout SELECT must surface an actionable message.' );
+    }
+
+    /**
+     * Finding C (delete): remove_lockouts_matching_generation() returning FALSE
+     * on a failed DELETE (distinct from 0 rows) must propagate to the eraser as
+     * items_retained while the subject's lockout row stays on disk.
+     */
+    public function test_eraser_reports_retained_on_lockout_delete_failure() {
+        global $wpdb;
+
+        $lockout_table = wldelay_get_lockout_table_name();
+        $ip            = '192.0.2.88';
+
+        // Seed a real durable lockout row for the subject so there is something
+        // to delete (and the SELECT returns a non-empty snapshot).
+        $wpdb->insert(
+            $lockout_table,
+            array(
+                'lockout_key'   => wldelay_get_lockout_storage_key( $ip, $this->login, 'login' ),
+                'ip_address'    => $ip,
+                'username'      => $this->login,
+                'lockout_type'  => 'login',
+                'source'        => 'wp-login',
+                'transient_key' => '',
+                'generation'    => '',
+                'created_at'    => gmdate( 'Y-m-d H:i:s', time() ),
+                'expires_at'    => gmdate( 'Y-m-d H:i:s', time() + 600 ),
+            )
+        );
+
+        // Break ONLY the DELETE against the lockout table; the SELECT snapshot
+        // must succeed so we exercise the DELETE-failure branch specifically.
+        $break = static function ( $query ) use ( $lockout_table ) {
+            if ( 0 === stripos( ltrim( $query ), 'DELETE' ) && false !== strpos( $query, $lockout_table ) ) {
+                return 'DELETE FROM'; // Syntax error -> $wpdb->delete returns false.
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        $suppress = $wpdb->suppress_errors( true );
+        $result   = wldelay_privacy_eraser( $this->email, 1 );
+        $wpdb->suppress_errors( $suppress );
+
+        remove_filter( 'query', $break );
+
+        $this->assertTrue( $result['items_retained'], 'A failed lockout DELETE must flag items_retained.' );
+        $this->assertNotEmpty( $result['messages'], 'A failed lockout DELETE must surface an actionable message.' );
+
+        // The subject's lockout row must still be on disk (delete genuinely failed).
+        $this->assertSame(
+            1,
+            (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $lockout_table WHERE username = %s", $this->login ) ) // phpcs:ignore WordPress.DB
+        );
+    }
 }

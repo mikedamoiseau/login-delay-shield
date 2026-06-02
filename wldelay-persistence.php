@@ -113,9 +113,16 @@ interface WLDelay_Persistence {
      * predating the generation column) matches a current empty generation, so
      * legacy rows are still cleanable and never stranded.
      *
+     * GDPR erasure relies on this signalling a genuine DB failure rather than
+     * collapsing it to "0 rows": a $wpdb->delete() returning FALSE (a DB error,
+     * NOT "0 rows deleted") must surface as FALSE so the eraser reports
+     * items_retained instead of a clean completion while the subject's PII
+     * remains on disk (F-3-1).
+     *
      * @param array[] $snapshot List of entries each with 'lockout_key' and
      *                          'generation' keys (extra keys are ignored).
-     * @return int Number of rows removed.
+     * @return int|false Number of rows removed, or FALSE if any delete failed at
+     *                   the DB layer (distinct from 0 rows removed).
      */
     public function remove_lockouts_matching_generation( array $snapshot );
 
@@ -160,8 +167,15 @@ interface WLDelay_Persistence {
      * transients and conditionally delete (lockout_key, generation, transient_key,
      * lockout_type, username, ip_address).
      *
+     * A failed READ must be distinguishable from "no rows": $wpdb->get_results()
+     * returns array() both when the subject has no rows AND when the SELECT errors
+     * out. Collapsing a failed read to array() would let the eraser report a clean
+     * completion while the subject's lockout PII is still on disk, so a DB error
+     * returns FALSE here and the eraser surfaces items_retained (F-3-1).
+     *
      * @param string $username Username (the value persisted at lock time).
-     * @return array[] Matching rows (empty when none / no table).
+     * @return array[]|false Matching rows (empty array when none / no table), or
+     *                       FALSE when the read failed at the DB layer.
      */
     public function get_lockouts_for_username( $username );
 
@@ -709,9 +723,15 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
                 array( '%s', '%s' )
             );
 
-            if ( $deleted ) {
-                $removed += (int) $deleted;
+            // $wpdb->delete() returns FALSE on a DB error, distinct from 0 rows
+            // matched. A FALSE here means the subject's durable lockout row may
+            // still be on disk, so propagate it: GDPR erasure must NOT report a
+            // clean completion while PII remains (F-3-1).
+            if ( false === $deleted ) {
+                return false;
             }
+
+            $removed += (int) $deleted;
         }
 
         return $removed;
@@ -793,6 +813,10 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
 
         $table = wldelay_get_lockout_table_name();
 
+        // Clear last_error so a stale error from an earlier query on this request
+        // is not misread as a failure of this SELECT.
+        $wpdb->last_error = '';
+
         // No expiry filter: GDPR erasure must reach expired rows too, since an
         // expired row still bears the subject's username + IP (personal data).
         // lockout_key + generation are selected so the caller can snapshot the
@@ -806,7 +830,15 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
             ARRAY_A
         );
 
-        return is_array( $rows ) ? $rows : array();
+        // get_results() returns array() both for "no rows" AND for a SELECT that
+        // errored. Distinguish them via last_error: a failed read returns FALSE
+        // so the eraser can flag items_retained rather than claiming the
+        // subject's lockout PII was removed when it may still be on disk (F-3-1).
+        if ( ! is_array( $rows ) || '' !== (string) $wpdb->last_error ) {
+            return false;
+        }
+
+        return $rows;
     }
 
     /**
