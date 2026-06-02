@@ -57,3 +57,8 @@ require_once dirname( dirname( __DIR__ ) ) . '/wldelay-features.php';
 // Its top-level hook registration is guarded by function_exists/defined so it
 // stays inert without a WP runtime.
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-audit.php';
+
+// Load the privacy module for pure-logic unit tests (row→item mapping,
+// email→login resolution). Its filter registration is guarded by
+// function_exists so it stays inert without a WP runtime.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-privacy.php';

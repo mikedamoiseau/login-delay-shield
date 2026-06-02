@@ -33,6 +33,7 @@ zip -qr "$OUT_ZIP" \
     wldelay-features.php \
     wldelay-migration.php \
     wldelay-persistence.php \
+    wldelay-privacy.php \
     wldelay-settings.php \
     wldelay-settings-view.php \
     admin.css \

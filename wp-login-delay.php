@@ -52,6 +52,7 @@ require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
 require_once dirname( __FILE__ ) . '/wldelay-audit.php';
+require_once dirname( __FILE__ ) . '/wldelay-privacy.php';
 if( is_admin() ) {
     $wldelay_settings_page = new LDS_Settings();
 }
