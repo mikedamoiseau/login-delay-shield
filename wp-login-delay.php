@@ -2289,6 +2289,11 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 }
 
 function wldelay_dashboard_widget_content() {
+    // Onboarding CTA (F-1-7): render BEFORE the no-attempts early return so a
+    // brand-new install (0 attempts, 0% score) still sees the prompt to run the
+    // Setup Wizard. The CTA self-suppresses once the score reaches 50%.
+    wldelay_render_dashboard_onboarding_cta();
+
     // Independent sub-caches (F-4-1): the cheap recent-attempts list and the
     // expensive 7-day trends aggregate each have their own key and TTL, and each
     // is rebuilt independently on miss so invalidating one never recomputes the
@@ -2371,6 +2376,100 @@ function wldelay_render_referral_card() {
     echo '</a>';
     echo '</p>';
     echo '</div>';
+}
+
+/**
+ * Render an onboarding call-to-action card when the security posture is weak.
+ *
+ * When the Health Score is below 50% (which always covers a brand-new all-off
+ * install) this surfaces a prominent card at the top of the dashboard widget
+ * pointing the admin at the Setup Wizard and listing the highest-value
+ * protections that are still disabled. Once enough protection is configured to
+ * reach 50% the card disappears on its own, so there is no dismiss state.
+ */
+function wldelay_render_dashboard_onboarding_cta() {
+    $score_data = wldelay_get_security_score();
+    $score      = isset( $score_data['score'] ) ? (int) $score_data['score'] : 0;
+    $max        = isset( $score_data['max'] ) ? (int) $score_data['max'] : 0;
+    $pct        = (int) round( $score / max( 1, $max ) * 100 );
+
+    // Self-resolving: a sufficiently configured install hides the CTA.
+    if ( $pct >= 50 ) {
+        return;
+    }
+
+    // Collect the disabled features, ranked by defensive weight, top 5.
+    $missing = array();
+    if ( ! empty( $score_data['features'] ) && is_array( $score_data['features'] ) ) {
+        foreach ( $score_data['features'] as $feature ) {
+            if ( empty( $feature['enabled'] ) ) {
+                $missing[] = $feature;
+            }
+        }
+    }
+
+    usort(
+        $missing,
+        static function ( $a, $b ) {
+            return (int) $b['points'] - (int) $a['points'];
+        }
+    );
+    $missing = array_slice( $missing, 0, 5 );
+
+    $wizard_url = add_query_arg(
+        'page',
+        'login-delay-shield-admin',
+        admin_url( 'options-general.php' )
+    ) . '#wldelay-setup-wizard-title';
+
+    echo '<section class="wldelay-onboarding-cta" aria-labelledby="wldelay-onboarding-cta-title">';
+
+    echo '<h3 class="wldelay-onboarding-cta-title" id="wldelay-onboarding-cta-title">';
+    echo '<span class="dashicons dashicons-shield-alt" aria-hidden="true"></span> ';
+    echo esc_html__( 'Finish setting up your login protection', 'login-delay-shield' );
+    echo '</h3>';
+
+    echo '<p class="wldelay-onboarding-cta-score">';
+    echo esc_html(
+        sprintf(
+            /* translators: %d: current security score percentage */
+            __( 'Your security score is %d%%. Turn on a few more protections to harden your login.', 'login-delay-shield' ),
+            $pct
+        )
+    );
+    echo '</p>';
+
+    if ( ! empty( $missing ) ) {
+        echo '<p class="wldelay-onboarding-cta-subhead">' . esc_html__( "What's missing:", 'login-delay-shield' ) . '</p>';
+        echo '<ul class="wldelay-onboarding-cta-list">';
+        foreach ( $missing as $feature ) {
+            $label  = isset( $feature['label'] ) ? $feature['label'] : '';
+            $points = isset( $feature['points'] ) ? (int) $feature['points'] : 0;
+            echo '<li>';
+            echo '<span class="dashicons dashicons-warning" aria-hidden="true"></span> ';
+            echo esc_html( $label );
+            echo ' <span class="wldelay-onboarding-cta-points">';
+            echo esc_html(
+                sprintf(
+                    /* translators: %d: number of security-score points the feature is worth */
+                    _n( '+%d point', '+%d points', $points, 'login-delay-shield' ),
+                    $points
+                )
+            );
+            echo '</span>';
+            echo '</li>';
+        }
+        echo '</ul>';
+    }
+
+    echo '<p class="wldelay-onboarding-cta-action">';
+    echo '<a class="button button-primary" href="' . esc_url( $wizard_url ) . '">';
+    echo esc_html__( 'Run the Setup Wizard', 'login-delay-shield' );
+    echo '<span class="screen-reader-text"> ' . esc_html__( '(opens the Login Delay Shield settings page)', 'login-delay-shield' ) . '</span>';
+    echo '</a>';
+    echo '</p>';
+
+    echo '</section>';
 }
 
 /**
