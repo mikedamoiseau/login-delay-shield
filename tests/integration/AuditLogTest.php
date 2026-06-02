@@ -338,4 +338,81 @@ class AuditLogTest extends WP_UnitTestCase {
         $this->assertNotSame( 'lockouts_flushed', $flushed, 'Bulk-flush action should have a human label' );
         $this->assertNotSame( $flushed, $cleared, 'Bulk flush must be distinct from single-IP unlock' );
     }
+
+    /**
+     * The FIRST settings save on a fresh install — where wldelay_options does
+     * not yet exist, so WordPress takes the add-option path and fires
+     * add_option_{$option} rather than update_option_{$option} — must still be
+     * audited. Guards the add_option capture point (review fix): the initial
+     * security configuration needs a forensic baseline.
+     */
+    public function test_first_settings_save_on_fresh_install_is_audited() {
+        global $wpdb;
+
+        $user_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $user_id );
+
+        // Fresh-install precondition: the option is absent, so the next save
+        // goes through add_option (not update_option).
+        delete_option( WLDELAY_OPTION_NAME );
+
+        $table = wldelay_get_audit_table_name();
+        $wpdb->query( "TRUNCATE TABLE $table" );
+
+        add_option( WLDELAY_OPTION_NAME, array( 'wldelay_delay' => 5, 'wldelay_lockout_enabled' => true ) );
+        $this->flush();
+
+        $rows = $wpdb->get_results( "SELECT * FROM $table WHERE action = 'settings_changed'" );
+        $this->assertCount( 1, $rows, 'First settings save must produce exactly one audit row' );
+
+        $diff = json_decode( $rows[0]->new_value, true );
+        $this->assertArrayHasKey( 'wldelay_delay', $diff, 'The added keys must appear in the diff' );
+        $this->assertNull( $diff['wldelay_delay']['old'], 'No prior value on a fresh add' );
+        $this->assertSame( 5, $diff['wldelay_delay']['new'] );
+
+        wp_set_current_user( 0 );
+    }
+
+    /**
+     * On a non-UTC site, UTC-stored rows must display in site-local time and
+     * date filters must convert local boundaries to UTC before comparing.
+     * Guards the timezone handling (review fix) — without it the trail shows
+     * the wrong time and omits events near day boundaries.
+     */
+    public function test_non_utc_timezone_display_and_filter() {
+        global $wpdb;
+
+        $original_tz = get_option( 'timezone_string' );
+        update_option( 'timezone_string', 'America/New_York' ); // UTC-5 (or -4 DST).
+
+        $table = wldelay_get_audit_table_name();
+
+        // A row stored at 02:00 UTC on Jan 2 falls on Jan 1 (21:00/22:00) in
+        // New York. A local-date filter for Jan 1 must therefore include it,
+        // and a filter for Jan 2 must exclude it.
+        $wpdb->insert( $table, array(
+            'action'     => 'settings_changed',
+            'actor_id'   => 1,
+            'created_at' => '2020-01-02 02:00:00', // UTC
+        ) );
+
+        // Filter on the LOCAL date the event actually occurred (Jan 1).
+        $local_day = wldelay_query_audit_log( array( 'from' => '2020-01-01', 'to' => '2020-01-01' ), 1, 25 );
+        $this->assertCount( 1, $local_day, 'A UTC row must match the local calendar day it falls on' );
+
+        // The UTC calendar day (Jan 2) must NOT match — the event is Jan 1 local.
+        $utc_day = wldelay_query_audit_log( array( 'from' => '2020-01-02', 'to' => '2020-01-02' ), 1, 25 );
+        $this->assertCount( 0, $utc_day, 'A UTC row must not match the following local day' );
+
+        // Display: the rendered time must be the site-local conversion of the
+        // UTC value, not the raw UTC value.
+        $local_display = mysql2date( 'Y-m-d H:i', get_date_from_gmt( '2020-01-02 02:00:00' ) );
+        $this->assertStringStartsWith( '2020-01-01', $local_display, 'Display must convert UTC to site-local time' );
+
+        if ( false === $original_tz ) {
+            delete_option( 'timezone_string' );
+        } else {
+            update_option( 'timezone_string', $original_tz );
+        }
+    }
 }

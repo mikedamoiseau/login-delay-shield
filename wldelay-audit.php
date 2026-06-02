@@ -358,14 +358,18 @@ function wldelay_build_audit_where_clause( $filters ) {
         }
     }
 
+    // Rows are stored in UTC (current_time( 'mysql', true )). The date filters
+    // are site-local calendar dates, so convert each local boundary to UTC
+    // before comparing — otherwise events near a day boundary are wrongly
+    // included or omitted on non-UTC sites.
     if ( $filters['from'] !== '' ) {
         $where[]  = 'created_at >= %s';
-        $params[] = $filters['from'] . ' 00:00:00';
+        $params[] = get_gmt_from_date( $filters['from'] . ' 00:00:00' );
     }
 
     if ( $filters['to'] !== '' ) {
         $where[]  = 'created_at <= %s';
-        $params[] = $filters['to'] . ' 23:59:59';
+        $params[] = get_gmt_from_date( $filters['to'] . ' 23:59:59' );
     }
 
     return array(
@@ -599,10 +603,27 @@ function wldelay_audit_on_settings_update( $old_value, $new_value ) {
         )
     );
 }
+/**
+ * Capture point: settings created (fresh install / first save).
+ *
+ * Hooked to add_option_wldelay_options. On a fresh activation wldelay_options
+ * is intentionally absent, so the first save goes through WordPress's
+ * add-option path and fires add_option_{$option}, NOT update_option_{$option}.
+ * Without this hook the initial security configuration (e.g. enabling proxy
+ * trust or adding whitelist entries) would have no forensic baseline. Routes
+ * an empty old value and the added value through the shared diff capture.
+ *
+ * @param string $option Option name (unused; the hook is option-specific).
+ * @param mixed  $value  Added option value.
+ */
+function wldelay_audit_on_settings_add( $option, $value ) {
+    wldelay_audit_on_settings_update( array(), $value );
+}
 // Guarded so the module stays loadable in the unit suite (no WP runtime). In
 // production add_action and the option-name constant are always present.
 if ( function_exists( 'add_action' ) && defined( 'WLDELAY_OPTION_NAME' ) ) {
     add_action( 'update_option_' . WLDELAY_OPTION_NAME, 'wldelay_audit_on_settings_update', 10, 2 );
+    add_action( 'add_option_' . WLDELAY_OPTION_NAME, 'wldelay_audit_on_settings_add', 10, 2 );
 }
 
 /**

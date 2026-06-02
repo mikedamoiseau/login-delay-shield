@@ -880,7 +880,7 @@ class LDS_Settings_View {
                                         : __( 'System', 'login-delay-shield' ) );
                                 ?>
                                 <tr>
-                                    <td><?php echo esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $entry->created_at ) ); ?></td>
+                                    <td><?php echo esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), get_date_from_gmt( (string) $entry->created_at ) ) ); ?></td>
                                     <td><?php echo esc_html( $actor ); ?></td>
                                     <td><?php echo esc_html( wldelay_get_audit_action_label( $entry->action ) ); ?></td>
                                     <td><?php echo esc_html( (string) $entry->object ); ?></td>
