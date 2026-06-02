@@ -5177,6 +5177,36 @@ function wldelay_format_countdown( $seconds ) {
 }
 
 /**
+ * Whether the login feedback block should render for the current request.
+ *
+ * True only when the lockout feature is enabled AND the current IP (optionally
+ * scoped to the submitted username) is locked. Cheap enough to gate the styles
+ * and footer-script hooks on without rebuilding the block markup.
+ *
+ * NOTE on the `ip_username` lockout strategy: the lockout transient is keyed on
+ * ip|username, but the submitted username is only available on the failed-login
+ * POST (via $_POST['log']). On a *fresh GET* of wp-login.php there is no
+ * username, so an ip_username lockout cannot be detected and the block does not
+ * render on that GET — it does render on the failed-POST re-render, which is the
+ * path a locked-out user actually takes. Under the default `ip` strategy the
+ * username is irrelevant and the block renders on GET and POST alike. The
+ * server-side gate in wldelay_auth_login() enforces the lockout regardless.
+ *
+ * @return bool
+ */
+function wldelay_login_feedback_active() {
+    $options = wldelay_get_options();
+
+    if ( empty( $options['wldelay_lockout_enabled'] ) ) {
+        return false;
+    }
+
+    $username = wldelay_get_requested_login_username();
+
+    return (bool) wldelay_is_ip_locked( null, $username );
+}
+
+/**
  * Build the distinct, accessible lockout feedback block markup.
  *
  * Returns an empty string when the lockout feature is disabled or the current
@@ -5186,18 +5216,11 @@ function wldelay_format_countdown( $seconds ) {
  * @return string HTML for the block, or '' when nothing should render.
  */
 function wldelay_render_login_lockout_block() {
-    $options = wldelay_get_options();
-
-    if ( empty( $options['wldelay_lockout_enabled'] ) ) {
+    if ( ! wldelay_login_feedback_active() ) {
         return '';
     }
 
-    $username = wldelay_get_requested_login_username();
-
-    if ( ! wldelay_is_ip_locked( null, $username ) ) {
-        return '';
-    }
-
+    $username  = wldelay_get_requested_login_username();
     $remaining = wldelay_get_lockout_remaining_seconds( null, $username );
 
     // Human-readable static fallback (shown when JS is off). human_time_diff
@@ -5304,8 +5327,7 @@ add_filter( 'wp_login_errors', 'wldelay_login_errors_warning', 10, 2 );
  * CSP-friendly (no external assets).
  */
 function wldelay_login_feedback_styles() {
-    $options = wldelay_get_options();
-    if ( empty( $options['wldelay_lockout_enabled'] ) ) {
+    if ( ! wldelay_login_feedback_active() ) {
         return;
     }
 
@@ -5335,8 +5357,9 @@ add_action( 'login_enqueue_scripts', 'wldelay_login_feedback_styles' );
  */
 function wldelay_login_feedback_script() {
     // Only emit the script when a block is actually rendered, to avoid adding
-    // inert script to every login page view.
-    if ( '' === wldelay_render_login_lockout_block() ) {
+    // inert script to every login page view. Gate on the cheap predicate rather
+    // than rebuilding the full block markup + re-reading the store.
+    if ( ! wldelay_login_feedback_active() ) {
         return;
     }
 
@@ -5355,13 +5378,10 @@ function wldelay_login_feedback_script() {
     function finish(){
         el.textContent = ready;
         if(box){box.classList.add('is-ready');}
+        // Re-enable only the submit button (this feature never disables other
+        // fields, so leave any third party's disabled fields untouched).
         var btn = document.getElementById('wp-submit');
         if(btn){btn.disabled = false;}
-        var form = document.getElementById('loginform');
-        if(form){
-            var inputs = form.querySelectorAll('input, button');
-            for(var i=0;i<inputs.length;i++){inputs[i].disabled = false;}
-        }
     }
     if(remaining <= 0){finish();return;}
     var timer = setInterval(function(){
