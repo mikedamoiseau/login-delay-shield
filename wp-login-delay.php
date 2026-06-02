@@ -686,8 +686,47 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     // concurrent failed login that refreshes a row during this window writes a
     // NEW generation, so the compare-and-delete below leaves it in force and the
     // user is not silently re-orphaned by recovery (F-2-1 hardening).
+    $snapshot = $store->get_lockouts_for_ip( $ip );
+    $deleted += wldelay_clear_lockout_transients_for_snapshot( $ip, $snapshot );
+
+    // Clear the durable store (F-2-1) for the snapshotted rows only, and only
+    // while their generation still matches — so a row a concurrent relock
+    // refreshed during recovery (new generation) survives instead of being
+    // orphaned. Replaces the former unconditional remove_lockouts_for_ip($ip),
+    // which deleted every row for the IP including a just-created re-lock,
+    // leaving the user locked on a durable row that recovery had reported gone
+    // (F-2-1 hardening). Count these removals so recovery still reports success
+    // when the transient was evicted but a durable row was in force.
+    $deleted += $store->remove_lockouts_matching_generation( $snapshot );
+
+    return $deleted;
+}
+
+/**
+ * Clear the transient fast-path keys for a set of snapshotted durable rows.
+ *
+ * Shared by IP-level recovery (wldelay_delete_lockout_for_ip) and the
+ * username-scoped GDPR path (wldelay_delete_lockouts_for_user). For each row in
+ * the snapshot it clears the lockout transient and its paired failure counter,
+ * using the per-key registry compare-and-delete so a concurrent same-second
+ * relock that rewrote a record with a new generation keeps its live transient
+ * discoverable instead of being orphaned (F-2-1 hardening).
+ *
+ * Each gen-4 row records the EXACT transient name set at lock time, deleted
+ * verbatim (length-proof: reconstructing from the clamped varchar username could
+ * miss a canonical identifier longer than the column). Legacy gen-3 rows carry
+ * no transient_key, so the key is reconstructed from the stored username/type
+ * with the ip_username strategy forced, matching what wldelay_lock_ip() set.
+ *
+ * @param string  $ip       IP address the snapshot rows belong to.
+ * @param array[] $snapshot Durable rows, each with at least transient_key,
+ *                          username and lockout_type keys.
+ * @return int Number of transients removed.
+ */
+function wldelay_clear_lockout_transients_for_snapshot( $ip, array $snapshot ) {
+    $deleted      = 0;
     $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
-    $snapshot     = $store->get_lockouts_for_ip( $ip );
+
     foreach ( $snapshot as $row ) {
         $stored_key = isset( $row['transient_key'] ) ? (string) $row['transient_key'] : '';
 
@@ -712,14 +751,12 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
         wldelay_unregister_transient_record_if_unchanged( $transient_name, $record_snapshot );
 
         // Also clear the matching failure-counter transient. wldelay_lock_ip()
-        // does NOT reset the per-attempt counter when it fires, so an IP-only
-        // unlock that drops only the lockout leaves the counter at the
-        // threshold — the very next failed attempt re-locks the user
-        // immediately. The counter shares the lockout transient's md5 suffix
-        // and differs only in prefix, so deriving it from the (verbatim,
-        // length-proof) lockout transient name reaches the exact key
-        // production set, including under the ip_username strategy that the
-        // username-agnostic IP-keyed deletions above cannot match (F-2-1 review).
+        // does NOT reset the per-attempt counter when it fires, so dropping only
+        // the lockout leaves the counter at the threshold — the very next failed
+        // attempt re-locks the user immediately. The counter shares the lockout
+        // transient's md5 suffix and differs only in prefix, so deriving it from
+        // the (verbatim, length-proof) lockout transient name reaches the exact
+        // key production set (F-2-1 review).
         $fails_name = wldelay_derive_failure_transient_key( $transient_name );
         if ( null !== $fails_name ) {
             $fails_record_snapshot = wldelay_get_transient_registry_record( $fails_name );
@@ -730,14 +767,62 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
         }
     }
 
-    // Clear the durable store (F-2-1) for the snapshotted rows only, and only
-    // while their generation still matches — so a row a concurrent relock
-    // refreshed during recovery (new generation) survives instead of being
-    // orphaned. Replaces the former unconditional remove_lockouts_for_ip($ip),
-    // which deleted every row for the IP including a just-created re-lock,
-    // leaving the user locked on a durable row that recovery had reported gone
-    // (F-2-1 hardening). Count these removals so recovery still reports success
-    // when the transient was evicted but a durable row was in force.
+    return $deleted;
+}
+
+/**
+ * Username-scoped, generation-aware lockout recovery (GDPR erasure).
+ *
+ * IP-level recovery (wldelay_delete_lockout_for_ip) clears EVERY lockout on the
+ * IP, which would erase an unrelated account's lockout when two users share a
+ * NAT IP — weakening protection for a non-subject. GDPR erasure must remove only
+ * the subject's lockouts, so this scopes the snapshot to the durable rows whose
+ * username matches the subject, then drives the SAME M5b machinery over that
+ * subset: clear each row's transient fast-path (compare-and-delete) and
+ * conditionally delete only rows whose generation still matches. Rows for other
+ * usernames on the same IP are never touched, so their lockouts stay in force.
+ *
+ * Enumerates ALL durable rows for the username — active AND expired — so an
+ * expired row still bearing the subject's username + IP (personal data) is
+ * removed too (F-3-1).
+ *
+ * @param string $username Subject's user_login (the value persisted at lock time).
+ * @return int Number of transients + durable rows removed.
+ */
+function wldelay_delete_lockouts_for_user( $username ) {
+    $username = (string) $username;
+    if ( '' === $username ) {
+        return 0;
+    }
+
+    $store    = wldelay_get_persistence_store();
+    $snapshot = $store->get_lockouts_for_username( $username );
+
+    if ( empty( $snapshot ) ) {
+        return 0;
+    }
+
+    $deleted = 0;
+
+    // The snapshot may span several IPs (the subject failed from more than one
+    // address). Transient keys are per-IP, so clear them grouped by the row's IP.
+    $by_ip = array();
+    foreach ( $snapshot as $row ) {
+        $ip = isset( $row['ip_address'] ) ? (string) $row['ip_address'] : '';
+        if ( '' === $ip ) {
+            continue;
+        }
+        $by_ip[ $ip ][] = $row;
+    }
+
+    foreach ( $by_ip as $ip => $rows ) {
+        $deleted += wldelay_clear_lockout_transients_for_snapshot( $ip, $rows );
+    }
+
+    // Conditional durable delete over ONLY the subject's snapshot rows. A
+    // concurrent relock that refreshed one of these rows wrote a new generation,
+    // so it survives the compare-and-delete — preserving the M5b race fix while
+    // leaving every other user's rows untouched (F-3-1).
     $deleted += $store->remove_lockouts_matching_generation( $snapshot );
 
     return $deleted;
@@ -1076,6 +1161,59 @@ function wldelay_get_login_log_attempts( $args = array() ) {
     return $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
 }
 
+
+/**
+ * Fetch login-log rows for an EXACT username (privacy export).
+ *
+ * The admin-search path (wldelay_build_login_log_where_clause) matches username
+ * with a substring LIKE so an operator can find "admin*" probes. That is wrong
+ * for a GDPR export: exporting the subject `ann` would also return rows for
+ * `joann`, `ann-admin`, etc., disclosing unrelated users' IPs and timestamps.
+ * This path matches `username = %s` exactly so only the subject's own rows are
+ * returned. Ordered by attempted_at DESC, id DESC so pagination is deterministic
+ * across rows sharing a second; the row id is returned so the caller can derive
+ * a stable export item_id (F-3-1).
+ *
+ * @param string $username Exact username to match.
+ * @param int    $limit    Maximum rows.
+ * @param int    $offset   Row offset.
+ * @return array Result rows (id, ip_address, username, attempted_at, source).
+ */
+function wldelay_get_login_log_for_username( $username, $limit, $offset = 0 ) {
+    global $wpdb;
+
+    $username = (string) $username;
+    $limit    = max( 1, absint( $limit ) );
+    $offset   = max( 0, absint( $offset ) );
+
+    $table_name = wldelay_get_log_table_name();
+
+    // $table_name is derived from $wpdb->prefix (not user input). The id
+    // tie-break keeps ordering stable when several attempts share a second.
+    $sql = "SELECT id, ip_address, username, attempted_at, source FROM $table_name WHERE username = %s ORDER BY attempted_at DESC, id DESC LIMIT %d OFFSET %d";
+
+    return $wpdb->get_results( $wpdb->prepare( $sql, $username, $limit, $offset ) );
+}
+
+/**
+ * Count login-log rows for an EXACT username (privacy export).
+ *
+ * Companion to wldelay_get_login_log_for_username(): an exact `username = %s`
+ * count so export pagination totals match the exact-match fetch and never
+ * include substring-adjacent accounts (F-3-1).
+ *
+ * @param string $username Exact username to match.
+ * @return int Matching row count.
+ */
+function wldelay_count_login_log_for_username( $username ) {
+    global $wpdb;
+
+    $table_name = wldelay_get_log_table_name();
+
+    return (int) $wpdb->get_var(
+        $wpdb->prepare( "SELECT COUNT(*) FROM $table_name WHERE username = %s", (string) $username )
+    );
+}
 
 /**
  * Build a reusable WHERE clause for login-log filters.

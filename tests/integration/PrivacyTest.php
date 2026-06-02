@@ -194,6 +194,92 @@ class PrivacyTest extends WP_UnitTestCase {
         $this->assertCount( 1, $login_items, 'Only the subject\'s own login rows are exported.' );
     }
 
+    /**
+     * Finding 1: a substring LIKE export would also return rows whose username
+     * merely CONTAINS the subject's login (decoys joann / ann-admin), disclosing
+     * unrelated users' IPs and timestamps. The exact-match path must return only
+     * the subject `ann`.
+     */
+    public function test_exporter_uses_exact_username_match_not_substring() {
+        $subject       = 'ann';
+        $subject_email = 'ann@example.com';
+        self::factory()->user->create(
+            array(
+                'user_login' => $subject,
+                'user_email' => $subject_email,
+            )
+        );
+
+        $this->seed_login_log( $subject, '203.0.113.40' );
+        $this->seed_login_log( 'joann', '203.0.113.41' );      // contains "ann"
+        $this->seed_login_log( 'ann-admin', '203.0.113.42' );  // contains "ann"
+        // Audit decoys that a LIKE would also pull.
+        $this->seed_audit_log( $subject );
+        $this->seed_audit_log( 'joann' );
+        $this->seed_audit_log( 'ann-admin' );
+
+        $result = wldelay_privacy_exporter( $subject_email, 1 );
+
+        $login_items = array_filter(
+            $result['data'],
+            static function ( $item ) {
+                return 'wldelay-login-log' === $item['group_id'];
+            }
+        );
+        $this->assertCount( 1, $login_items, 'Only the exact subject login rows are exported.' );
+
+        $audit_items = array_filter(
+            $result['data'],
+            static function ( $item ) {
+                return 'wldelay-audit-log' === $item['group_id'];
+            }
+        );
+        $this->assertCount( 1, $audit_items, 'Only the exact subject audit rows are exported.' );
+    }
+
+    /**
+     * Finding 5: pagination must be deterministic across a page boundary with no
+     * duplicates and no skips, including when the audit group straddles the
+     * boundary after the login group.
+     */
+    public function test_exporter_pagination_is_stable_across_group_boundary() {
+        $page_size = (int) WLDELAY_PRIVACY_PAGE_SIZE;
+
+        // Fill login-log to exactly one page, then add audit rows so group 2
+        // begins on page 2 — exercising the cross-group window math.
+        for ( $i = 0; $i < $page_size; $i++ ) {
+            $this->seed_login_log( $this->login, '203.0.113.' . ( $i % 250 ) );
+        }
+        $audit_count = 7;
+        for ( $i = 0; $i < $audit_count; $i++ ) {
+            $this->seed_audit_log( $this->login );
+        }
+
+        $page1 = wldelay_privacy_exporter( $this->email, 1 );
+        $this->assertCount( $page_size, $page1['data'] );
+        $this->assertFalse( $page1['done'], 'Audit rows still pending after page 1.' );
+
+        $page2 = wldelay_privacy_exporter( $this->email, 2 );
+        $this->assertCount( $audit_count, $page2['data'] );
+        $this->assertTrue( $page2['done'], 'No more data after the final page.' );
+
+        // No dup/skip: every item_id is unique and the totals add up.
+        $ids = array();
+        foreach ( array_merge( $page1['data'], $page2['data'] ) as $item ) {
+            $ids[] = $item['item_id'];
+        }
+        $this->assertCount( $page_size + $audit_count, $ids );
+        $this->assertCount( $page_size + $audit_count, array_unique( $ids ), 'No duplicate item_ids across pages.' );
+
+        // Page 1 is all login-log; page 2 is all audit-log.
+        foreach ( $page1['data'] as $item ) {
+            $this->assertSame( 'wldelay-login-log', $item['group_id'] );
+        }
+        foreach ( $page2['data'] as $item ) {
+            $this->assertSame( 'wldelay-audit-log', $item['group_id'] );
+        }
+    }
+
     // ----------------------------------------------------------------------
     // (b) Unknown email
     // ----------------------------------------------------------------------
@@ -278,5 +364,132 @@ class PrivacyTest extends WP_UnitTestCase {
 
         $this->assertFalse( $result['items_removed'] );
         $this->assertTrue( $result['done'] );
+    }
+
+    /**
+     * Finding 2: erasing one user must not clear an unrelated account's lockout
+     * that originates from the SAME IP (shared NAT). The former IP-wide delete
+     * cleared both; the username-scoped path must leave the other user locked.
+     */
+    public function test_eraser_preserves_other_users_lockout_on_shared_ip() {
+        $other_login = 'cohabitant';
+        self::factory()->user->create(
+            array(
+                'user_login' => $other_login,
+                'user_email' => 'cohabitant@example.com',
+            )
+        );
+
+        $shared_ip = '192.0.2.55';
+
+        WLDelay_Test_Fixture::make()
+            ->with_option( 'wldelay_lockout_enabled', true )
+            ->with_option( 'wldelay_lockout_attempt_strategy', 'ip_username' )
+            ->with_current_ip( $shared_ip )
+            ->with_lockout( $shared_ip, $this->login )
+            ->with_lockout( $shared_ip, $other_login )
+            ->apply();
+
+        $this->assertTrue( wldelay_is_ip_locked( $shared_ip, $this->login ) );
+        $this->assertTrue( wldelay_is_ip_locked( $shared_ip, $other_login ) );
+
+        $result = wldelay_privacy_eraser( $this->email, 1 );
+        $this->assertTrue( $result['items_removed'] );
+
+        wldelay_reset_persistence_runtime_cache();
+
+        // Subject is unlocked; the cohabitant on the same IP stays locked.
+        $this->assertFalse(
+            wldelay_is_ip_locked( $shared_ip, $this->login ),
+            'Subject lockout cleared.'
+        );
+        $this->assertTrue(
+            wldelay_is_ip_locked( $shared_ip, $other_login ),
+            'Unrelated account on the same IP must remain locked.'
+        );
+        $this->assertSame( array(), wldelay_privacy_get_lockouts_for_login( $this->login ) );
+        $this->assertNotEmpty( wldelay_privacy_get_lockouts_for_login( $other_login ) );
+    }
+
+    /**
+     * Finding 3: an EXPIRED lockout row still bears the subject's username + IP
+     * (personal data). get_active_lockouts() filters it out, so the eraser must
+     * reach it through the username-scoped (active + expired) enumeration.
+     */
+    public function test_eraser_removes_expired_lockout_rows() {
+        global $wpdb;
+
+        $table = wldelay_get_lockout_table_name();
+        $ip    = '192.0.2.66';
+
+        // Seed a durable lockout row that has already expired.
+        $past_created = gmdate( 'Y-m-d H:i:s', time() - 7200 );
+        $past_expires = gmdate( 'Y-m-d H:i:s', time() - 3600 );
+        $wpdb->insert(
+            $table,
+            array(
+                'lockout_key'   => wldelay_get_lockout_storage_key( $ip, $this->login, 'login' ),
+                'ip_address'    => $ip,
+                'username'      => $this->login,
+                'lockout_type'  => 'login',
+                'source'        => 'wp-login',
+                'transient_key' => '',
+                'generation'    => '',
+                'created_at'    => $past_created,
+                'expires_at'    => $past_expires,
+            )
+        );
+
+        // Precondition: the row exists for the subject.
+        $this->assertSame(
+            1,
+            (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE username = %s", $this->login ) ) // phpcs:ignore WordPress.DB
+        );
+
+        $result = wldelay_privacy_eraser( $this->email, 1 );
+        $this->assertTrue( $result['items_removed'] );
+
+        // The expired row is gone after erasure.
+        $this->assertSame(
+            0,
+            (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE username = %s", $this->login ) ) // phpcs:ignore WordPress.DB
+        );
+    }
+
+    /**
+     * Finding 4: a failed DELETE ($wpdb->query() returning FALSE, distinct from
+     * "0 rows deleted") must NOT be reported as a clean erasure. items_retained
+     * must be true with an actionable message.
+     */
+    public function test_eraser_reports_retained_on_db_delete_failure() {
+        $this->seed_login_log( $this->login );
+
+        $log_table = wldelay_get_log_table_name();
+
+        // Force the login-log DELETE to fail deterministically by mangling it
+        // into invalid SQL via the `query` filter (mirrors AuditLogTest).
+        $break = static function ( $query ) use ( $log_table ) {
+            if ( 0 === stripos( ltrim( $query ), 'DELETE' ) && false !== strpos( $query, $log_table ) ) {
+                return 'DELETE FROM'; // Syntax error -> $wpdb->query returns false.
+            }
+            return $query;
+        };
+        add_filter( 'query', $break );
+
+        global $wpdb;
+        $suppress = $wpdb->suppress_errors( true );
+        $result   = wldelay_privacy_eraser( $this->email, 1 );
+        $wpdb->suppress_errors( $suppress );
+
+        remove_filter( 'query', $break );
+
+        $this->assertTrue( $result['items_retained'], 'A failed delete must flag items_retained.' );
+        $this->assertNotEmpty( $result['messages'], 'A failed delete must surface an actionable message.' );
+
+        // The subject's row must still be on disk (delete genuinely failed).
+        $this->assertSame(
+            1,
+            (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $log_table WHERE username = %s", $this->login ) ) // phpcs:ignore WordPress.DB
+        );
     }
 }

@@ -861,6 +861,52 @@ function wldelay_query_audit_log( array $filters = array(), $page = 1, $per_page
 }
 
 /**
+ * Fetch audit-log rows for an EXACT actor_login (privacy export).
+ *
+ * The admin filter (wldelay_build_audit_where_clause) matches actor with a
+ * substring LIKE, which would disclose other actors' rows on a GDPR export
+ * (subject `ann` pulling `joann`). This path matches `actor_login = %s` exactly
+ * and paginates deterministically (created_at DESC, id DESC) so the exporter
+ * never leaks an adjacent account and can page a large audit trail (F-3-1).
+ *
+ * @param string $actor_login Exact actor_login to match.
+ * @param int    $limit       Maximum rows.
+ * @param int    $offset      Row offset.
+ * @return array Result rows.
+ */
+function wldelay_get_audit_log_for_actor( $actor_login, $limit, $offset = 0 ) {
+    global $wpdb;
+
+    $actor_login = (string) $actor_login;
+    $limit       = max( 1, absint( $limit ) );
+    $offset      = max( 0, absint( $offset ) );
+
+    $table_name = wldelay_get_audit_table_name();
+
+    // $table_name is derived from $wpdb->prefix (not user input). The id
+    // tie-break keeps ordering stable across rows sharing a created_at second.
+    $sql = "SELECT * FROM $table_name WHERE actor_login = %s ORDER BY created_at DESC, id DESC LIMIT %d OFFSET %d";
+
+    return $wpdb->get_results( $wpdb->prepare( $sql, $actor_login, $limit, $offset ) );
+}
+
+/**
+ * Count audit-log rows for an EXACT actor_login (privacy export).
+ *
+ * @param string $actor_login Exact actor_login to match.
+ * @return int Matching row count.
+ */
+function wldelay_count_audit_log_for_actor( $actor_login ) {
+    global $wpdb;
+
+    $table_name = wldelay_get_audit_table_name();
+
+    return (int) $wpdb->get_var(
+        $wpdb->prepare( "SELECT COUNT(*) FROM $table_name WHERE actor_login = %s", (string) $actor_login )
+    );
+}
+
+/**
  * List the distinct action keys present in the audit log.
  *
  * Used to populate the admin filter dropdown without hard-coding the full set.

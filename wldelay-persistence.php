@@ -149,6 +149,23 @@ interface WLDelay_Persistence {
     public function get_active_lockouts( $limit = 200 );
 
     /**
+     * List every durable lockout row recorded under a username (active OR expired).
+     *
+     * GDPR erasure must reach expired rows too: an expired lockout row still
+     * carries the subject's username + IP (personal data) even though the
+     * authentication path no longer treats it as in force. get_active_lockouts()
+     * filters expired rows out, so a username-scoped enumeration that includes
+     * expired rows is needed to find ALL the subject's durable PII for removal
+     * (F-3-1). Returns the snapshot fields recovery needs to clear matching
+     * transients and conditionally delete (lockout_key, generation, transient_key,
+     * lockout_type, username, ip_address).
+     *
+     * @param string $username Username (the value persisted at lock time).
+     * @return array[] Matching rows (empty when none / no table).
+     */
+    public function get_lockouts_for_username( $username );
+
+    /**
      * Remove every lockout, active or expired.
      *
      * @return int Number of rows removed.
@@ -762,6 +779,34 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         unset( $row );
 
         return $rows;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function get_lockouts_for_username( $username ) {
+        global $wpdb;
+
+        if ( ! $this->table_exists() ) {
+            return array();
+        }
+
+        $table = wldelay_get_lockout_table_name();
+
+        // No expiry filter: GDPR erasure must reach expired rows too, since an
+        // expired row still bears the subject's username + IP (personal data).
+        // lockout_key + generation are selected so the caller can snapshot the
+        // rows and conditionally delete only those a concurrent relock did not
+        // refresh, preserving the M5b compare-and-delete contract (F-3-1).
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT lockout_key, ip_address, username, lockout_type, transient_key, generation, expires_at FROM $table WHERE username = %s",
+                (string) $username
+            ),
+            ARRAY_A
+        );
+
+        return is_array( $rows ) ? $rows : array();
     }
 
     /**
