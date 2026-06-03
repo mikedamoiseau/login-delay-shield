@@ -2407,9 +2407,11 @@ function wldelay_render_referral_card() {
  *
  * When the Health Score is below 50% (which always covers a brand-new all-off
  * install) this surfaces a prominent card at the top of the dashboard widget
- * pointing the admin at the Setup Wizard and listing the highest-value
- * protections that are still disabled. Once enough protection is configured to
- * reach 50% the card disappears on its own, so there is no dismiss state.
+ * pointing the admin at the Setup Wizard. Rather than dumping every disabled
+ * protection with a raw deficit score, it frames the gap as an achievable goal:
+ * the smallest set of highest-value protections that reaches the 50% "strong
+ * setup" line (R4-4). Once enough protection is configured to reach 50% the card
+ * disappears on its own, so there is no dismiss state.
  */
 function wldelay_render_dashboard_onboarding_cta() {
     $score_data = wldelay_get_security_score();
@@ -2422,7 +2424,7 @@ function wldelay_render_dashboard_onboarding_cta() {
         return;
     }
 
-    // Collect the disabled features, ranked by defensive weight, top 5.
+    // Collect the disabled features, ranked by defensive weight.
     $missing = array();
     if ( ! empty( $score_data['features'] ) && is_array( $score_data['features'] ) ) {
         foreach ( $score_data['features'] as $feature ) {
@@ -2438,7 +2440,25 @@ function wldelay_render_dashboard_onboarding_cta() {
             return (int) $b['points'] - (int) $a['points'];
         }
     );
-    $missing = array_slice( $missing, 0, 5 );
+
+    // Frame the card around an achievable goal, not a raw deficit: pick the
+    // smallest set of the highest-value disabled protections that carries the
+    // install across the 50% "strong setup" line, and show those as the next
+    // steps. A short, finish-able list reads as "enable 2 things" rather than an
+    // overwhelming dump of everything that is off (R4-4). Capped at 5 so a wildly
+    // misconfigured install still shows a bounded list.
+    $threshold_points = (int) ceil( $max * 0.5 );
+    $needed           = max( 0, $threshold_points - $score );
+    $recommended      = array();
+    $accumulated      = 0;
+    foreach ( $missing as $feature ) {
+        $recommended[] = $feature;
+        $accumulated  += isset( $feature['points'] ) ? (int) $feature['points'] : 0;
+        if ( $accumulated >= $needed || count( $recommended ) >= 5 ) {
+            break;
+        }
+    }
+    $steps = count( $recommended );
 
     $wizard_url = add_query_arg(
         'page',
@@ -2454,19 +2474,35 @@ function wldelay_render_dashboard_onboarding_cta() {
     echo '</h3>';
 
     echo '<p class="wldelay-onboarding-cta-score">';
-    echo esc_html(
-        sprintf(
-            /* translators: %d: current security score percentage */
-            __( 'Your security score is %d%%. Turn on a few more protections to harden your login.', 'login-delay-shield' ),
-            $pct
-        )
-    );
+    if ( $steps > 0 ) {
+        echo esc_html(
+            sprintf(
+                /* translators: 1: current security score percentage, 2: number of protections to enable to reach a strong setup */
+                _n(
+                    'You\'re at %1$d%%. Enable the protection below to reach a strong setup.',
+                    'You\'re at %1$d%%. Enable the %2$d protections below to reach a strong setup.',
+                    $steps,
+                    'login-delay-shield'
+                ),
+                $pct,
+                $steps
+            )
+        );
+    } else {
+        echo esc_html(
+            sprintf(
+                /* translators: %d: current security score percentage */
+                __( 'You\'re at %d%%. Turn on a few more protections to harden your login.', 'login-delay-shield' ),
+                $pct
+            )
+        );
+    }
     echo '</p>';
 
-    if ( ! empty( $missing ) ) {
-        echo '<p class="wldelay-onboarding-cta-subhead">' . esc_html__( "What's missing:", 'login-delay-shield' ) . '</p>';
+    if ( ! empty( $recommended ) ) {
+        echo '<p class="wldelay-onboarding-cta-subhead">' . esc_html__( 'Recommended next steps:', 'login-delay-shield' ) . '</p>';
         echo '<ul class="wldelay-onboarding-cta-list">';
-        foreach ( $missing as $feature ) {
+        foreach ( $recommended as $feature ) {
             $label  = isset( $feature['label'] ) ? $feature['label'] : '';
             $points = isset( $feature['points'] ) ? (int) $feature['points'] : 0;
             echo '<li>';

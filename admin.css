@@ -261,6 +261,14 @@
     outline-offset: -2px;
 }
 
+/* Pressed cue for the disclosure. Enter/Space fire :active on a focused
+   role="button", so keyboard users get the same momentary feedback as a
+   mouse press instead of only a static focus ring (R1-2). */
+.wldelay-card-header:active {
+    background: #e5e5e5;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
 .wldelay-card-header .dashicons {
     font-size: 18px;
     width: 18px;
@@ -946,6 +954,15 @@
     gap: 12px;
 }
 
+/* Below ~600px the 180px min-track wedges two cramped columns side by side;
+   collapse to a single full-width column so each field stays usable on narrow
+   and tablet widths (R1-9). */
+@media (max-width: 600px) {
+    .wldelay-filter-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .wldelay-filter-grid label {
     display: flex;
     flex-direction: column;
@@ -1000,6 +1017,18 @@
 
 .wldelay-active-lockouts-table {
     margin-top: 8px;
+}
+
+/* The lockout table is dense and the Unlock button is destructive, so give
+   each cell breathing room and a row-hover highlight to tie the button back to
+   its IP/username and cut misclicks (R1-5). */
+.wldelay-active-lockouts-table td,
+.wldelay-active-lockouts-table th {
+    padding: 8px 10px;
+}
+
+.wldelay-active-lockouts-table tbody tr:hover td {
+    background: #f0f6fc;
 }
 
 .wldelay-unlock-form,

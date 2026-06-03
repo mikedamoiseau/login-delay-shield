@@ -137,4 +137,26 @@ class DashboardOnboardingTest extends WP_UnitTestCase {
         // Feature label is esc_html'd (plain ASCII label round-trips unchanged).
         $this->assertStringContainsString( esc_html__( 'IP Lockout', 'login-delay-shield' ), $output );
     }
+
+    /**
+     * The CTA frames the gap as an achievable goal — "reach a strong setup" with
+     * a bounded "recommended next steps" list — instead of a raw deficit dump of
+     * every disabled protection (R4-4).
+     */
+    public function test_cta_frames_achievable_next_steps() {
+        delete_option( WLDELAY_OPTION_NAME );
+        wldelay_clear_options_cache();
+
+        $output = $this->render_cta();
+
+        // Goal-oriented framing, not a bare "your security score is X%".
+        $this->assertStringContainsString( 'reach a strong setup', $output );
+        $this->assertStringContainsString( 'Recommended next steps:', $output );
+        $this->assertStringNotContainsString( "What's missing:", $output );
+
+        // The recommended list is the minimal set that crosses 50% (IP Lockout
+        // 20 + Progressive 15 + Custom Login 15 = 50), so exactly 3 items show
+        // on an all-off install — not the full disabled-feature dump.
+        $this->assertSame( 3, substr_count( $output, '<li>' ) );
+    }
 }

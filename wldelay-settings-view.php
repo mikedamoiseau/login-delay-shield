@@ -888,7 +888,18 @@ class LDS_Settings_View {
                             ?>
                             <tr>
                                 <td><?php echo esc_html( $ip ); ?></td>
-                                <td><?php echo '' !== $username ? esc_html( $username ) : esc_html__( '(any)', 'login-delay-shield' ); ?></td>
+                                <td><?php
+                                if ( '' !== $username ) {
+                                    echo esc_html( $username );
+                                } else {
+                                    echo esc_html__( '(any)', 'login-delay-shield' );
+                                    // "(any)" is an IP-level lockout: it covers every
+                                    // username attempted from this IP, not a single
+                                    // account. Spell that out for admins unfamiliar
+                                    // with the IP-only strategy (R4-7).
+                                    echo ' ' . $this->tooltip( __( 'IP-level lockout: it applies to every username attempted from this IP address, not one specific account.', 'login-delay-shield' ) );
+                                }
+                                ?></td>
                                 <td><?php echo esc_html( $type ); ?></td>
                                 <td><?php echo esc_html( $source ); ?></td>
                                 <td><?php echo esc_html( $remaining ); ?></td>
