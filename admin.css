@@ -1043,6 +1043,9 @@
     font-size: 0.75em;
     font-weight: 600;
     text-transform: uppercase;
+    /* Neutralise the <mark> UA yellow highlight; the brand-blue text on the
+       page background keeps the existing look while <mark> supplies semantics. */
+    background: transparent;
     color: #135e96;
     vertical-align: middle;
 }

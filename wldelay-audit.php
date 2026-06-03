@@ -608,6 +608,15 @@ function wldelay_get_audit_health() {
     $count            = wldelay_get_audit_failure_generation();
     $marker['count']  = $count;
 
+    // RACE-CRITICAL — DO NOT REFACTOR without re-reading the round-6 race notes.
+    // Health, recovery, and acknowledgement are deliberately THREE separate
+    // options precisely so their independent writers (failure path, recovery
+    // path, admin ack) never read-modify-write the same blob and clobber each
+    // other under concurrency. The stale-recovery suppression below hinges on
+    // the `recovered_count >= $count` generation gate: collapsing these options
+    // into one record, or relaxing this gate to `>` / `==`, reintroduces the
+    // lost-update and stale-"recovered" bugs that gate was added to close.
+    //
     // Fold in the recovery note only when it corresponds to the current failure
     // generation. A recovered_count below the live count means a fresh failure
     // landed after the recovery, so the recovery is stale and must not surface a

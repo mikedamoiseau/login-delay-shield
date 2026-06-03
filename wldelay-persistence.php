@@ -119,10 +119,23 @@ interface WLDelay_Persistence {
      * items_retained instead of a clean completion while the subject's PII
      * remains on disk (F-3-1).
      *
+     * FAILURE CONTRACT — NON-ATOMIC (R2-4). Deletion runs in chunks with NO
+     * surrounding transaction. If a chunk fails, every chunk BEFORE it has
+     * already been committed and only the remainder is left intact; the call
+     * returns FALSE without reporting how many rows were actually removed. This
+     * is deliberate: a partial clear (some lockouts released) is strictly better
+     * than refusing to release any when the DB is flaky, and the FALSE return
+     * still forces callers (clear-all notice, GDPR eraser) to treat the run as
+     * incomplete and surface a failure rather than a clean flush. Callers must
+     * NOT assume the table is fully cleared on FALSE, and must not assume zero
+     * rows were removed either — re-read state if an exact post-condition is
+     * needed.
+     *
      * @param array[] $snapshot List of entries each with 'lockout_key' and
      *                          'generation' keys (extra keys are ignored).
-     * @return int|false Number of rows removed, or FALSE if any delete failed at
-     *                   the DB layer (distinct from 0 rows removed).
+     * @return int|false Number of rows removed, or FALSE if any chunk failed at
+     *                   the DB layer (distinct from 0 rows removed). On FALSE the
+     *                   delete is non-atomic: earlier chunks stay committed.
      */
     public function remove_lockouts_matching_generation( array $snapshot );
 
@@ -852,6 +865,12 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
             // matched. A FALSE here means the chunk's durable rows may still be on
             // disk, so propagate it: GDPR erasure must NOT report a clean
             // completion while PII remains (F-3-1).
+            //
+            // NON-ATOMIC (R2-4): there is no enclosing transaction, so any chunk
+            // already deleted above stays committed. We bail on the first failed
+            // chunk and discard the partial $removed tally — the contract is "any
+            // failure => FALSE", not "rows removed so far". See the interface
+            // docblock for why partial-clear-on-failure is the intended behaviour.
             if ( false === $deleted ) {
                 return false;
             }

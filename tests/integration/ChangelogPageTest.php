@@ -74,6 +74,10 @@ class ChangelogPageTest extends WP_UnitTestCase {
         $this->assertStringContainsString( 'Version ' . WLDELAY_VERSION, $output );
         $this->assertStringContainsString( 'wldelay-changelog-entry--current', $output );
         $this->assertStringContainsString( 'Installed version', $output );
+
+        // The installed-version badge is a <mark> (semantic highlight) so screen
+        // readers convey it without relying on colour alone (R1-6).
+        $this->assertStringContainsString( '<mark class="wldelay-changelog-current-badge">', $output );
     }
 
     public function test_rendered_page_links_back_to_settings() {

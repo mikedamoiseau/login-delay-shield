@@ -174,4 +174,21 @@ README;
         $this->assertSame( '5.0.0', $entries[0]['version'] );
         $this->assertSame( array( 'Only entry.' ), $entries[0]['sections'][0]['items'] );
     }
+
+    /**
+     * A truncated version marker (opens with "= " but never closes with "=")
+     * must NOT be promoted to a new entry — the parser stays lenient and the
+     * well-formed versions around it parse cleanly (R3-6). The malformed line is
+     * also logged via error_log so the dropped marker is debuggable, but the log
+     * is a side effect we do not assert on in the Brain Monkey harness.
+     */
+    public function test_truncated_version_marker_is_not_parsed_as_entry() {
+        $readme = "== Changelog ==\n\n= 2.3.4 =\nGood entry.\n\n= 2.3.3\nTruncated marker missing the closing equals.\n\n= 2.3.2 =\nAnother good entry.\n";
+
+        $entries  = wldelay_parse_changelog( $readme );
+        $versions = array_column( $entries, 'version' );
+
+        $this->assertSame( array( '2.3.4', '2.3.2' ), $versions );
+        $this->assertNotContains( '2.3.3', $versions );
+    }
 }

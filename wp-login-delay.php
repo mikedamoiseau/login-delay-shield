@@ -1332,6 +1332,13 @@ function wldelay_sweep_registered_lockout_transients() {
  * (which would leave orphaned transients and bypass the compare-and-delete
  * contract, consistent with M5b). A durable-delete or read failure makes the
  * whole operation report a failure rather than a clean flush (F-3-1).
+ *
+ * NON-ATOMIC (R2-4): the batched durable delete carries no transaction, so a
+ * mid-run DB failure can leave a PARTIAL clear — some lockouts released, the
+ * rest still on disk — and is reported to the admin as a failure (not a clean
+ * flush). Re-running clear-all is safe and idempotent: it re-snapshots and
+ * retries the survivors. See remove_lockouts_matching_generation()'s interface
+ * docblock for the full failure contract.
  */
 function wldelay_handle_clear_all_lockouts() {
     if ( ! current_user_can( 'manage_options' ) ) {

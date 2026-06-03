@@ -156,6 +156,19 @@ function wldelay_parse_changelog_section( array $lines ) {
             continue;
         }
 
+        // Malformed version marker: a line that opens like a version header
+        // ("= ...", single '=') but never closes with a matching '='. The
+        // parser is lenient by design and would otherwise swallow a truncated
+        // readme line with no trace — log it so the dropped entry is
+        // debuggable. Behaviour is unchanged: we fall through to the prose /
+        // pre-first-marker path exactly as before, only now it is observable.
+        if ( '' !== $trimmed
+            && '=' === $trimmed[0]
+            && 0 !== strpos( $trimmed, '==' )
+            && '=' !== substr( $trimmed, -1 ) ) {
+            error_log( 'wldelay changelog parser: skipping malformed version marker (missing closing "="): ' . $trimmed ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        }
+
         // Anything before the first version marker is ignored.
         if ( null === $current ) {
             continue;
@@ -378,9 +391,12 @@ function wldelay_render_changelog_page( $entries = null ) {
         /* translators: %s: plugin version number. */
         echo esc_html( sprintf( __( 'Version %s', 'login-delay-shield' ), $version ) );
         if ( $is_current ) {
-            echo ' <span class="wldelay-changelog-current-badge">'
+            // <mark> carries the "highlighted for reference" semantic so the
+            // installed version is conveyed without relying on colour alone;
+            // it sits inside the <h2> so heading navigation surfaces it.
+            echo ' <mark class="wldelay-changelog-current-badge">'
                 . esc_html__( '(Installed version)', 'login-delay-shield' )
-                . '</span>';
+                . '</mark>';
         }
         echo '</h2>';
 

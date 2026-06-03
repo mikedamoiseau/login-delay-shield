@@ -1018,13 +1018,34 @@ class LDS_Settings_View {
             </div>
 
             <div class="wldelay-telemetry-results">
-                <p class="description">
+                <?php
+                // Showing X–Y of Z. Date filters are ISO (YYYY-MM-DD) from the
+                // date inputs, so a lexical compare detects an inverted range
+                // (from after to) which would otherwise look identical to a
+                // legitimately empty result set.
+                $shown_count   = count( $entries );
+                $range_start   = $total > 0 ? ( ( $current_page - 1 ) * $per_page ) + 1 : 0;
+                $range_end     = $total > 0 ? ( $range_start + $shown_count - 1 ) : 0;
+                $range_invalid = ( '' !== $filters['from'] && '' !== $filters['to'] && $filters['from'] > $filters['to'] );
+                ?>
+                <?php if ( $range_invalid ) : ?>
+                    <p class="wldelay-empty-state" role="alert">
+                        <?php esc_html_e( 'The “From” date is after the “To” date, so nothing can match. Swap the dates or clear one of them.', 'login-delay-shield' ); ?>
+                    </p>
+                <?php endif; ?>
+                <p class="description" aria-live="polite">
                     <?php
-                    printf(
-                        /* translators: %s: number of matching audit log entries */
-                        esc_html__( '%s matching audit entries.', 'login-delay-shield' ),
-                        esc_html( number_format_i18n( $total ) )
-                    );
+                    if ( $total > 0 ) {
+                        printf(
+                            /* translators: 1: first entry shown on this page, 2: last entry shown, 3: total matching entries */
+                            esc_html__( 'Showing %1$s–%2$s of %3$s matching audit entries.', 'login-delay-shield' ),
+                            esc_html( number_format_i18n( $range_start ) ),
+                            esc_html( number_format_i18n( $range_end ) ),
+                            esc_html( number_format_i18n( $total ) )
+                        );
+                    } else {
+                        esc_html_e( 'No audit entries match the current filters.', 'login-delay-shield' );
+                    }
                     ?>
                 </p>
                 <?php if ( empty( $entries ) ) : ?>
