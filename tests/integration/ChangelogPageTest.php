@@ -76,6 +76,16 @@ class ChangelogPageTest extends WP_UnitTestCase {
         $this->assertStringContainsString( 'Installed version', $output );
     }
 
+    public function test_rendered_page_links_back_to_settings() {
+        $output = $this->render_changelog_page();
+
+        // The page must not be a dead end: a back-link and an enable-features
+        // funnel both point at the settings screen (R1-8).
+        $this->assertStringContainsString( 'page=login-delay-shield-admin', $output );
+        $this->assertStringContainsString( 'Back to Login Delay Shield settings', $output );
+        $this->assertStringContainsString( 'wldelay-changelog-footer', $output );
+    }
+
     public function test_rendered_page_uses_real_lists_and_headings() {
         $output = $this->render_changelog_page();
 

@@ -342,8 +342,15 @@ function wldelay_render_changelog_page( $entries = null ) {
     $has_older    = $total > count( $shown );
     $current_ver  = defined( 'WLDELAY_VERSION' ) ? WLDELAY_VERSION : '';
 
+    $settings_url = admin_url( 'options-general.php?page=login-delay-shield-admin' );
+
     echo '<div class="wrap wldelay-changelog">';
     echo '<h1>' . esc_html__( 'Login Delay Shield — What\'s New', 'login-delay-shield' ) . '</h1>';
+
+    // Link back to the settings screen so the page is not a dead end (R1-8).
+    echo '<p class="wldelay-changelog-actions"><a href="' . esc_url( $settings_url ) . '">'
+        . '&larr; ' . esc_html__( 'Back to Login Delay Shield settings', 'login-delay-shield' )
+        . '</a></p>';
 
     if ( empty( $entries ) ) {
         echo '<p>' . esc_html__( 'No release notes are available.', 'login-delay-shield' ) . '</p>';
@@ -421,6 +428,12 @@ function wldelay_render_changelog_page( $entries = null ) {
             )
             . '</p>';
     }
+
+    // Funnel the reader to the settings screen to turn on any feature the notes
+    // mention, instead of leaving them to hunt for it in the admin menu (R1-8).
+    echo '<p class="wldelay-changelog-footer"><a href="' . esc_url( $settings_url ) . '">'
+        . esc_html__( 'Open Login Delay Shield settings to enable any features mentioned above.', 'login-delay-shield' )
+        . '</a></p>';
 
     echo '</div>';
 }

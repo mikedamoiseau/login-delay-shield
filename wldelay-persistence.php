@@ -801,30 +801,57 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         $table   = wldelay_get_lockout_table_name();
         $removed = 0;
 
-        // Compare-and-delete per snapshot row: WHERE lockout_key = %s AND
-        // generation = %s. A row a concurrent relock refreshed during the
-        // recovery window now carries a NEW generation, so it fails the match
-        // and survives — exactly the orphaning race this closes. A legacy row's
-        // empty-string generation matches a still-empty current generation, so
-        // legacy rows remain cleanable.
+        // Compare-and-delete keyed on (lockout_key, generation). A row a
+        // concurrent relock refreshed during the recovery window now carries a
+        // NEW generation, so it fails the match and survives — exactly the
+        // orphaning race this closes. A legacy row's empty-string generation
+        // matches a still-empty current generation, so legacy rows remain
+        // cleanable. Collect the pairs first, then delete them in batches.
+        $pairs = array();
         foreach ( $snapshot as $entry ) {
             if ( ! is_array( $entry ) || ! isset( $entry['lockout_key'] ) ) {
                 continue;
             }
+            $pairs[] = array(
+                (string) $entry['lockout_key'],
+                isset( $entry['generation'] ) ? (string) $entry['generation'] : '',
+            );
+        }
 
-            $deleted = $wpdb->delete(
-                $table,
-                array(
-                    'lockout_key' => (string) $entry['lockout_key'],
-                    'generation'  => isset( $entry['generation'] ) ? (string) $entry['generation'] : '',
-                ),
-                array( '%s', '%s' )
+        if ( empty( $pairs ) ) {
+            return 0;
+        }
+
+        // Batch the per-pair compare-and-delete into one statement per chunk via
+        // a row-value IN list, so clearing N subjects costs ceil(N / chunk)
+        // queries instead of N (R2-3). The (key, gen) pair match is identical to
+        // the previous per-row WHERE lockout_key = %s AND generation = %s, so the
+        // generation gate — and the M5b orphaning contract — is preserved exactly.
+        // Chunked to keep the prepared statement and placeholder count bounded on
+        // a heavily-attacked site with thousands of lockouts.
+        foreach ( array_chunk( $pairs, 200 ) as $chunk ) {
+            $placeholders = implode( ', ', array_fill( 0, count( $chunk ), '(%s, %s)' ) );
+            $values       = array();
+            foreach ( $chunk as $pair ) {
+                $values[] = $pair[0];
+                $values[] = $pair[1];
+            }
+
+            // Clear last_error so a stale error from an earlier query is not
+            // misread as a failure of this DELETE.
+            $wpdb->last_error = '';
+
+            $deleted = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+                $wpdb->prepare(
+                    "DELETE FROM $table WHERE ( lockout_key, generation ) IN ( $placeholders )", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $values
+                )
             );
 
-            // $wpdb->delete() returns FALSE on a DB error, distinct from 0 rows
-            // matched. A FALSE here means the subject's durable lockout row may
-            // still be on disk, so propagate it: GDPR erasure must NOT report a
-            // clean completion while PII remains (F-3-1).
+            // $wpdb->query() returns FALSE on a DB error, distinct from 0 rows
+            // matched. A FALSE here means the chunk's durable rows may still be on
+            // disk, so propagate it: GDPR erasure must NOT report a clean
+            // completion while PII remains (F-3-1).
             if ( false === $deleted ) {
                 return false;
             }
