@@ -894,7 +894,11 @@ class LDS_Settings_View {
                                 <td><?php echo esc_html( $remaining ); ?></td>
                                 <td><?php echo esc_html( $since ); ?></td>
                                 <td>
-                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-unlock-form">
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-unlock-form" data-wldelay-confirm="<?php echo esc_attr( '' !== $username
+                                        /* translators: 1: username, 2: IP address */
+                                        ? sprintf( __( 'Unlock %1$s on IP %2$s? They will be able to attempt logins again immediately.', 'login-delay-shield' ), $username, $ip )
+                                        /* translators: %s: IP address */
+                                        : sprintf( __( 'Unlock IP %s? It will be able to attempt logins again immediately.', 'login-delay-shield' ), $ip ) ); ?>">
                                         <input type="hidden" name="action" value="wldelay_unlock_lockout" />
                                         <input type="hidden" name="wldelay_lockout_ip" value="<?php echo esc_attr( $ip ); ?>" />
                                         <input type="hidden" name="wldelay_lockout_key" value="<?php echo esc_attr( $lockout_key ); ?>" />
@@ -943,7 +947,7 @@ class LDS_Settings_View {
                 <?php endif; ?>
 
                 <div class="wldelay-clear-all">
-                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-clear-all-form">
+                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-clear-all-form" data-wldelay-confirm="<?php echo esc_attr__( 'Clear ALL active lockouts? Every currently blocked IP and account will be able to attempt logins again immediately. This cannot be undone.', 'login-delay-shield' ); ?>">
                         <input type="hidden" name="action" value="wldelay_clear_all_lockouts" />
                         <?php wp_nonce_field( 'wldelay_clear_all_lockouts' ); ?>
                         <button type="submit" class="button button-secondary"><?php esc_html_e( 'Clear all active lockouts', 'login-delay-shield' ); ?></button>

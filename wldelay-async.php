@@ -281,7 +281,24 @@ function wldelay_flush_deferred_tasks() {
     // on every pass. Stop looping; the leftover is dropped at process exit (the
     // queue is request-local memory). Log it so the loss is visible.
     if ( ! empty( $queue ) ) {
-        error_log( 'wldelay deferred flush hit pass cap (' . WLDELAY_MAX_FLUSH_PASSES . '); ' . count( $queue ) . ' task(s) left queued' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        $dropped = count( $queue );
+        error_log( 'wldelay deferred flush hit pass cap (' . WLDELAY_MAX_FLUSH_PASSES . '); ' . $dropped . ' task(s) left queued' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+
+        // error_log() is often disabled or unmonitored on production. Emit a
+        // failure event too, so reliability-sensitive subscribers (monitoring,
+        // SIEM forwarders) can observe the dropped work — e.g. a stranded
+        // purge_expired_lockouts run that would otherwise let expired rows
+        // accumulate unnoticed. Guarded like the per-task task_failed emit: a
+        // throwing observer must not abort the shutdown sequence.
+        try {
+            wldelay_emit_event( 'flush_pass_cap', array(
+                'passes'        => WLDELAY_MAX_FLUSH_PASSES,
+                'dropped'       => $dropped,
+                'dropped_ids'   => array_values( array_unique( array_column( $queue, 'id' ) ) ),
+            ) );
+        } catch ( \Throwable $observer_error ) {
+            error_log( 'wldelay flush_pass_cap observer threw: ' . $observer_error->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        }
     }
 }
 

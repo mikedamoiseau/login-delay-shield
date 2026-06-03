@@ -145,6 +145,51 @@ class AsyncTaskTest extends WP_UnitTestCase {
     }
 
     /**
+     * Hitting the flush pass cap emits a flush_pass_cap event carrying the
+     * dropped count and ids, so monitoring can observe stranded work that
+     * error_log() alone (often disabled in production) would hide — e.g. a
+     * stranded purge_expired_lockouts run. R3-5 review fix.
+     */
+    public function test_flush_pass_cap_emits_event_with_dropped_work() {
+        $observed = null;
+        wldelay_on_event( 'flush_pass_cap', function ( $payload ) use ( &$observed ) {
+            $observed = $payload;
+        } );
+
+        // A handler that re-enqueues itself every pass: drained to the cap, then
+        // the leftover is dropped — which is exactly when the event must fire.
+        wldelay_register_task_handler( 'greedy', function () {
+            wldelay_defer_task( 'greedy' );
+        } );
+        wldelay_defer_task( 'greedy' );
+
+        wldelay_flush_deferred_tasks();
+
+        $this->assertIsArray( $observed, 'flush_pass_cap event should fire when the cap is hit' );
+        $this->assertSame( WLDELAY_MAX_FLUSH_PASSES, $observed['passes'] );
+        $this->assertSame( 1, $observed['dropped'] );
+        $this->assertSame( array( 'greedy' ), $observed['dropped_ids'] );
+    }
+
+    /**
+     * A clean flush (no leftover work) must NOT emit flush_pass_cap — the event
+     * is a stranded-work signal, not a per-flush heartbeat.
+     */
+    public function test_flush_pass_cap_event_not_emitted_on_clean_drain() {
+        $fired = false;
+        wldelay_on_event( 'flush_pass_cap', function () use ( &$fired ) {
+            $fired = true;
+        } );
+
+        wldelay_register_task_handler( 'tidy', function () {} );
+        wldelay_defer_task( 'tidy' );
+
+        wldelay_flush_deferred_tasks();
+
+        $this->assertFalse( $fired, 'flush_pass_cap must not fire when the queue drains cleanly' );
+    }
+
+    /**
      * The cron backstop hook is bound to the flush callback.
      */
     public function test_cron_backstop_action_is_registered() {

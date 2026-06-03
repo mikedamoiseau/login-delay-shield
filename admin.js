@@ -202,6 +202,18 @@ jQuery(document).ready(function ($) {
         }
     });
 
+    // Confirm destructive lockout actions (per-row Unlock, Clear-all) before the
+    // POST goes through. The prompt text is set per-form in PHP (translated) via
+    // the data-wldelay-confirm attribute, so misclicks on the dense lockout table
+    // can't irreversibly unlock the wrong subject. Progressive enhancement: with
+    // JS off the forms still submit (nonce + capability checks remain the guard).
+    $(document).on('submit', '[data-wldelay-confirm]', function (e) {
+        var message = $(this).data('wldelayConfirm');
+        if (message && !window.confirm(message)) {
+            e.preventDefault();
+        }
+    });
+
     $(document).on('click', '.wldelay-name-change-notice .notice-dismiss', function () {
         var config = getAdminConfig();
 

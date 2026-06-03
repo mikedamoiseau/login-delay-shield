@@ -100,7 +100,7 @@ function wldelay_uninstall_cleanup_site() {
     // Changelog cache (F-5-5). The key is version-suffixed (wldelay_changelog_X.Y.Z),
     // so sweep every variant by option-name pattern rather than guessing versions.
     // Covers both the value and timeout rows of the (non-site) transient.
-    $wpdb->query(
+    $wpdb->query( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
         "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_wldelay\\_changelog\\_%' OR option_name LIKE '\\_transient\\_timeout\\_wldelay\\_changelog\\_%'"
     );
 

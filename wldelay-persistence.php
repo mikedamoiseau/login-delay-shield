@@ -295,6 +295,29 @@ function wldelay_generate_lockout_generation() {
 }
 
 /**
+ * Clamp a string to a lockout-table column width before it is stored.
+ *
+ * Single source of truth for the column-width clamps in add_lockout(): the
+ * username (varchar 255), source (varchar 20) and transient_key (varchar 191)
+ * columns. Keeping the clamp in one place means a column-width change is made
+ * once, and — critically — that the WRITE clamp and any future compare/delete
+ * clamp can never silently diverge and break the generation compare-and-delete
+ * for an over-long identifier (review F-2-1 hardening / R3-4). Multibyte-safe
+ * where mb_substr is available, with a byte-wise fallback.
+ *
+ * @param string $value     Raw value.
+ * @param int    $max_chars Column width in characters.
+ * @return string Clamped value.
+ */
+function wldelay_clamp_column_value( $value, $max_chars ) {
+    $value = (string) $value;
+
+    return function_exists( 'mb_substr' )
+        ? mb_substr( $value, 0, $max_chars )
+        : substr( $value, 0, $max_chars );
+}
+
+/**
  * Get the persistent lockout table name.
  *
  * @return string
@@ -562,7 +585,7 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         // the column cannot fail the INSERT under strict SQL mode and silently
         // drop the durable record (F-2-1).
         $key          = wldelay_get_lockout_storage_key( $ip, $username, $type );
-        $username_col = function_exists( 'mb_substr' ) ? mb_substr( $username, 0, 255 ) : substr( $username, 0, 255 );
+        $username_col = wldelay_clamp_column_value( $username, 255 );
         $created_at   = gmdate( 'Y-m-d H:i:s', $now );
         $expires_at   = gmdate( 'Y-m-d H:i:s', $expires );
 
@@ -572,16 +595,14 @@ class WLDelay_DB_Persistence implements WLDelay_Persistence {
         // accept an unconstrained source) must not fail the INSERT under strict
         // SQL mode and silently drop the durable record (F-2-1).
         if ( null !== $source ) {
-            $source = (string) $source;
-            $source = function_exists( 'mb_substr' ) ? mb_substr( $source, 0, 20 ) : substr( $source, 0, 20 );
+            $source = wldelay_clamp_column_value( $source, 20 );
         }
 
         // Record the exact transient name the caller set so IP-level recovery can
         // delete it directly. Clamp to the column width (varchar(191)); transient
         // names are short hashes, so this never truncates a real key — the clamp
         // only guards a misbehaving caller from failing the INSERT (F-2-1).
-        $transient_key = (string) $transient_key;
-        $transient_key = function_exists( 'mb_substr' ) ? mb_substr( $transient_key, 0, 191 ) : substr( $transient_key, 0, 191 );
+        $transient_key = wldelay_clamp_column_value( $transient_key, 191 );
 
         // Stamp a fresh generation on every insert AND every refresh. Recovery
         // snapshots the generation it intends to remove, then deletes only rows
