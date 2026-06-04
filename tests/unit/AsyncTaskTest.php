@@ -47,6 +47,46 @@ class AsyncTaskTest extends LDS_Unit_Test_Case {
     }
 
     /**
+     * A non-slug event name is sanitized to [A-Za-z0-9_] before the per-event
+     * hook is built, so it can never mint an arbitrary action hook (R2-2). The
+     * generic hook receives the same sanitized name so both agree.
+     */
+    public function test_emit_event_sanitizes_event_name() {
+        Functions\expect( 'do_action' )
+            ->once()
+            ->with( 'wldelay_event_failedloginexploit', array() );
+
+        Functions\expect( 'do_action' )
+            ->once()
+            ->with( 'wldelay_event', 'failedloginexploit', array() );
+
+        // Spaces / dots / separators are stripped, not passed into the hook name.
+        wldelay_emit_event( 'failed login.exploit/../', array() );
+
+        $this->assertTrue( true );
+    }
+
+    /**
+     * An event name that sanitizes to empty fires nothing (R2-2).
+     */
+    public function test_emit_event_with_no_valid_chars_is_noop() {
+        Functions\expect( 'do_action' )->never();
+
+        wldelay_emit_event( '/.-/', array() );
+
+        $this->assertTrue( true );
+    }
+
+    /**
+     * The pure sanitizer keeps a conforming slug unchanged and strips the rest.
+     */
+    public function test_sanitize_event_name_strips_unsafe_chars() {
+        $this->assertSame( 'failed_login', wldelay_sanitize_event_name( 'failed_login' ) );
+        $this->assertSame( 'flushpasscap', wldelay_sanitize_event_name( 'flush pass.cap' ) );
+        $this->assertSame( '', wldelay_sanitize_event_name( '  ../  ' ) );
+    }
+
+    /**
      * on_event registers a listener on the namespaced action hook.
      */
     public function test_on_event_registers_listener_on_namespaced_hook() {

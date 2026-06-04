@@ -66,6 +66,15 @@ if ( ! defined( 'WLDELAY_PRIVACY_PAGE_SIZE' ) ) {
  * the run is not wedged forever (F-3-1). The window is generous relative to a
  * single page's work yet short enough that a genuinely crashed page recovers on
  * the operator's next click.
+ *
+ * OPERATOR GUIDANCE (R3-3): if a privacy export/erase appears stalled, wait for
+ * this lock to expire — at least WLDELAY_PRIVACY_LOCK_TIMEOUT seconds (5 min) —
+ * before re-triggering the request. Re-firing inside the window can run a second
+ * page call concurrently with a still-live one; the lock is there to serialise
+ * them, but the safest operator behaviour is simply not to race it. Even if a
+ * retry does slip in early, the cursor is re-read from storage on every page
+ * (keyset, not a stored offset), so the blast radius is bounded — a duplicate
+ * pass re-processes from the persisted position rather than skipping ahead.
  */
 if ( ! defined( 'WLDELAY_PRIVACY_LOCK_TIMEOUT' ) ) {
     define( 'WLDELAY_PRIVACY_LOCK_TIMEOUT', 300 );

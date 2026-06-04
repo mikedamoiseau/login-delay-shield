@@ -59,6 +59,24 @@ defined( 'ABSPATH' ) || exit;
 // ==========================================================================
 
 /**
+ * Sanitize an event name into a safe hook suffix.
+ *
+ * Event names are code-controlled machine slugs, never built from request input
+ * (R2-2). This strips anything outside `[A-Za-z0-9_]` defensively, so even if a
+ * future caller were to pass a name derived from untrusted data it can never
+ * mint an arbitrary action hook (e.g. with spaces, dots, or separators).
+ * Conforming names — every name the plugin emits — pass through unchanged. Used
+ * by BOTH wldelay_emit_event() and wldelay_on_event() so a fire and its listener
+ * resolve to the identical hook.
+ *
+ * @param string $event_name Raw event name.
+ * @return string Sanitized name (may be '' if nothing valid remained).
+ */
+function wldelay_sanitize_event_name( $event_name ) {
+    return preg_replace( '/[^A-Za-z0-9_]/', '', (string) $event_name );
+}
+
+/**
  * Emit a plugin event.
  *
  * Thin wrapper over do_action that fires two hooks per event so subscribers can
@@ -67,11 +85,15 @@ defined( 'ABSPATH' ) || exit;
  *   - `wldelay_event_{$event_name}` — receives the payload array.
  *   - `wldelay_event`               — receives ( $event_name, $payload ).
  *
+ * The event name is sanitized to a machine slug before the per-event hook is
+ * built (R2-2); the generic `wldelay_event` hook receives the same sanitized
+ * name so both hooks agree.
+ *
  * @param string $event_name Machine event name, e.g. 'failed_login', 'lockout'.
  * @param array  $payload    Arbitrary associative data describing the event.
  */
 function wldelay_emit_event( $event_name, array $payload = array() ) {
-    $event_name = (string) $event_name;
+    $event_name = wldelay_sanitize_event_name( $event_name );
     if ( '' === $event_name ) {
         return;
     }
@@ -93,7 +115,7 @@ function wldelay_emit_event( $event_name, array $payload = array() ) {
  * @param int      $accepted_args Number of args passed to the listener (default 1).
  */
 function wldelay_on_event( $event_name, $callback, $priority = 10, $accepted_args = 1 ) {
-    add_action( 'wldelay_event_' . (string) $event_name, $callback, $priority, $accepted_args );
+    add_action( 'wldelay_event_' . wldelay_sanitize_event_name( $event_name ), $callback, $priority, $accepted_args );
 }
 
 // ==========================================================================

@@ -169,7 +169,9 @@ function wldelay_block_author_enumeration() {
  * published posts, so leaving it in place keeps usernames/slugs enumerable one
  * id at a time even after the collection route is removed. Authenticated,
  * capable users keep full access. Hooked on `rest_endpoints`, which fires once
- * while routes are assembled — not on the per-attempt path.
+ * while routes are assembled — not on the per-attempt path. Registered at
+ * PHP_INT_MAX so it runs after any other plugin that adds/restores the users
+ * route, leaving no later hook able to re-expose it (R3-7).
  *
  * @param array $endpoints REST endpoints, keyed by route.
  * @return array
@@ -259,6 +261,11 @@ function wldelay_remove_users_sitemap_provider( $provider, $name ) {
 if ( function_exists( 'add_filter' ) ) {
     add_filter( 'login_errors', 'wldelay_filter_login_errors', 20 );
     add_action( 'template_redirect', 'wldelay_block_author_enumeration', 0 );
-    add_filter( 'rest_endpoints', 'wldelay_restrict_rest_user_endpoints', 20 );
+    // Run LAST (R3-7): the strip must see the final route map, so a plugin that
+    // re-adds the public users GET handler at a later-than-default priority can
+    // not slip a route past us. PHP_INT_MAX keeps this filter after any
+    // realistically-registered hook. It is a pure array filter (no per-request
+    // cost on the hot path), so running last is free.
+    add_filter( 'rest_endpoints', 'wldelay_restrict_rest_user_endpoints', PHP_INT_MAX );
     add_filter( 'wp_sitemaps_add_provider', 'wldelay_remove_users_sitemap_provider', 20, 2 );
 }

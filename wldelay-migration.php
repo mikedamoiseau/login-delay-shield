@@ -172,6 +172,17 @@ class WLDelay_Migration {
         // the write did not stick (e.g. a transient DB failure), leave the
         // version untouched so the next request retries the migration rather
         // than masking a half-applied transformation.
+        //
+        // Concurrency (R3-1): this read-back is NOT a wedge. If a concurrent
+        // request writes wldelay_options between our update_option() above and
+        // this get_option(), the compare fails and we simply leave the version
+        // un-advanced — the next request re-runs run(). That is safe because
+        // every step is idempotent (it only backfills ABSENT keys), so replaying
+        // converges, and it terminates because steps stop changing the array once
+        // applied. The only way to keep deferring is a perpetual stream of
+        // concurrent writes; once writes quiesce the compare matches and the
+        // version advances. There is no read-back GATE that can permanently pin
+        // the version below latest.
         if ( get_option( WLDELAY_OPTION_NAME ) !== $options ) {
             return false;
         }
