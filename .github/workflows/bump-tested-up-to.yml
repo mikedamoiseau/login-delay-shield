@@ -1,0 +1,102 @@
+name: Bump Tested up to
+
+# Keeps readme.txt's "Tested up to:" header current with the latest stable
+# WordPress release. A stale value triggers a wordpress.org search-ranking
+# penalty (flagged by plugin-check). Runs weekly and on demand; opens a PR
+# rather than committing to main so a human reviews before the value ships
+# in the next release.
+
+on:
+  schedule:
+    # Weekly, Mondays 06:00 UTC. WordPress majors ship a few times a year,
+    # so weekly polling is more than enough to catch a new release promptly.
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # commit the readme.txt change to a branch
+  pull-requests: write # open the PR
+
+jobs:
+  bump:
+    name: Bump readme Tested up to
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Determine latest stable WordPress version
+        id: wp
+        run: |
+          set -euo pipefail
+          # Official wordpress.org version-check endpoint. offers[0].current is
+          # the latest stable release the plugin team recommends testing against.
+          # Validate the API value inside Python with re.fullmatch BEFORE it
+          # ever reaches a shell var. fullmatch rejects embedded newlines/CR,
+          # so a value like "7.0\nlatest=evil" fails closed here — a line-based
+          # `grep -Eq` would pass it (any matching line satisfies -q) and then
+          # the extra newline would inject a second record into $GITHUB_OUTPUT.
+          latest="$(curl -fsS https://api.wordpress.org/core/version-check/1.7/ \
+            | python3 -c "import sys,json,re; v=json.load(sys.stdin)['offers'][0]['current']; sys.exit(\"Unexpected version string from api.wordpress.org: %r\" % (v,)) if not re.fullmatch(r'[0-9]+\.[0-9]+(\.[0-9]+)?', v) else print(v)")"
+          current="$(grep -E '^Tested up to:' readme.txt | head -n1 | sed -E 's/^Tested up to:[[:space:]]*//')"
+          # Validate the committed value with the same strict pattern before
+          # emitting it. head -n1 already guarantees a single line; fullmatch
+          # rejects any stray CR. Prevents a malformed/malicious readme.txt
+          # value from later reaching a shell or action input.
+          if ! printf '%s' "$current" | python3 -c "import sys,re; sys.exit(0 if re.fullmatch(r'[0-9]+\.[0-9]+(\.[0-9]+)?', sys.stdin.read()) else 1)"; then
+            echo "Unexpected 'Tested up to:' value in readme.txt: '$current'" >&2
+            exit 1
+          fi
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "Current Tested up to: '$current' — latest stable: '$latest'"
+
+      - name: Update readme.txt if newer version available
+        id: update
+        env:
+          # Pass step outputs through the environment instead of interpolating
+          # ${{ }} into the shell source, so the values can never be parsed as
+          # shell. Both are regex-validated in the `wp` step above.
+          CURRENT: ${{ steps.wp.outputs.current }}
+          LATEST: ${{ steps.wp.outputs.latest }}
+        run: |
+          set -euo pipefail
+          current="$CURRENT"
+          latest="$LATEST"
+          # Only act when the latest version is strictly newer. sort -V handles
+          # dotted version ordering; equal values are a no-op.
+          if [ "$current" = "$latest" ]; then
+            echo "Already up to date ($current). Nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          newest="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n1)"
+          if [ "$newest" != "$latest" ]; then
+            echo "Current value ($current) is newer than api.wordpress.org ($latest); not downgrading."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Replace only the Tested up to line. Nothing else in readme.txt.
+          sed -i -E "s/^(Tested up to:[[:space:]]*).*/\1${latest}/" readme.txt
+          echo "Bumped Tested up to: $current -> $latest"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
+        with:
+          branch: chore/bump-tested-up-to
+          commit-message: "ci: bump readme Tested up to ${{ steps.wp.outputs.latest }}"
+          title: "Bump Tested up to ${{ steps.wp.outputs.latest }}"
+          body: |
+            Automated bump of `readme.txt` `Tested up to:` from
+            `${{ steps.wp.outputs.current }}` to `${{ steps.wp.outputs.latest }}`.
+
+            Source: official `https://api.wordpress.org/core/version-check/1.7/`
+            (`offers[0].current`).
+
+            A stale `Tested up to:` value triggers a wordpress.org search-ranking
+            penalty. Review and merge before the next release so the value ships.
+          labels: |
+            chore
+            automated

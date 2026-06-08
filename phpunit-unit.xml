@@ -6,10 +6,16 @@
     convertErrorsToExceptions="true"
     convertNoticesToExceptions="true"
     convertWarningsToExceptions="true"
+    enforceTimeLimit="true"
+    defaultTimeLimit="60"
 >
     <testsuites>
         <testsuite name="unit">
             <directory prefix="" suffix="Test.php">./tests/unit/</directory>
         </testsuite>
     </testsuites>
+    <!-- F-4-7: per-test runtime tracking. Flags slow tests at end of run. -->
+    <extensions>
+        <extension class="LoginDelayShield\Tests\Support\WLDelay_Slow_Test_Reporter"/>
+    </extensions>
 </phpunit>

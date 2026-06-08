@@ -68,9 +68,11 @@ class LDS_Settings_View {
 
             <?php echo $this->render_summary_box(); ?>
             <?php $this->render_2fa_health_notice(); ?>
+            <?php $this->render_enumeration_hardening_notice(); ?>
             <?php $this->render_object_cache_notice(); ?>
 
             <form id="wldelay-telemetry-filter-form" method="get" action="<?php echo esc_url( admin_url( 'options-general.php' ) ); ?>"></form>
+            <form id="wldelay-audit-filter-form" method="get" action="<?php echo esc_url( admin_url( 'options-general.php' ) ); ?>"></form>
 
             <form method="post" action="options.php">
                 <?php settings_fields( 'wldelay_option_group' ); ?>
@@ -151,6 +153,18 @@ class LDS_Settings_View {
                     </div>
 
                     <div class="wldelay-card">
+                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-audit-body">
+                            <span class="dashicons dashicons-shield" aria-hidden="true"></span>
+                            <?php esc_html_e( 'Audit Log', 'login-delay-shield' ); ?>
+                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                        </h2>
+                        <div id="wldelay-audit-body" class="wldelay-card-body">
+                            <p class="description"><?php esc_html_e( 'A read-only record of sensitive administrative actions — settings changes, manual unlocks, and whitelist edits — for compliance and forensic review.', 'login-delay-shield' ); ?></p>
+                            <?php $this->render_audit_log(); ?>
+                        </div>
+                    </div>
+
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-xmlrpc-body">
                             <span class="dashicons dashicons-rss" aria-hidden="true"></span>
                             <?php esc_html_e( 'XML-RPC Protection', 'login-delay-shield' ); ?>
@@ -179,6 +193,26 @@ class LDS_Settings_View {
 
                 <?php submit_button(); ?>
             </form>
+
+            <?php
+            // Rendered OUTSIDE the settings <form action="options.php">: this card
+            // emits its own POST forms (per-row Unlock + Clear-all targeting
+            // admin-post.php). Nesting a <form> inside another <form> is invalid
+            // HTML — the first inner submit would bind to the outer form (wrong
+            // handler) and the inner </form> would close the settings form early,
+            // breaking Save Settings whenever lockouts exist (F-1-1 review).
+            ?>
+            <div class="wldelay-card">
+                <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-active-lockouts-body">
+                    <span class="dashicons dashicons-unlock" aria-hidden="true"></span>
+                    <?php esc_html_e( 'Active Lockouts', 'login-delay-shield' ); ?>
+                    <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                </h2>
+                <div id="wldelay-active-lockouts-body" class="wldelay-card-body">
+                    <p class="description"><?php esc_html_e( 'IP addresses and accounts currently blocked from logging in. Unlock an individual subject if a legitimate user got caught, or clear them all.', 'login-delay-shield' ); ?></p>
+                    <?php $this->render_active_lockouts(); ?>
+                </div>
+            </div>
         </div>
         <?php
     }
@@ -456,6 +490,26 @@ class LDS_Settings_View {
             <span>
                 <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
                 <?php esc_html_e( 'No detected common 2FA plugin. If you use a custom or must-use solution, verify administrator 2FA coverage manually.', 'login-delay-shield' ); ?>
+            </span>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render a coherence/validator warning when username-enumeration hardening
+     * is enabled, reminding the admin that login feedback becomes intentionally
+     * generic and public author/REST listings are restricted.
+     */
+    private function render_enumeration_hardening_notice() {
+        if ( empty( $this->options['wldelay_enumeration_hardening_enabled'] ) ) {
+            return;
+        }
+        ?>
+        <div class="wldelay-health-notice" role="note">
+            <span class="dashicons dashicons-shield" aria-hidden="true"></span>
+            <span>
+                <strong><?php esc_html_e( 'Enumeration hardening active:', 'login-delay-shield' ); ?></strong>
+                <?php esc_html_e( 'Login failures now show one generic error, and author-archive and public REST user listings are blocked. Verify your support guidance reflects this before relying on it.', 'login-delay-shield' ); ?>
             </span>
         </div>
         <?php
@@ -752,6 +806,404 @@ class LDS_Settings_View {
         );
         if ( $current_page < $total_pages ) {
             echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_log_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'login-delay-shield' ) . '</a>';
+        }
+        echo '</nav>';
+    }
+
+    /**
+     * Render the read-only audit-log view: filters, table, and pagination.
+     *
+     * Surfaces the F-2-7 admin/security action trail. Read-only by design — no
+     * edit or delete controls. All output is escaped; the underlying query
+     * functions sanitize the request filters internally.
+     */
+    /**
+     * Render the Active Lockout Manager table (F-1-1).
+     *
+     * Lists currently-active lockouts from the durable store, each with a
+     * per-row Unlock form (POST -> admin-post, own nonce) that removes only that
+     * (IP, username) subject, plus a Clear-all form. The list is bounded by the
+     * store's default limit; if it is truncated the table says so.
+     */
+    private function render_active_lockouts() {
+        $limit    = 200;
+        $lockouts = wldelay_get_persistence_store()->get_active_lockouts( $limit );
+        $now      = time();
+
+        // A FALSE return is a DB read failure (table probe / SELECT), distinct
+        // from a genuine empty list. Surface it as an error so the admin does not
+        // mistake a fault for "nothing is locked" (F-3-1, read-failure contract).
+        $read_failed = ( false === $lockouts );
+        if ( $read_failed ) {
+            $lockouts = array();
+        }
+        ?>
+        <div class="wldelay-active-lockouts" aria-labelledby="wldelay-active-lockouts-title">
+            <h3 id="wldelay-active-lockouts-title" class="screen-reader-text"><?php esc_html_e( 'Active lockouts', 'login-delay-shield' ); ?></h3>
+
+            <?php if ( $read_failed ) : ?>
+                <div class="notice notice-error inline" role="alert">
+                    <p><?php esc_html_e( 'The list of active lockouts could not be read from the database. Active lockouts may still be in force — this is not a confirmation that nothing is blocked.', 'login-delay-shield' ); ?></p>
+                </div>
+            <?php elseif ( empty( $lockouts ) ) : ?>
+                <p class="wldelay-empty-state" role="status" aria-live="polite"><?php esc_html_e( 'No active lockouts. Nothing is currently blocked.', 'login-delay-shield' ); ?></p>
+            <?php else : ?>
+                <table class="widefat striped wldelay-active-lockouts-table">
+                    <caption class="screen-reader-text"><?php esc_html_e( 'Currently active login lockouts', 'login-delay-shield' ); ?></caption>
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php esc_html_e( 'IP address', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Username', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Type', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Source', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Time remaining', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Locked since', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Actions', 'login-delay-shield' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $lockouts as $lockout ) : ?>
+                            <?php
+                            $ip          = isset( $lockout['ip_address'] ) ? (string) $lockout['ip_address'] : '';
+                            $username    = isset( $lockout['username'] ) ? (string) $lockout['username'] : '';
+                            $lockout_key = isset( $lockout['lockout_key'] ) ? (string) $lockout['lockout_key'] : '';
+                            $type        = isset( $lockout['lockout_type'] ) ? (string) $lockout['lockout_type'] : '';
+                            $source    = isset( $lockout['source'] ) ? (string) $lockout['source'] : '';
+                            $expires   = isset( $lockout['expires_at'] ) ? (int) $lockout['expires_at'] : 0;
+                            $created   = isset( $lockout['created_at'] ) ? (int) $lockout['created_at'] : 0;
+                            $remaining = $expires > $now
+                                ? sprintf(
+                                    /* translators: %s: human-readable duration, e.g. "5 mins" */
+                                    __( '%s left', 'login-delay-shield' ),
+                                    human_time_diff( $now, $expires )
+                                )
+                                : __( 'Expiring', 'login-delay-shield' );
+                            $since = $created > 0
+                                ? sprintf(
+                                    /* translators: %s: human-readable duration, e.g. "5 mins" */
+                                    __( '%s ago', 'login-delay-shield' ),
+                                    human_time_diff( $created, $now )
+                                )
+                                : __( 'Unknown', 'login-delay-shield' );
+                            ?>
+                            <tr>
+                                <td><?php echo esc_html( $ip ); ?></td>
+                                <td><?php
+                                if ( '' !== $username ) {
+                                    echo esc_html( $username );
+                                } else {
+                                    echo esc_html__( '(any)', 'login-delay-shield' );
+                                    // "(any)" is an IP-level lockout: it covers every
+                                    // username attempted from this IP, not a single
+                                    // account. Spell that out for admins unfamiliar
+                                    // with the IP-only strategy (R4-7).
+                                    echo ' ' . $this->tooltip( __( 'IP-level lockout: it applies to every username attempted from this IP address, not one specific account.', 'login-delay-shield' ) );
+                                }
+                                ?></td>
+                                <td><?php echo esc_html( $type ); ?></td>
+                                <td><?php echo esc_html( $source ); ?></td>
+                                <td><?php echo esc_html( $remaining ); ?></td>
+                                <td><?php echo esc_html( $since ); ?></td>
+                                <td>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-unlock-form" data-wldelay-confirm="<?php echo esc_attr( '' !== $username
+                                        /* translators: 1: username, 2: IP address */
+                                        ? sprintf( __( 'Unlock %1$s on IP %2$s? They will be able to attempt logins again immediately.', 'login-delay-shield' ), $username, $ip )
+                                        /* translators: %s: IP address */
+                                        : sprintf( __( 'Unlock IP %s? It will be able to attempt logins again immediately.', 'login-delay-shield' ), $ip ) ); ?>">
+                                        <input type="hidden" name="action" value="wldelay_unlock_lockout" />
+                                        <input type="hidden" name="wldelay_lockout_ip" value="<?php echo esc_attr( $ip ); ?>" />
+                                        <input type="hidden" name="wldelay_lockout_key" value="<?php echo esc_attr( $lockout_key ); ?>" />
+                                        <?php // Display-only forensic label for the audit entry; matching is by lockout_key, not this value. ?>
+                                        <input type="hidden" name="wldelay_lockout_username" value="<?php echo esc_attr( $username ); ?>" />
+                                        <input type="hidden" name="wldelay_lockout_type" value="<?php echo esc_attr( $type ); ?>" />
+                                        <?php wp_nonce_field( 'wldelay_unlock_lockout' ); ?>
+                                        <button type="submit" class="button button-secondary button-small">
+                                            <?php esc_html_e( 'Unlock', 'login-delay-shield' ); ?>
+                                            <span class="screen-reader-text">
+                                                <?php
+                                                if ( '' !== $username ) {
+                                                    printf(
+                                                        /* translators: 1: username, 2: IP address */
+                                                        esc_html__( 'Unlock %1$s on IP %2$s', 'login-delay-shield' ),
+                                                        esc_html( $username ),
+                                                        esc_html( $ip )
+                                                    );
+                                                } else {
+                                                    printf(
+                                                        /* translators: %s: IP address */
+                                                        esc_html__( 'Unlock IP %s', 'login-delay-shield' ),
+                                                        esc_html( $ip )
+                                                    );
+                                                }
+                                                ?>
+                                            </span>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <?php if ( count( $lockouts ) >= $limit ) : ?>
+                    <p class="description" role="status" aria-live="polite">
+                        <?php
+                        printf(
+                            /* translators: %s: maximum number of lockouts shown */
+                            esc_html__( 'Showing the most recent %s lockouts; older active lockouts are not listed.', 'login-delay-shield' ),
+                            esc_html( number_format_i18n( $limit ) )
+                        );
+                        ?>
+                    </p>
+                <?php endif; ?>
+
+                <div class="wldelay-clear-all">
+                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-clear-all-form" data-wldelay-confirm="<?php echo esc_attr__( 'Clear ALL active lockouts? Every currently blocked IP and account will be able to attempt logins again immediately. This cannot be undone.', 'login-delay-shield' ); ?>">
+                        <input type="hidden" name="action" value="wldelay_clear_all_lockouts" />
+                        <?php wp_nonce_field( 'wldelay_clear_all_lockouts' ); ?>
+                        <button type="submit" class="button button-secondary"><?php esc_html_e( 'Clear all active lockouts', 'login-delay-shield' ); ?></button>
+                    </form>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    private function render_audit_log() {
+        $filters      = wldelay_get_audit_filters_from_request();
+        $per_page     = 25;
+        $current_page = isset( $_GET['wldelay_audit_page'] ) ? max( 1, absint( wp_unslash( $_GET['wldelay_audit_page'] ) ) ) : 1;
+        $total        = wldelay_count_audit_log( $filters );
+        $total_pages  = max( 1, (int) ceil( $total / $per_page ) );
+
+        if ( $current_page > $total_pages ) {
+            $current_page = $total_pages;
+        }
+
+        $entries        = wldelay_query_audit_log( $filters, $current_page, $per_page );
+        $action_options = wldelay_get_audit_action_options();
+        ?>
+        <div class="wldelay-audit" aria-labelledby="wldelay-audit-title">
+            <h3 id="wldelay-audit-title" class="screen-reader-text"><?php esc_html_e( 'Audit log entries', 'login-delay-shield' ); ?></h3>
+
+            <?php if ( function_exists( 'wldelay_audit_log_is_degraded' ) && wldelay_audit_log_is_degraded() ) : ?>
+                <div class="notice notice-error inline" role="alert">
+                    <p>
+                        <?php esc_html_e( 'One or more audit-log entries could not be written, so this trail is permanently incomplete — the lost events cannot be recovered. This warning persists until an administrator acknowledges the gap.', 'login-delay-shield' ); ?>
+                        <?php if ( function_exists( 'wldelay_get_audit_ack_gap_url' ) ) : ?>
+                            <a href="<?php echo esc_url( wldelay_get_audit_ack_gap_url() ); ?>"><?php esc_html_e( 'Acknowledge gap', 'login-delay-shield' ); ?></a>
+                        <?php endif; ?>
+                    </p>
+                </div>
+            <?php endif; ?>
+
+            <div class="wldelay-telemetry-filters">
+                <input form="wldelay-audit-filter-form" type="hidden" name="page" value="login-delay-shield-admin" />
+                <div class="wldelay-filter-grid">
+                    <label for="wldelay_audit_action">
+                        <?php esc_html_e( 'Action', 'login-delay-shield' ); ?>
+                        <select id="wldelay_audit_action" name="wldelay_audit_action" form="wldelay-audit-filter-form">
+                            <option value=""><?php esc_html_e( 'All actions', 'login-delay-shield' ); ?></option>
+                            <?php foreach ( $action_options as $action_key ) : ?>
+                                <option value="<?php echo esc_attr( $action_key ); ?>" <?php selected( $filters['action'], $action_key ); ?>><?php echo esc_html( wldelay_get_audit_action_label( $action_key ) ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label for="wldelay_audit_actor">
+                        <?php esc_html_e( 'Actor', 'login-delay-shield' ); ?>
+                        <input id="wldelay_audit_actor" name="wldelay_audit_actor" form="wldelay-audit-filter-form" type="text" value="<?php echo esc_attr( $filters['actor'] ); ?>" placeholder="<?php echo esc_attr__( 'Login or user ID', 'login-delay-shield' ); ?>" />
+                    </label>
+                    <label for="wldelay_audit_from">
+                        <?php esc_html_e( 'From', 'login-delay-shield' ); ?>
+                        <input id="wldelay_audit_from" name="wldelay_audit_from" form="wldelay-audit-filter-form" type="date" value="<?php echo esc_attr( $filters['from'] ); ?>" />
+                    </label>
+                    <label for="wldelay_audit_to">
+                        <?php esc_html_e( 'To', 'login-delay-shield' ); ?>
+                        <input id="wldelay_audit_to" name="wldelay_audit_to" form="wldelay-audit-filter-form" type="date" value="<?php echo esc_attr( $filters['to'] ); ?>" />
+                    </label>
+                </div>
+                <p class="wldelay-telemetry-actions">
+                    <button type="submit" form="wldelay-audit-filter-form" class="button button-primary"><?php esc_html_e( 'Apply filters', 'login-delay-shield' ); ?></button>
+                    <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=login-delay-shield-admin' ) ); ?>"><?php esc_html_e( 'Reset', 'login-delay-shield' ); ?></a>
+                </p>
+            </div>
+
+            <div class="wldelay-telemetry-results">
+                <?php
+                // Showing X–Y of Z. Date filters are ISO (YYYY-MM-DD) from the
+                // date inputs, so a lexical compare detects an inverted range
+                // (from after to) which would otherwise look identical to a
+                // legitimately empty result set.
+                $shown_count   = count( $entries );
+                $range_start   = $total > 0 ? ( ( $current_page - 1 ) * $per_page ) + 1 : 0;
+                $range_end     = $total > 0 ? ( $range_start + $shown_count - 1 ) : 0;
+                $range_invalid = ( '' !== $filters['from'] && '' !== $filters['to'] && $filters['from'] > $filters['to'] );
+                ?>
+                <?php if ( $range_invalid ) : ?>
+                    <p class="wldelay-empty-state" role="alert">
+                        <?php esc_html_e( 'The “From” date is after the “To” date, so nothing can match. Swap the dates or clear one of them.', 'login-delay-shield' ); ?>
+                    </p>
+                <?php endif; ?>
+                <p class="description" aria-live="polite">
+                    <?php
+                    if ( $total > 0 ) {
+                        printf(
+                            /* translators: 1: first entry shown on this page, 2: last entry shown, 3: total matching entries */
+                            esc_html__( 'Showing %1$s–%2$s of %3$s matching audit entries.', 'login-delay-shield' ),
+                            esc_html( number_format_i18n( $range_start ) ),
+                            esc_html( number_format_i18n( $range_end ) ),
+                            esc_html( number_format_i18n( $total ) )
+                        );
+                    } else {
+                        esc_html_e( 'No audit entries match the current filters.', 'login-delay-shield' );
+                    }
+                    ?>
+                </p>
+                <?php if ( empty( $entries ) ) : ?>
+                    <p class="wldelay-empty-state"><?php esc_html_e( 'No audit entries match the current filters.', 'login-delay-shield' ); ?></p>
+                <?php else : ?>
+                    <table class="widefat striped wldelay-audit-table">
+                        <caption class="screen-reader-text"><?php esc_html_e( 'Audit log of administrative and security actions', 'login-delay-shield' ); ?></caption>
+                        <thead>
+                            <tr>
+                                <th scope="col"><?php esc_html_e( 'Time', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Actor', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Action', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Object', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Details', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'IP address', 'login-delay-shield' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $entries as $entry ) : ?>
+                                <?php
+                                $actor = '' !== (string) $entry->actor_login
+                                    ? (string) $entry->actor_login
+                                    : ( (int) $entry->actor_id > 0
+                                        ? sprintf( /* translators: %d: user ID */ __( 'User #%d', 'login-delay-shield' ), (int) $entry->actor_id )
+                                        : __( 'System', 'login-delay-shield' ) );
+                                ?>
+                                <tr>
+                                    <td><?php echo esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), get_date_from_gmt( (string) $entry->created_at ) ) ); ?></td>
+                                    <td><?php echo esc_html( $actor ); ?></td>
+                                    <td><?php echo esc_html( wldelay_get_audit_action_label( $entry->action ) ); ?></td>
+                                    <td><?php echo esc_html( (string) $entry->object ); ?></td>
+                                    <td><?php echo esc_html( $this->format_audit_detail( $entry ) ); ?></td>
+                                    <td><?php echo esc_html( (string) $entry->ip_address ); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php $this->render_audit_pagination( $current_page, $total_pages, $filters ); ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Build a compact, human-readable detail string for an audit row.
+     *
+     * Renders the changed-key diff (settings_changed) or the structured
+     * new_value payload as `key: old -> new` / `key: value` fragments. Always
+     * returns plain text; the caller escapes it.
+     *
+     * @param object $entry Audit row.
+     * @return string
+     */
+    private function format_audit_detail( $entry ) {
+        $new = isset( $entry->new_value ) && '' !== (string) $entry->new_value
+            ? json_decode( (string) $entry->new_value, true )
+            : null;
+
+        if ( ! is_array( $new ) ) {
+            return isset( $entry->new_value ) ? (string) $entry->new_value : '';
+        }
+
+        $fragments = array();
+        foreach ( $new as $key => $value ) {
+            if ( is_array( $value ) && array_key_exists( 'old', $value ) && array_key_exists( 'new', $value ) ) {
+                $fragments[] = sprintf(
+                    '%s: %s -> %s',
+                    $key,
+                    $this->scalarize_audit_value( $value['old'] ),
+                    $this->scalarize_audit_value( $value['new'] )
+                );
+            } else {
+                $fragments[] = sprintf( '%s: %s', $key, $this->scalarize_audit_value( $value ) );
+            }
+        }
+
+        return implode( '; ', $fragments );
+    }
+
+    /**
+     * Flatten an audit value to a short display string.
+     *
+     * @param mixed $value Raw value from the decoded diff.
+     * @return string
+     */
+    private function scalarize_audit_value( $value ) {
+        if ( null === $value ) {
+            return '∅';
+        }
+        if ( is_bool( $value ) ) {
+            return $value ? 'true' : 'false';
+        }
+        if ( is_array( $value ) ) {
+            $encoded = wp_json_encode( $value );
+            return false === $encoded ? '' : $encoded;
+        }
+        return (string) $value;
+    }
+
+    /**
+     * Render audit-log pagination links.
+     *
+     * @param int   $current_page Current page number.
+     * @param int   $total_pages  Total page count.
+     * @param array $filters      Active filters.
+     */
+    private function render_audit_pagination( $current_page, $total_pages, $filters ) {
+        if ( $total_pages <= 1 ) {
+            return;
+        }
+
+        $query_args = array();
+        $key_map    = array(
+            'action' => 'wldelay_audit_action',
+            'actor'  => 'wldelay_audit_actor',
+            'from'   => 'wldelay_audit_from',
+            'to'     => 'wldelay_audit_to',
+        );
+        foreach ( $key_map as $short => $long ) {
+            if ( isset( $filters[ $short ] ) && '' !== $filters[ $short ] ) {
+                $query_args[ $long ] = $filters[ $short ];
+            }
+        }
+
+        $base_args = array_merge(
+            array( 'page' => 'login-delay-shield-admin' ),
+            $query_args
+        );
+
+        echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Audit log pagination', 'login-delay-shield' ) . '">';
+        if ( $current_page > 1 ) {
+            echo '<a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_audit_page' => $current_page - 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Previous', 'login-delay-shield' ) . '</a> ';
+        }
+        printf(
+            '<span class="wldelay-pagination-status">%s</span>',
+            esc_html(
+                sprintf(
+                    /* translators: 1: current page, 2: total pages */
+                    __( 'Page %1$d of %2$d', 'login-delay-shield' ),
+                    $current_page,
+                    $total_pages
+                )
+            )
+        );
+        if ( $current_page < $total_pages ) {
+            echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_audit_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'login-delay-shield' ) . '</a>';
         }
         echo '</nav>';
     }
@@ -1246,5 +1698,18 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Apply delay, lockout checks, and logging to password reset submissions without revealing whether an account exists.', 'login-delay-shield' ) );
         echo '<p id="wldelay_password_reset_enabled_desc" class="description">' . esc_html__( 'Protect password reset requests with the same delay and lockout behavior.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Username enumeration hardening callback.
+     */
+    public function enumeration_hardening_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_enumeration_hardening_enabled" name="wldelay_options[wldelay_enumeration_hardening_enabled]" value="1" %s aria-describedby="wldelay_enumeration_hardening_enabled_desc wldelay_enumeration_hardening_enabled_note" />',
+            ! empty( $this->options['wldelay_enumeration_hardening_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'Reduces common username-enumeration paths: failed logins all show one generic error, ?author=N enumeration is blocked, unauthenticated REST user listings are restricted, and the public users sitemap is removed. Note: this does not cover the password-reset (lost password) flow, which can still reveal whether an account exists.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_enumeration_hardening_enabled_desc" class="description">' . esc_html__( 'Return a single generic login error for both unknown usernames and wrong passwords, block author-archive enumeration, restrict unauthenticated REST user listings, and remove the public users sitemap. Does not change the password-reset flow.', 'login-delay-shield' ) . '</p>';
+        echo '<p id="wldelay_enumeration_hardening_enabled_note" class="description wldelay-enumeration-note"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> ' . esc_html__( 'Heads up: legitimate users will no longer be told whether they mistyped their username or their password on the login screen, and the password-reset form can still disclose whether an account exists. Make sure your support flow accounts for this before enabling.', 'login-delay-shield' ) . '</p>';
     }
 }

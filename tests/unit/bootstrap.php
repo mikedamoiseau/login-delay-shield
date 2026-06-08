@@ -46,3 +46,24 @@ abstract class LDS_Unit_Test_Case extends \PHPUnit\Framework\TestCase {
 // Load the settings classes for constants
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-settings-view.php';
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-settings.php';
+
+// Load the persistence contract for pure-logic unit tests (key derivation).
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-persistence.php';
+
+// Load the declarative feature/defaults registry (F-2-2).
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-features.php';
+
+// Load the audit module for pure-logic unit tests (settings-diff builder).
+// Its top-level hook registration is guarded by function_exists/defined so it
+// stays inert without a WP runtime.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-audit.php';
+
+// Load the privacy module for pure-logic unit tests (row→item mapping,
+// email→login resolution). Its filter registration is guarded by
+// function_exists so it stays inert without a WP runtime.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-privacy.php';
+
+// Load the changelog module so the pure parser (wldelay_parse_changelog) is
+// available to unit tests. Its admin_menu hook registration is guarded by
+// function_exists( 'add_action' ) so it stays inert without a WP runtime.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-changelog.php';

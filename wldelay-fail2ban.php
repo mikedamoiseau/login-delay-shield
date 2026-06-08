@@ -383,18 +383,20 @@ function wldelay_fail2ban_should_log_event( $event, $options ) {
 }
 
 /**
- * Add lightweight web-server protections to plugin-owned/uploads-based log directories.
+ * Add lightweight web-server protections to any log directory the plugin writes to.
+ *
+ * Guards are written for every writable log directory (the protected default
+ * directory and any directory added via the wldelay_fail2ban_allowed_log_dirs
+ * filter). The files are harmless on directories that are already protected by
+ * server configuration, and they close the gap for site owners who allowlist a
+ * web-served directory without realizing it needs protection.
  *
  * @param string $dir Log directory.
  */
 function wldelay_fail2ban_protect_log_dir( $dir ) {
-    $dir            = rtrim( wldelay_fail2ban_collapse_path( $dir ), '/' );
-    $default_dir    = rtrim( dirname( wldelay_fail2ban_get_default_log_path() ), '/' );
-    $uploads_base   = rtrim( wldelay_fail2ban_get_uploads_basedir(), '/' );
-    $is_default_dir = $default_dir !== '' && ( $dir === $default_dir || strpos( $dir . '/', $default_dir . '/' ) === 0 );
-    $is_uploads_dir = $uploads_base !== '' && $dir !== $uploads_base && strpos( $dir . '/', $uploads_base . '/' ) === 0;
+    $dir = rtrim( wldelay_fail2ban_collapse_path( $dir ), '/' );
 
-    if ( $dir === '' || ( ! $is_default_dir && ! $is_uploads_dir ) ) {
+    if ( $dir === '' || ! is_dir( $dir ) ) {
         return;
     }
 
@@ -413,6 +415,66 @@ function wldelay_fail2ban_protect_log_dir( $dir ) {
     if ( ! file_exists( $index_php ) ) {
         @file_put_contents( $index_php, "<?php\n// Silence is golden.\n", LOCK_EX );
     }
+}
+
+/**
+ * Get the maximum fail2ban log size (in bytes) before rotation.
+ *
+ * Prevents the plugin-owned default log from growing without bound on installs
+ * that have no external logrotate watching the file. Return 0 (via the filter)
+ * to disable plugin-side rotation entirely and rely on system log rotation.
+ *
+ * @return int Maximum size in bytes, or 0 when rotation is disabled.
+ */
+function wldelay_fail2ban_get_max_log_bytes() {
+    $default = 5 * 1024 * 1024; // 5 MB.
+    $max     = $default;
+
+    if ( function_exists( 'apply_filters' ) ) {
+        /**
+         * Filter the maximum fail2ban log size before rotation.
+         *
+         * @param int $default Maximum size in bytes. Return 0 to disable plugin-side rotation.
+         */
+        $max = apply_filters( 'wldelay_fail2ban_max_log_bytes', $default );
+    }
+
+    $max = (int) $max;
+
+    return $max > 0 ? $max : 0;
+}
+
+/**
+ * Rotate the log when it reaches the configured maximum size.
+ *
+ * Keeps a single backup (<path>.1) so an existing fail2ban jail can keep
+ * tailing the active file after it is truncated by rotation.
+ *
+ * @param string   $path Absolute log path.
+ * @param int|null $max_bytes Optional override; defaults to the filtered maximum.
+ * @return bool True when the log was rotated.
+ */
+function wldelay_fail2ban_maybe_rotate_log( $path, $max_bytes = null ) {
+    if ( $max_bytes === null ) {
+        $max_bytes = wldelay_fail2ban_get_max_log_bytes();
+    }
+
+    $max_bytes = (int) $max_bytes;
+    if ( $max_bytes <= 0 || ! is_file( $path ) ) {
+        return false;
+    }
+
+    $size = @filesize( $path );
+    if ( $size === false || $size < $max_bytes ) {
+        return false;
+    }
+
+    $backup = $path . '.1';
+    if ( file_exists( $backup ) ) {
+        @unlink( $backup );
+    }
+
+    return @rename( $path, $backup );
 }
 
 /**
@@ -461,6 +523,7 @@ function wldelay_write_fail2ban_log( $event, $ip, $username, $source = null ) {
     }
 
     wldelay_fail2ban_protect_log_dir( $dir );
+    wldelay_fail2ban_maybe_rotate_log( $path );
 
     return false !== @file_put_contents( $path, $line . PHP_EOL, FILE_APPEND | LOCK_EX );
 }

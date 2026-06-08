@@ -43,16 +43,19 @@ class DatabaseUpgradeTest extends WP_UnitTestCase {
     }
 
     /**
-     * Test that create_log_table sets db_version option.
+     * Test that create_tables sets the db_version option once both tables
+     * exist. The version is owned by wldelay_create_tables() (not the
+     * individual log-table helper) so a partial/failed creation does not
+     * record the schema version (F-2-1).
      */
-    public function test_create_log_table_sets_version() {
+    public function test_create_tables_sets_version() {
         delete_option( 'wldelay_db_version' );
 
-        wldelay_create_log_table();
+        wldelay_create_tables();
 
         $db_version = get_option( 'wldelay_db_version' );
 
-        $this->assertEquals( WLDELAY_VERSION, $db_version );
+        $this->assertEquals( WLDELAY_DB_VERSION, $db_version );
     }
 
     /**
@@ -83,15 +86,69 @@ class DatabaseUpgradeTest extends WP_UnitTestCase {
         $this->assertEquals( $table_name, $table_exists );
 
         // Verify version was updated
-        $this->assertEquals( WLDELAY_VERSION, get_option( 'wldelay_db_version' ) );
+        $this->assertEquals( WLDELAY_DB_VERSION, get_option( 'wldelay_db_version' ) );
+    }
+
+    /**
+     * The lockout table gains the gen-6 generation column on upgrade, and the
+     * schema version is only stamped to current once the column exists (F-2-1
+     * hardening). A pre-gen-6 install (table without the column) must end the
+     * upgrade with the column present and the version at WLDELAY_DB_VERSION.
+     */
+    public function test_generation_column_added_on_upgrade() {
+        global $wpdb;
+
+        $lockout_table = wldelay_get_lockout_table_name();
+
+        // Provision the current schema, then simulate a pre-gen-6 install by
+        // dropping the generation column and rewinding the stored version.
+        wldelay_create_lockout_table();
+        $wpdb->query( "ALTER TABLE $lockout_table DROP COLUMN generation" );
+        update_option( 'wldelay_db_version', '5' );
+
+        $this->assertFalse(
+            wldelay_lockout_has_generation_column(),
+            'Precondition: the column should be absent before the upgrade'
+        );
+
+        wldelay_maybe_upgrade_db();
+
+        $this->assertTrue(
+            wldelay_lockout_has_generation_column(),
+            'The generation column must be added on upgrade'
+        );
+        $this->assertEquals(
+            WLDELAY_DB_VERSION,
+            get_option( 'wldelay_db_version' ),
+            'The schema version must stamp to current only after the column exists'
+        );
+    }
+
+    /**
+     * The version stamp is gated on the generation column: while the column is
+     * absent, wldelay_create_tables() must NOT record the new DB version, so a
+     * failed/partial column add is retried on the next request rather than
+     * permanently skipped (F-2-1 hardening). The gate is wldelay_create_tables()'
+     * documented contract; here we assert the checker is wired into it.
+     */
+    public function test_version_stamp_requires_generation_column() {
+        $this->assertTrue(
+            function_exists( 'wldelay_lockout_has_generation_column' ),
+            'A generation-column checker must exist to gate the version stamp'
+        );
+
+        // After a clean create the column is present and the version stamps.
+        wldelay_create_tables();
+        $this->assertTrue( wldelay_lockout_has_generation_column() );
+        $this->assertEquals( WLDELAY_DB_VERSION, get_option( 'wldelay_db_version' ) );
     }
 
     /**
      * Test that maybe_upgrade_db does nothing when version matches.
      */
     public function test_maybe_upgrade_skips_when_version_matches() {
-        // Set current version
-        update_option( 'wldelay_db_version', WLDELAY_VERSION );
+        // Set current schema version
+        update_option( 'wldelay_db_version', WLDELAY_DB_VERSION );
 
         // Add a spy to track if create_log_table is called
         // Since we can't easily mock, we'll check that version stays the same

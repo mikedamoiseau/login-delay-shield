@@ -1,15 +1,42 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.3.3' );
+define( 'WLDELAY_VERSION', '2.3.4' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
+
+// Schema version for the plugin-owned tables. Bumped whenever the DB schema
+// changes (F-2-1: gen 2 added the lockout table; gen 3 widened its username
+// column to varchar(255) and replaced the unused (ip_address, username) index
+// with an IP-only index; gen 4 added the transient_key column so IP-level
+// recovery can delete the exact lockout transient without reconstructing it
+// from the truncated username column; gen 5 was the audit table; gen 6 added the
+// generation column so recovery can snapshot-then-conditionally-delete durable
+// rows and skip any a concurrent relock refreshed during the flush window).
+// Kept separate from WLDELAY_VERSION so a schema upgrade fires on existing
+// installs without depending on a user-facing release version bump.
+define( 'WLDELAY_DB_VERSION', '6' );
+
+// Dashboard widget sub-cache keys (F-4-1). The widget data was previously held
+// in a single transient that was deleted on every failed login, which thrashed
+// the expensive 7-day trends aggregate under a brute-force attack. The data is
+// now split into two independent transients with their own TTLs so a failed
+// attempt invalidates only the cheap fast-moving "recent attempts" list while
+// the expensive aggregate rides its own TTL (slight staleness is acceptable on
+// a dashboard).
+define( 'WLDELAY_DASH_RECENT_CACHE', 'wldelay_dash_recent' );
+define( 'WLDELAY_DASH_TRENDS_CACHE', 'wldelay_dash_trends' );
+// Recent attempts change on every failed login; keep the TTL short.
+define( 'WLDELAY_DASH_RECENT_TTL', MINUTE_IN_SECONDS );
+// Trends are expensive aggregates; let them age out on their own longer TTL and
+// never get invalidated by an individual failed attempt.
+define( 'WLDELAY_DASH_TRENDS_TTL', 5 * MINUTE_IN_SECONDS );
 
 /*
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC/password-reset protection, custom login URL, and email alerts.
-Version: 2.3.3
+Version: 2.3.4
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
@@ -32,8 +59,16 @@ add_action( 'plugins_loaded', 'wldelay_load_textdomain' );
  * Settings
  * @see http://codex.wordpress.org/Settings_API
  */
+require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
+require_once dirname( __FILE__ ) . '/wldelay-features.php';
+require_once dirname( __FILE__ ) . '/wldelay-migration.php';
+require_once dirname( __FILE__ ) . '/wldelay-async.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
+require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
+require_once dirname( __FILE__ ) . '/wldelay-audit.php';
+require_once dirname( __FILE__ ) . '/wldelay-privacy.php';
+require_once dirname( __FILE__ ) . '/wldelay-changelog.php';
 if( is_admin() ) {
     $wldelay_settings_page = new LDS_Settings();
 }
@@ -109,8 +144,10 @@ function wldelay_enqueue_admin_assets( $hook ) {
         )
     );
 
-    // Only load styles on dashboard and our settings page.
-    if ( $hook !== 'index.php' && $hook !== 'settings_page_login-delay-shield-admin' ) {
+    // Only load styles on dashboard, our settings page, and the changelog page.
+    if ( $hook !== 'index.php'
+        && $hook !== 'settings_page_login-delay-shield-admin'
+        && $hook !== 'settings_page_' . WLDELAY_CHANGELOG_SLUG ) {
         return;
     }
 
@@ -193,26 +230,115 @@ function wldelay_get_transient_registry_option_name() {
 }
 
 /**
+ * Option-name prefix for the per-key transient registry records.
+ *
+ * Each tracked transient is recorded as its OWN option ( value = the transient
+ * name ) rather than as one entry in a single shared array. The shared array
+ * was updated with a non-atomic read-modify-write, so two concurrent lockouts
+ * or counter increments could clobber each other's entry; the lost entry then
+ * left its transient undiscoverable by the recovery flush when transients live
+ * in an EXTERNAL object cache (Redis/Memcached) — the options-table sweep finds
+ * nothing — so a user stayed locked, or a stale failure counter survived, even
+ * though recovery reported success. Per-key options never share a row, so
+ * concurrent registrations cannot overwrite one another, and the records live
+ * in the options table regardless of where the transients themselves are
+ * stored, keeping the flush enumeration reliable under an external cache
+ * (F-2-1 review).
+ *
+ * @return string
+ */
+function wldelay_get_transient_registry_key_prefix() {
+    return 'wldelay_treg_';
+}
+
+/**
  * Track a transient key in the plugin registry.
  *
+ * Writes one option per key ( keyed by md5 of the transient name ) so
+ * concurrent registrations cannot clobber one another. Autoload is off so these
+ * short-lived records never enter the alloptions cache.
+ *
+ * The record value is array( 'key' => $transient_name, 'exp' => $expires_at,
+ * 'gen' => $generation ) so scheduled cleanup can reap records whose transient
+ * has expired. Without a stored expiry the records only died on explicit
+ * flush/unlock/uninstall, so an attacker rotating IPs or usernames could grow
+ * wp_options without bound — every failed attempt registers a key whose 1-hour
+ * transient expires while the option row lived forever (Codex-2 round-3 review).
+ *
+ * Each write also stamps a fresh random GENERATION token. A flush/unlock
+ * snapshots the records it intends to remove and conditionally unregisters only
+ * those whose full (key,exp,gen) still match the snapshot. Because a concurrent
+ * same-second relock rewrites the record with a NEW gen, the compare can now
+ * tell the refreshed record from the stale one and leaves it in place — the
+ * live external-cache transient stays discoverable by later flushes, closing the
+ * orphaning race that a key+second-resolution-exp record could not detect
+ * (F-2-1 hardening).
+ *
+ * Returns whether the write actually persisted, verified by reading the record
+ * back. update_option() returns false BOTH on failure and when the stored value
+ * was already identical, so its return value cannot tell the two apart; callers
+ * that must know whether the transient is now discoverable (so they can fail
+ * open and drop an otherwise-orphaned cache-only transient during a DB outage)
+ * rely on this readback instead (Codex round-3 review).
+ *
  * @param string $transient_name Transient key name (without WordPress prefix).
+ * @param int    $expires_at     Absolute UNIX timestamp the transient expires
+ *                               at, or 0 when unknown (record is never
+ *                               auto-purged, only flushed/unlocked).
+ * @return bool True when a registry record for this key AND this expiry is
+ *              present after the write (newly written, or already present and
+ *              unchanged). False when the write did not persist, including a
+ *              refresh whose new expiry did not reach the DB.
  */
-function wldelay_register_transient_key( $transient_name ) {
+function wldelay_register_transient_key( $transient_name, $expires_at = 0 ) {
     if ( empty( $transient_name ) ) {
-        return;
+        return false;
     }
 
-    $option_name = wldelay_get_transient_registry_option_name();
-    $registry = get_option( $option_name, array() );
+    $transient_name = (string) $transient_name;
+    $record_name    = wldelay_get_transient_registry_key_prefix() . md5( $transient_name );
 
-    if ( ! is_array( $registry ) ) {
-        $registry = array();
-    }
+    // A unique per-write generation lets the recovery compare-and-delete tell a
+    // concurrent same-second relock (new gen) apart from the stale record it
+    // snapshotted (F-2-1 hardening). wldelay_generate_lockout_generation() lives
+    // in wldelay-persistence.php, required before this file runs.
+    $generation = function_exists( 'wldelay_generate_lockout_generation' )
+        ? wldelay_generate_lockout_generation()
+        : substr( md5( uniqid( (string) wp_rand(), true ) ), 0, 24 );
 
-    if ( ! in_array( $transient_name, $registry, true ) ) {
-        $registry[] = $transient_name;
-        update_option( $option_name, $registry, false );
-    }
+    update_option(
+        $record_name,
+        array(
+            'key' => $transient_name,
+            'exp' => (int) $expires_at,
+            'gen' => $generation,
+        ),
+        false
+    );
+
+    // Verify the record is actually present AND carries the expiry we just
+    // wrote. On a failed write (e.g. the DB is down while an external object
+    // cache still accepted the set_transient), the record cache is not primed
+    // and get_option() falls through to the failing DB. On a re-lock that
+    // merely refreshed an existing record, the cached array still carries the
+    // right key, so this correctly reports the transient as discoverable.
+    //
+    // The expiry MUST match too, not just the key: a refresh that bumps an
+    // existing record from exp=T1 to exp=T2 but whose write fails leaves the
+    // stale T1 record in the DB. A key-only check would accept it as "current"
+    // while the live transient now expires at the later T2 — the scheduled
+    // reaper (which keys off the stored exp) would then delete the registry
+    // row at T1 while the cache-only transient is still active until T2,
+    // leaving it undiscoverable by a global flush. Comparing exp makes the
+    // caller drop that orphan instead (Codex-2 round-4 review).
+    $stored = get_option( $record_name, false );
+
+    return is_array( $stored )
+        && isset( $stored['key'], $stored['exp'] )
+        && $stored['key'] === $transient_name
+        && (int) $stored['exp'] === (int) $expires_at
+        && isset( $stored['gen'] )
+        && $stored['gen'] === $generation;
 }
 
 /**
@@ -225,18 +351,250 @@ function wldelay_unregister_transient_key( $transient_name ) {
         return;
     }
 
-    $option_name = wldelay_get_transient_registry_option_name();
-    $registry = get_option( $option_name, array() );
+    delete_option( wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name ) );
+}
 
-    if ( ! is_array( $registry ) || empty( $registry ) ) {
-        return;
+/**
+ * Read the current registry record for a transient name.
+ *
+ * Returns the live per-key record so a recovery path can SNAPSHOT it before
+ * clearing transients and later prove it is unchanged. Returns null when no
+ * per-key record exists (e.g. a legacy shared-array-only entry).
+ *
+ * @param string $transient_name Transient key name (without WordPress prefix).
+ * @return array|null Record array (key/exp/gen) or null when absent.
+ */
+function wldelay_get_transient_registry_record( $transient_name ) {
+    if ( empty( $transient_name ) ) {
+        return null;
     }
 
-    $registry = array_values( array_filter( $registry, function( $key ) use ( $transient_name ) {
-        return $key !== $transient_name;
-    } ) );
+    $record_name = wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name );
+    $stored      = get_option( $record_name, false );
 
-    update_option( $option_name, $registry, false );
+    return is_array( $stored ) ? $stored : null;
+}
+
+/**
+ * Atomically delete an option ONLY when its stored value is byte-for-byte the
+ * value captured in a snapshot.
+ *
+ * The compare and the delete are a single SQL statement
+ * (DELETE ... WHERE option_name = %s AND option_value = %s), so there is no
+ * read-then-delete window for a concurrent writer to slip a new value into. A
+ * relock that rewrote the option between the snapshot and this call changed
+ * option_value, so the WHERE no longer matches and the row survives. The object
+ * cache is invalidated only when a row was actually removed, keeping a later
+ * get_option() from resurrecting the deleted value from cache (F-2-1 hardening).
+ *
+ * @param string $option_name    Full option name.
+ * @param string $expected_value Serialized option_value captured at snapshot
+ *                               time (as stored in the options table).
+ * @return bool True when the row was removed (value still matched).
+ */
+function wldelay_delete_option_if_value_unchanged( $option_name, $expected_value ) {
+    global $wpdb;
+
+    $deleted = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+            $option_name,
+            $expected_value
+        )
+    );
+
+    if ( $deleted ) {
+        // Keep the object cache coherent with the row we just removed; otherwise
+        // a later get_option() would resurrect the deleted value from cache.
+        wp_cache_delete( $option_name, 'options' );
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Conditionally unregister a transient record only when it is UNCHANGED since a
+ * snapshot.
+ *
+ * Recovery (flush / IP unlock) snapshots the record it intends to remove, clears
+ * the transient, then calls this with the snapshot. The record is deleted
+ * through an ATOMIC compare-and-delete keyed on the exact serialized snapshot
+ * value — there is no read-then-delete window. A concurrent same-second relock
+ * rewrites the record with a NEW gen (and therefore a new serialized value), so
+ * the delete no longer matches and the refreshed record (and its live
+ * external-cache transient) is left discoverable for the next flush — closing
+ * the orphaning race a key+second-resolution-exp record could not detect, and
+ * the read-compare-then-unconditional-delete window the earlier helper still
+ * left open (F-2-1 hardening; Codex & Codex-2 review).
+ *
+ * Backward compatibility: a legacy no-gen snapshot serializes to the legacy
+ * (key,exp) form, so the atomic delete matches ONLY an unchanged legacy record
+ * and never a record a relock upgraded to a gen-bearing value — the upgrade
+ * window cannot reopen the race. A null snapshot means no per-key record existed
+ * when the caller snapshotted (legacy shared-array entry or untracked
+ * transient): there is nothing to compare-and-delete, and deleting the per-key
+ * record unconditionally would clobber one a concurrent relock created inside
+ * the recovery window, so this is a no-op. The legacy shared array is cleared
+ * wholesale by the flush path, so the per-key slot is correctly left untouched.
+ *
+ * @param string     $transient_name Transient key name (without WordPress prefix).
+ * @param array|null $snapshot       Record captured before the transient was
+ *                                   cleared, or null when no per-key record
+ *                                   existed at snapshot time.
+ * @return bool True when the record was removed.
+ */
+function wldelay_unregister_transient_record_if_unchanged( $transient_name, $snapshot ) {
+    if ( empty( $transient_name ) ) {
+        return false;
+    }
+
+    // No per-key record existed at snapshot time: nothing to compare-and-delete.
+    // An unconditional delete here would clobber a record a concurrent relock
+    // created inside the recovery window (Codex/Codex-2 review).
+    if ( ! is_array( $snapshot ) ) {
+        return false;
+    }
+
+    $record_name = wldelay_get_transient_registry_key_prefix() . md5( (string) $transient_name );
+
+    // Atomic compare-and-delete against the exact serialized snapshot value.
+    return wldelay_delete_option_if_value_unchanged( $record_name, maybe_serialize( $snapshot ) );
+}
+
+/**
+ * Enumerate every tracked transient name.
+ *
+ * Reads the per-key registry records (the current concurrency-safe format)
+ * and, for backward compatibility, the legacy shared-array option written by
+ * older versions. Registry records live in the options table regardless of
+ * where the transients themselves are stored, so this enumeration stays
+ * reliable even with an external object cache (F-2-1 review).
+ *
+ * @return string[] Unique transient names.
+ */
+function wldelay_get_registered_transient_keys() {
+    global $wpdb;
+
+    $keys = array();
+
+    // Current per-key records. The value is array( 'key' => name, 'exp' => ts );
+    // a plain string is a legacy per-key record (round-2 format) whose value was
+    // the transient name itself. Handle both.
+    $like   = $wpdb->esc_like( wldelay_get_transient_registry_key_prefix() ) . '%';
+    $values = $wpdb->get_col(
+        $wpdb->prepare(
+            "SELECT option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+            $like
+        )
+    );
+    if ( is_array( $values ) ) {
+        foreach ( $values as $raw ) {
+            $value = maybe_unserialize( $raw );
+            if ( is_array( $value ) && isset( $value['key'] ) && '' !== $value['key'] ) {
+                $keys[] = (string) $value['key'];
+            } elseif ( is_string( $value ) && '' !== $value ) {
+                $keys[] = $value;
+            }
+        }
+    }
+
+    // Legacy shared-array registry (installs that predate the per-key format).
+    $legacy = get_option( wldelay_get_transient_registry_option_name(), array() );
+    if ( is_array( $legacy ) ) {
+        foreach ( $legacy as $value ) {
+            if ( is_string( $value ) && '' !== $value ) {
+                $keys[] = $value;
+            }
+        }
+    }
+
+    return array_values( array_unique( $keys ) );
+}
+
+/**
+ * Purge per-key registry records whose transient has already expired.
+ *
+ * Each per-key record carries the absolute expiry of the transient it tracks.
+ * The transient itself expires on its own (WordPress TTL), but the options-table
+ * record does not — so without this reaper an attacker rotating IPs/usernames
+ * would grow wp_options without bound (every failed attempt leaves a permanent
+ * row whose 1-hour transient is long gone). Run from the daily cleanup cron.
+ *
+ * Only records with a positive, elapsed expiry are removed. Records with exp = 0
+ * (legacy round-2 string records, or registrations with an unknown TTL) are left
+ * for explicit flush/unlock so this reaper never deletes a still-live marker
+ * (Codex-2 round-3 review).
+ *
+ * @return int Number of expired registry records removed.
+ */
+function wldelay_purge_expired_transient_registry_records() {
+    global $wpdb;
+
+    $like = $wpdb->esc_like( wldelay_get_transient_registry_key_prefix() ) . '%';
+    $rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+            $like
+        )
+    );
+
+    if ( ! is_array( $rows ) ) {
+        return 0;
+    }
+
+    $now     = time();
+    $removed = 0;
+    foreach ( $rows as $row ) {
+        $value = maybe_unserialize( $row->option_value );
+        if (
+            is_array( $value )
+            && isset( $value['exp'] )
+            && (int) $value['exp'] > 0
+            && (int) $value['exp'] <= $now
+        ) {
+            // Atomic compare-and-delete against the exact serialized value read
+            // above, not an unconditional delete_option() by name. A concurrent
+            // relock that refreshed this record (new exp/gen) between the SELECT
+            // and here changed option_value, so the delete no longer matches and
+            // the refreshed live record survives — the reaper can no longer
+            // strand a freshly re-registered cache-only transient (Codex F3).
+            if ( wldelay_delete_option_if_value_unchanged( $row->option_name, $row->option_value ) ) {
+                $removed++;
+            }
+        }
+    }
+
+    return $removed;
+}
+
+/**
+ * Derive the failure-counter transient name that pairs with a lockout transient.
+ *
+ * A lockout transient and its failure counter share the same md5 identifier
+ * suffix and differ only in prefix ( wldelay_lockout_ ↔ wldelay_fails_,
+ * wldelay_reset_lockout_ ↔ wldelay_reset_fails_ ). Swapping the prefix is
+ * therefore exact and length-proof — it never rebuilds the md5 from a
+ * (possibly truncated) stored username. Returns null when the name is not a
+ * recognised lockout transient (F-2-1 review).
+ *
+ * @param string $lockout_transient_name Lockout transient name.
+ * @return string|null Paired failure-counter transient name, or null.
+ */
+function wldelay_derive_failure_transient_key( $lockout_transient_name ) {
+    $lockout_transient_name = (string) $lockout_transient_name;
+
+    // Check the reset prefix first so a reset lockout key is never mistaken for
+    // a login one.
+    if ( strpos( $lockout_transient_name, 'wldelay_reset_lockout_' ) === 0 ) {
+        return 'wldelay_reset_fails_' . substr( $lockout_transient_name, strlen( 'wldelay_reset_lockout_' ) );
+    }
+
+    if ( strpos( $lockout_transient_name, 'wldelay_lockout_' ) === 0 ) {
+        return 'wldelay_fails_' . substr( $lockout_transient_name, strlen( 'wldelay_lockout_' ) );
+    }
+
+    return null;
 }
 
 /**
@@ -245,9 +603,16 @@ function wldelay_unregister_transient_key( $transient_name ) {
  * In IP+username strategy mode, this also clears tuple keys for the given
  * username (if provided), while keeping backward compatibility with IP-only mode.
  *
+ * A FALSE return (NOT a count) means the durable conditional delete failed at
+ * the DB layer ($wpdb->delete() returned FALSE, distinct from "0 rows"): the
+ * target lockout rows may still be on disk. Callers (admin unlock / WP-CLI
+ * unlock-ip) must surface that as a failure rather than reporting a clean
+ * removal, mirroring the GDPR eraser's items_retained handling (F-3-1).
+ *
  * @param string $ip IP address.
  * @param string $username Optional username.
- * @return int Number of transients removed.
+ * @return int|false Number of transients + durable rows removed, or FALSE when
+ *                   the durable conditional delete failed at the DB layer.
  */
 function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     if ( empty( $ip ) ) {
@@ -261,83 +626,448 @@ function wldelay_delete_lockout_for_ip( $ip, $username = '' ) {
     $reset_lockout_ip_key = wldelay_get_password_reset_lockout_transient_key( $ip, '' );
     $reset_fails_ip_key   = wldelay_get_password_reset_failure_transient_key( $ip, '' );
 
+    // Snapshot each registry record BEFORE clearing its transient, then
+    // conditionally unregister through the atomic compare-and-delete. These
+    // directly-derived IP/pair keys previously called unconditional
+    // wldelay_unregister_transient_key(), so a concurrent failed login that
+    // re-registered a key between delete_transient() and the unregister had its
+    // fresh record deleted — orphaning a cache-only transient/failure counter
+    // that unlock then reported gone (Codex F4 / Codex-2 F1).
+    $lockout_ip_snapshot = wldelay_get_transient_registry_record( $lockout_ip_key );
     if ( delete_transient( $lockout_ip_key ) ) {
         $deleted++;
     }
-    wldelay_unregister_transient_key( $lockout_ip_key );
+    wldelay_unregister_transient_record_if_unchanged( $lockout_ip_key, $lockout_ip_snapshot );
 
+    $fails_ip_snapshot = wldelay_get_transient_registry_record( $fails_ip_key );
     if ( delete_transient( $fails_ip_key ) ) {
         $deleted++;
     }
-    wldelay_unregister_transient_key( $fails_ip_key );
+    wldelay_unregister_transient_record_if_unchanged( $fails_ip_key, $fails_ip_snapshot );
 
+    $reset_lockout_ip_snapshot = wldelay_get_transient_registry_record( $reset_lockout_ip_key );
     if ( delete_transient( $reset_lockout_ip_key ) ) {
         $deleted++;
     }
-    wldelay_unregister_transient_key( $reset_lockout_ip_key );
+    wldelay_unregister_transient_record_if_unchanged( $reset_lockout_ip_key, $reset_lockout_ip_snapshot );
 
+    $reset_fails_ip_snapshot = wldelay_get_transient_registry_record( $reset_fails_ip_key );
     if ( delete_transient( $reset_fails_ip_key ) ) {
         $deleted++;
     }
-    wldelay_unregister_transient_key( $reset_fails_ip_key );
+    wldelay_unregister_transient_record_if_unchanged( $reset_fails_ip_key, $reset_fails_ip_snapshot );
 
     if ( ! empty( $username ) ) {
         $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
 
-        $lockout_pair_key = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
+        $lockout_pair_key      = wldelay_get_lockout_transient_key( $ip, $username, $pair_options );
+        $lockout_pair_snapshot = wldelay_get_transient_registry_record( $lockout_pair_key );
         if ( $lockout_pair_key !== $lockout_ip_key && delete_transient( $lockout_pair_key ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $lockout_pair_key );
+        wldelay_unregister_transient_record_if_unchanged( $lockout_pair_key, $lockout_pair_snapshot );
 
-        $fails_pair_key = wldelay_get_failure_transient_key( $ip, $username, $pair_options );
+        $fails_pair_key      = wldelay_get_failure_transient_key( $ip, $username, $pair_options );
+        $fails_pair_snapshot = wldelay_get_transient_registry_record( $fails_pair_key );
         if ( $fails_pair_key !== $fails_ip_key && delete_transient( $fails_pair_key ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $fails_pair_key );
+        wldelay_unregister_transient_record_if_unchanged( $fails_pair_key, $fails_pair_snapshot );
 
-        $reset_lockout_pair_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $pair_options );
+        $reset_lockout_pair_key      = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $pair_options );
+        $reset_lockout_pair_snapshot = wldelay_get_transient_registry_record( $reset_lockout_pair_key );
         if ( $reset_lockout_pair_key !== $reset_lockout_ip_key && delete_transient( $reset_lockout_pair_key ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $reset_lockout_pair_key );
+        wldelay_unregister_transient_record_if_unchanged( $reset_lockout_pair_key, $reset_lockout_pair_snapshot );
 
-        $reset_fails_pair_key = wldelay_get_password_reset_failure_transient_key( $ip, $username, $pair_options );
+        $reset_fails_pair_key      = wldelay_get_password_reset_failure_transient_key( $ip, $username, $pair_options );
+        $reset_fails_pair_snapshot = wldelay_get_transient_registry_record( $reset_fails_pair_key );
         if ( $reset_fails_pair_key !== $reset_fails_ip_key && delete_transient( $reset_fails_pair_key ) ) {
             $deleted++;
         }
-        wldelay_unregister_transient_key( $reset_fails_pair_key );
+        wldelay_unregister_transient_record_if_unchanged( $reset_fails_pair_key, $reset_fails_pair_snapshot );
+    }
+
+    $store = wldelay_get_persistence_store();
+
+    // Clear username-scoped lockout transients that IP-only recovery cannot
+    // derive on its own (F-2-1). Under the ip_username strategy the lockout
+    // transient is keyed on md5("ip|username"); with no username supplied the
+    // IP-keyed deletions above (md5("ip")) never match it, so the user stays
+    // locked on the transient fast-path until it expires — even after the
+    // durable row is gone. The durable rows are the IP→username index the
+    // transient registry lacks (the registry stores only opaque md5 hashes).
+    //
+    // Each gen-4 row records the EXACT transient name set at lock time, so we
+    // delete that verbatim. This is length-proof: reconstructing the key from
+    // the stored username would miss a canonical identifier longer than the
+    // varchar(255) username column (the column is clamped, but the transient is
+    // keyed on the full identifier) — the very bug this column closes. Legacy
+    // gen-3 rows carry no transient_key, so for those we fall back to
+    // reconstructing the key from the stored username/type (exact for
+    // identifiers within the column width), reusing the canonical builders with
+    // ip_username forced so the derived key matches what wldelay_lock_ip() set.
+    //
+    // Snapshot the durable rows ONCE (capturing each row's lockout_key +
+    // generation) before touching anything, then drive both the transient
+    // cleanup and the conditional durable delete from that single snapshot. A
+    // concurrent failed login that refreshes a row during this window writes a
+    // NEW generation, so the compare-and-delete below leaves it in force and the
+    // user is not silently re-orphaned by recovery (F-2-1 hardening).
+    $snapshot = $store->get_lockouts_for_ip( $ip );
+
+    // FALSE (NOT an empty array) means the durable read failed at the DB layer:
+    // rows the IP recovery must clear may still be on disk. Propagate it as a
+    // failure rather than clearing only the (incomplete) transient fast-path and
+    // reporting a clean unlock (F-3-1 read contract).
+    if ( false === $snapshot ) {
+        return false;
+    }
+
+    $deleted += wldelay_clear_lockout_transients_for_snapshot( $ip, $snapshot );
+
+    // Clear the durable store (F-2-1) for the snapshotted rows only, and only
+    // while their generation still matches — so a row a concurrent relock
+    // refreshed during recovery (new generation) survives instead of being
+    // orphaned. Replaces the former unconditional remove_lockouts_for_ip($ip),
+    // which deleted every row for the IP including a just-created re-lock,
+    // leaving the user locked on a durable row that recovery had reported gone
+    // (F-2-1 hardening). Count these removals so recovery still reports success
+    // when the transient was evicted but a durable row was in force.
+    //
+    // A FALSE return (NOT a count) means a durable $wpdb->delete() failed. Do
+    // NOT let it coerce to 0 via +=, which would mask a failed durable delete
+    // and report a clean unlock while the row is still on disk. Propagate FALSE
+    // so the unlock handler surfaces the failure (F-3-1).
+    $durable_removed = $store->remove_lockouts_matching_generation( $snapshot );
+    if ( false === $durable_removed ) {
+        return false;
+    }
+
+    return $deleted + $durable_removed;
+}
+
+/**
+ * Generation-aware, transient-registry-safe removal of a single lockout subject
+ * identified by its durable lockout_key (F-1-1).
+ *
+ * The Active Lockout Manager's per-row Unlock targets ONE row. Matching on the
+ * stored username is unsafe: the username column is clamped to varchar(255)
+ * (wldelay_add_lockout / F-2-1) while the lockout_key hashes the FULL canonical
+ * identifier, so two distinct subjects on one IP that share a 255-char prefix
+ * collide on the truncated username — unlocking one would release the co-tenant.
+ * The lockout_key is lossless, so matching on it is exact at any identifier
+ * length. The IP is still required to derive the legacy transient keys for rows
+ * predating transient_key (gen-3).
+ *
+ * Returns the count of DURABLE rows removed (the subject count surfaced in the
+ * admin notice and the audit removed_rows), NOT inflated by transient-cleanup
+ * deletions (F-1-1 review). Transients are still cleared as a side effect.
+ * Returns FALSE (not a count) when the durable conditional delete fails at the
+ * DB layer — the row may still be on disk — so the caller surfaces a failure
+ * instead of reporting a clean unlock (F-3-1).
+ *
+ * @param string $ip          IP address the row belongs to.
+ * @param string $lockout_key Lossless durable lockout key identifying the row.
+ * @return int|false Durable rows removed, or FALSE on read/durable failure.
+ */
+function wldelay_delete_lockout_by_key( $ip, $lockout_key ) {
+    $ip          = (string) $ip;
+    $lockout_key = (string) $lockout_key;
+    if ( '' === $ip || '' === $lockout_key ) {
+        return 0;
+    }
+
+    $store = wldelay_get_persistence_store();
+
+    // Snapshot the IP's durable rows ONCE (lockout_key + generation captured) and
+    // narrow to the exact lockout_key. A FALSE return is a DB read failure, NOT
+    // an empty IP: propagate it so the handler reports a failure rather than
+    // "none" while the row may still be on disk (F-3-1 read contract).
+    $snapshot = $store->get_lockouts_for_ip( $ip );
+    if ( false === $snapshot ) {
+        return false;
+    }
+
+    $subject_rows = array();
+    foreach ( $snapshot as $row ) {
+        $row_key = isset( $row['lockout_key'] ) ? (string) $row['lockout_key'] : '';
+        if ( '' !== $row_key && $row_key === $lockout_key ) {
+            $subject_rows[] = $row;
+        }
+    }
+
+    return wldelay_remove_lockout_subject_rows( $ip, $subject_rows );
+}
+
+/**
+ * Generation-aware, transient-registry-safe removal of a single (IP, username)
+ * lockout subject (F-1-1).
+ *
+ * Used by Clear-all, which enumerates every active row and removes each by its
+ * (IP, username). IP-level recovery (wldelay_delete_lockout_for_ip) clears EVERY
+ * row on the IP, which would also release a co-tenant sharing a NAT IP; the
+ * username-only GDPR path (wldelay_delete_lockouts_for_user) spans every IP the
+ * subject ever locked from. This snapshots the IP's durable rows, narrows them
+ * to the matching username (empty username = the IP-only subject), then drives
+ * the SAME M5b machinery: clear each row's transient fast-path via the per-key
+ * compare-and-delete, then conditionally delete only rows whose generation still
+ * matches.
+ *
+ * Returns the count of DURABLE rows removed (the subject count surfaced in the
+ * notice and audit), NOT inflated by transient-cleanup deletions (F-1-1 review).
+ * Returns FALSE on a read/durable failure so the caller surfaces it (F-3-1).
+ *
+ * @param string $ip       IP address.
+ * @param string $username Subject username ('' for the IP-only subject).
+ * @return int|false Durable rows removed, or FALSE on read/durable failure.
+ */
+function wldelay_delete_lockout_subject( $ip, $username = '' ) {
+    $ip = (string) $ip;
+    if ( '' === $ip ) {
+        return 0;
+    }
+
+    $username = (string) $username;
+    $store    = wldelay_get_persistence_store();
+
+    // Snapshot the IP's durable rows ONCE (lockout_key + generation captured) and
+    // narrow to the requested subject. A FALSE return is a DB read failure: keep
+    // it distinct from an empty match so the caller reports a failure (F-3-1).
+    $snapshot = $store->get_lockouts_for_ip( $ip );
+    if ( false === $snapshot ) {
+        return false;
+    }
+
+    $subject_rows = array();
+    foreach ( $snapshot as $row ) {
+        $row_username = isset( $row['username'] ) ? (string) $row['username'] : '';
+        if ( $row_username === $username ) {
+            $subject_rows[] = $row;
+        }
+    }
+
+    return wldelay_remove_lockout_subject_rows( $ip, $subject_rows );
+}
+
+/**
+ * Shared core: clear transients + conditionally delete a set of snapshot rows.
+ *
+ * Returns the DURABLE rows removed (subject count) so notices/audit are not
+ * inflated by transient-cleanup deletions. FALSE on durable-delete failure.
+ *
+ * @param string  $ip           IP address the rows belong to.
+ * @param array[] $subject_rows Pre-narrowed snapshot rows for one subject.
+ * @return int|false Durable rows removed, or FALSE on durable failure.
+ */
+function wldelay_remove_lockout_subject_rows( $ip, array $subject_rows ) {
+    if ( empty( $subject_rows ) ) {
+        return 0;
+    }
+
+    // Transients are cleared for the side effect of releasing the fast-path; the
+    // return value is deliberately discarded so the reported count reflects only
+    // the durable subject rows removed (F-1-1 review: 1 subject must report 1).
+    wldelay_clear_lockout_transients_for_snapshot( $ip, $subject_rows );
+
+    $store           = wldelay_get_persistence_store();
+    $durable_removed = $store->remove_lockouts_matching_generation( $subject_rows );
+    if ( false === $durable_removed ) {
+        return false;
+    }
+
+    return $durable_removed;
+}
+
+/**
+ * Clear the transient fast-path keys for a set of snapshotted durable rows.
+ *
+ * Shared by IP-level recovery (wldelay_delete_lockout_for_ip) and the
+ * username-scoped GDPR path (wldelay_delete_lockouts_for_user). For each row in
+ * the snapshot it clears the lockout transient and its paired failure counter,
+ * using the per-key registry compare-and-delete so a concurrent same-second
+ * relock that rewrote a record with a new generation keeps its live transient
+ * discoverable instead of being orphaned (F-2-1 hardening).
+ *
+ * Each gen-4 row records the EXACT transient name set at lock time, deleted
+ * verbatim (length-proof: reconstructing from the clamped varchar username could
+ * miss a canonical identifier longer than the column). Legacy gen-3 rows carry
+ * no transient_key, so the key is reconstructed from the stored username/type
+ * with the ip_username strategy forced, matching what wldelay_lock_ip() set.
+ *
+ * @param string  $ip       IP address the snapshot rows belong to.
+ * @param array[] $snapshot Durable rows, each with at least transient_key,
+ *                          username and lockout_type keys.
+ * @return int Number of transients removed.
+ */
+function wldelay_clear_lockout_transients_for_snapshot( $ip, array $snapshot ) {
+    $deleted      = 0;
+    $pair_options = array( 'wldelay_lockout_attempt_strategy' => 'ip_username' );
+
+    foreach ( $snapshot as $row ) {
+        $stored_key = isset( $row['transient_key'] ) ? (string) $row['transient_key'] : '';
+
+        if ( '' !== $stored_key ) {
+            $transient_name = $stored_key;
+        } else {
+            $row_username = isset( $row['username'] ) ? (string) $row['username'] : '';
+            $row_type     = isset( $row['lockout_type'] ) ? (string) $row['lockout_type'] : 'login';
+
+            $transient_name = ( 'password-reset' === $row_type )
+                ? wldelay_get_password_reset_lockout_transient_key( $ip, $row_username, $pair_options )
+                : wldelay_get_lockout_transient_key( $ip, $row_username, $pair_options );
+        }
+
+        // Snapshot the registry record BEFORE clearing the transient, then
+        // conditionally unregister: a concurrent relock that rewrites the record
+        // with a new gen must keep its live transient discoverable.
+        $record_snapshot = wldelay_get_transient_registry_record( $transient_name );
+        if ( delete_transient( $transient_name ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_record_if_unchanged( $transient_name, $record_snapshot );
+
+        // Also clear the matching failure-counter transient. wldelay_lock_ip()
+        // does NOT reset the per-attempt counter when it fires, so dropping only
+        // the lockout leaves the counter at the threshold — the very next failed
+        // attempt re-locks the user immediately. The counter shares the lockout
+        // transient's md5 suffix and differs only in prefix, so deriving it from
+        // the (verbatim, length-proof) lockout transient name reaches the exact
+        // key production set (F-2-1 review).
+        $fails_name = wldelay_derive_failure_transient_key( $transient_name );
+        if ( null !== $fails_name ) {
+            $fails_record_snapshot = wldelay_get_transient_registry_record( $fails_name );
+            if ( delete_transient( $fails_name ) ) {
+                $deleted++;
+            }
+            wldelay_unregister_transient_record_if_unchanged( $fails_name, $fails_record_snapshot );
+        }
     }
 
     return $deleted;
 }
 
 /**
+ * Username-scoped, generation-aware lockout recovery (GDPR erasure).
+ *
+ * IP-level recovery (wldelay_delete_lockout_for_ip) clears EVERY lockout on the
+ * IP, which would erase an unrelated account's lockout when two users share a
+ * NAT IP — weakening protection for a non-subject. GDPR erasure must remove only
+ * the subject's lockouts, so this scopes the snapshot to the durable rows whose
+ * username matches the subject, then drives the SAME M5b machinery over that
+ * subset: clear each row's transient fast-path (compare-and-delete) and
+ * conditionally delete only rows whose generation still matches. Rows for other
+ * usernames on the same IP are never touched, so their lockouts stay in force.
+ *
+ * Enumerates ALL durable rows for the username — active AND expired — so an
+ * expired row still bearing the subject's username + IP (personal data) is
+ * removed too (F-3-1).
+ *
+ * Returns FALSE (not a count) when the durable layer fails: a failed SELECT
+ * (get_lockouts_for_username() returning FALSE) or a failed conditional DELETE
+ * (remove_lockouts_matching_generation() returning FALSE) means the subject's
+ * lockout PII may still be on disk. The eraser must surface that as
+ * items_retained rather than claiming a clean erasure (F-3-1).
+ *
+ * @param string $username Subject's user_login (the value persisted at lock time).
+ * @return int|false Number of transients + durable rows removed, or FALSE when a
+ *                   durable read/delete failed at the DB layer.
+ */
+function wldelay_delete_lockouts_for_user( $username ) {
+    $username = (string) $username;
+    if ( '' === $username ) {
+        return 0;
+    }
+
+    $store    = wldelay_get_persistence_store();
+    $snapshot = $store->get_lockouts_for_username( $username );
+
+    // A failed SELECT (distinct from "no rows" array()) means we cannot know
+    // which durable rows exist for the subject, so we must not report success.
+    if ( false === $snapshot ) {
+        return false;
+    }
+
+    if ( empty( $snapshot ) ) {
+        return 0;
+    }
+
+    $deleted = 0;
+
+    // The snapshot may span several IPs (the subject failed from more than one
+    // address). Transient keys are per-IP, so clear them grouped by the row's IP.
+    $by_ip = array();
+    foreach ( $snapshot as $row ) {
+        $ip = isset( $row['ip_address'] ) ? (string) $row['ip_address'] : '';
+        if ( '' === $ip ) {
+            continue;
+        }
+        $by_ip[ $ip ][] = $row;
+    }
+
+    foreach ( $by_ip as $ip => $rows ) {
+        $deleted += wldelay_clear_lockout_transients_for_snapshot( $ip, $rows );
+    }
+
+    // Conditional durable delete over ONLY the subject's snapshot rows. A
+    // concurrent relock that refreshed one of these rows wrote a new generation,
+    // so it survives the compare-and-delete — preserving the M5b race fix while
+    // leaving every other user's rows untouched (F-3-1).
+    $durable_removed = $store->remove_lockouts_matching_generation( $snapshot );
+
+    // A failed DELETE (FALSE, distinct from 0 rows) means the durable PII may
+    // remain; propagate it so the eraser flags items_retained (F-3-1).
+    if ( false === $durable_removed ) {
+        return false;
+    }
+
+    return $deleted + $durable_removed;
+}
+
+/**
  * Flush all lockout and failure transients managed by this plugin.
  *
- * @return int Number of transients removed.
+ * A FALSE return (NOT a count) means the durable conditional delete failed at
+ * the DB layer: some lockout rows may still be on disk. The CLI flush command
+ * surfaces that as an error rather than reporting a clean flush (F-3-1).
+ *
+ * @return int|false Number of transients + durable rows removed, or FALSE when
+ *                   the durable conditional delete failed at the DB layer.
  */
 function wldelay_flush_lockout_transients() {
     global $wpdb;
 
     $deleted = 0;
 
-    $registry = get_option( wldelay_get_transient_registry_option_name(), array() );
-    if ( is_array( $registry ) ) {
-        foreach ( $registry as $transient_name ) {
-            if (
-                strpos( $transient_name, 'wldelay_lockout_' ) !== 0
-                && strpos( $transient_name, 'wldelay_fails_' ) !== 0
-                && strpos( $transient_name, 'wldelay_reset_lockout_' ) !== 0
-                && strpos( $transient_name, 'wldelay_reset_fails_' ) !== 0
-            ) {
-                continue;
-            }
-
-            if ( delete_transient( $transient_name ) ) {
-                $deleted++;
-            }
+    // Enumerate the concurrency-safe per-key registry records (plus the legacy
+    // shared array). The records live in the options table regardless of where
+    // transients are stored, so a cache-only transient whose old shared-array
+    // entry was clobbered by a concurrent write is still discoverable here
+    // (F-2-1 review).
+    foreach ( wldelay_get_registered_transient_keys() as $transient_name ) {
+        if (
+            strpos( $transient_name, 'wldelay_lockout_' ) !== 0
+            && strpos( $transient_name, 'wldelay_fails_' ) !== 0
+            && strpos( $transient_name, 'wldelay_reset_lockout_' ) !== 0
+            && strpos( $transient_name, 'wldelay_reset_fails_' ) !== 0
+        ) {
+            continue;
         }
+
+        // Snapshot the record BEFORE clearing the transient, then conditionally
+        // unregister via the atomic compare-and-delete. A concurrent same-second
+        // relock rewrites the record with a new gen; the compare-and-delete
+        // leaves that refreshed record in place so its live external-cache
+        // transient stays discoverable by the next flush instead of being
+        // orphaned (F-2-1 hardening). The legacy shared array is cleared
+        // wholesale below, so a shared-array-only entry (null snapshot) needs no
+        // per-key delete — see wldelay_unregister_transient_record_if_unchanged().
+        $record_snapshot = wldelay_get_transient_registry_record( $transient_name );
+        if ( delete_transient( $transient_name ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_record_if_unchanged( $transient_name, $record_snapshot );
     }
 
     // Fallback cleanup for DB-backed transients not present in the registry.
@@ -365,7 +1095,58 @@ function wldelay_flush_lockout_transients() {
 
     update_option( wldelay_get_transient_registry_option_name(), array(), false );
 
-    return $deleted;
+    $store = wldelay_get_persistence_store();
+
+    // Snapshot every active durable row ONCE (capturing lockout_key +
+    // generation) and drive both the transient cleanup and the conditional
+    // durable delete from it. The registry + options-table sweep above cannot
+    // reach a cache-only transient (Redis/Memcached object cache) whose registry
+    // entry was lost to the non-atomic read-modify-write in
+    // wldelay_register_transient_key(): the options-table LIKE finds nothing,
+    // so without this the orphaned transient would keep a user locked until it
+    // expired — even though flush reported success. The durable rows hold the
+    // verbatim transient_key, so deleting through it reaches the object cache
+    // regardless of registry state (mirrors wldelay_delete_lockout_for_ip).
+    // A high limit ensures the safety net covers every active row, not just the
+    // default page; deleting an already-expired transient is harmless.
+    $snapshot = $store->get_active_lockouts( PHP_INT_MAX );
+
+    // FALSE (NOT an empty array) means the durable read failed: the safety-net
+    // sweep cannot run and rows may persist. Propagate it so flush reports a
+    // failure rather than a clean flush while a cache-only transient lingers
+    // (F-3-1 read contract).
+    if ( false === $snapshot ) {
+        return false;
+    }
+
+    foreach ( $snapshot as $row ) {
+        if ( empty( $row['transient_key'] ) ) {
+            continue;
+        }
+        $record_snapshot = wldelay_get_transient_registry_record( $row['transient_key'] );
+        if ( delete_transient( $row['transient_key'] ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_record_if_unchanged( $row['transient_key'], $record_snapshot );
+    }
+
+    // Clear the durable store for the snapshotted rows only, and only while
+    // their generation still matches. Replaces the former unconditional
+    // clear_all(), which deleted EVERY row including a re-lock a concurrent
+    // failed login created after the snapshot — orphaning the new lockout's
+    // transient and leaving that user locked even though flush reported success
+    // (F-2-1 hardening). A row refreshed mid-flush carries a new generation, so
+    // it survives and is reaped by the next flush / its own expiry.
+    //
+    // A FALSE return (NOT a count) means a durable $wpdb->delete() failed. Do
+    // NOT coerce it to 0 via +=, which would report a clean flush while rows
+    // remain on disk; propagate FALSE so the CLI command surfaces it (F-3-1).
+    $durable_removed = $store->remove_lockouts_matching_generation( $snapshot );
+    if ( false === $durable_removed ) {
+        return false;
+    }
+
+    return $deleted + $durable_removed;
 }
 
 /**
@@ -390,10 +1171,31 @@ function wldelay_handle_unlock_current_ip() {
 
     $deleted = wldelay_delete_lockout_for_ip( $ip, $username );
 
+    // FALSE (NOT a count) means the durable conditional delete failed at the DB
+    // layer: the lockout row may still be on disk, so the user could still be
+    // locked. Surface a distinct failure status rather than reporting success or
+    // a benign "none" (F-3-1).
+    $failed = ( false === $deleted );
+
+    // Record the manual unlock in the audit trail (F-2-7). Logged on every
+    // attempt, not only on a hit, so the action itself is auditable. A failed
+    // delete records 0 removed rows.
+    if ( function_exists( 'wldelay_audit_lockout_cleared' ) ) {
+        wldelay_audit_lockout_cleared( $ip, $username, $failed ? 0 : (int) $deleted );
+    }
+
+    if ( $failed ) {
+        $status = 'failed';
+    } elseif ( $deleted > 0 ) {
+        $status = 'success';
+    } else {
+        $status = 'none';
+    }
+
     $redirect_url = add_query_arg(
         array(
             'page' => 'login-delay-shield-admin',
-            'wldelay_unlock_ip' => $deleted > 0 ? 'success' : 'none',
+            'wldelay_unlock_ip' => $status,
         ),
         admin_url( 'options-general.php' )
     );
@@ -406,6 +1208,249 @@ function wldelay_handle_unlock_current_ip() {
     exit;
 }
 add_action( 'admin_post_wldelay_unlock_current_ip', 'wldelay_handle_unlock_current_ip' );
+
+/**
+ * Handle admin action to unlock a single active lockout subject (F-1-1).
+ *
+ * Self-service recovery for "I locked out a real user": removes the targeted
+ * (IP, username) lockout only, leaving any co-tenant lockout on a shared NAT IP
+ * in force. Routes through wldelay_delete_lockout_for_ip() so the durable row,
+ * the transient fast-path and the transient registry are all reconciled in the
+ * generation-aware way M5b established.
+ */
+function wldelay_handle_unlock_lockout() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+    }
+
+    check_admin_referer( 'wldelay_unlock_lockout' );
+
+    $ip          = isset( $_POST['wldelay_lockout_ip'] ) ? sanitize_text_field( wp_unslash( $_POST['wldelay_lockout_ip'] ) ) : '';
+    $lockout_key = isset( $_POST['wldelay_lockout_key'] ) ? sanitize_text_field( wp_unslash( $_POST['wldelay_lockout_key'] ) ) : '';
+    // Forensic label for the audit entry ONLY; never used to match the row.
+    $username    = isset( $_POST['wldelay_lockout_username'] ) ? wldelay_normalize_username( wp_unslash( $_POST['wldelay_lockout_username'] ) ) : '';
+
+    // Match on the lossless durable lockout_key, NOT the clamped display
+    // username: two distinct subjects on one IP sharing a 255-char prefix would
+    // otherwise both match and release a co-tenant (F-1-1 SECURITY).
+    $deleted = wldelay_delete_lockout_by_key( $ip, $lockout_key );
+
+    // FALSE (NOT a count) means the durable conditional delete failed at the DB
+    // layer: the lockout row may still be on disk. Treat it as a distinct
+    // failure rather than reporting a clean removal (F-3-1 / unlock-current-IP
+    // pattern).
+    $failed = ( false === $deleted );
+
+    if ( function_exists( 'wldelay_audit_lockout_cleared' ) ) {
+        wldelay_audit_lockout_cleared( $ip, $username, $failed ? 0 : (int) $deleted );
+    }
+
+    if ( $failed ) {
+        $status = 'failed';
+    } elseif ( $deleted > 0 ) {
+        $status = 'success';
+    } else {
+        $status = 'none';
+    }
+
+    $redirect_url = add_query_arg(
+        array(
+            'page'                 => 'login-delay-shield-admin',
+            'wldelay_unlock_subject' => $status,
+        ),
+        admin_url( 'options-general.php' )
+    );
+
+    wp_safe_redirect( $redirect_url );
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        return;
+    }
+    exit;
+}
+add_action( 'admin_post_wldelay_unlock_lockout', 'wldelay_handle_unlock_lockout' );
+
+/**
+ * Sweep every registered lockout transient (and its paired failure counter).
+ *
+ * Clear-all enumerates DURABLE rows to remove each subject, but wldelay_lock_ip()
+ * intentionally KEEPS a registered transient lockout when the durable
+ * add_lockout() fails yet the registry write succeeds — an active lockout with NO
+ * durable row that the durable-row loop can never reach. This sweeps the per-key
+ * transient registry for lockout-prefixed keys (login + password-reset) and
+ * clears each, plus the matching failure counter so the very next failed attempt
+ * does not immediately re-lock. Uses the per-key snapshot + compare-and-delete so
+ * a concurrent same-second relock that refreshed a record keeps its live transient
+ * discoverable rather than being orphaned (F-1-1 / F-2-1 hardening).
+ *
+ * @return int Number of transients removed.
+ */
+function wldelay_sweep_registered_lockout_transients() {
+    $deleted = 0;
+
+    foreach ( wldelay_get_registered_transient_keys() as $transient_name ) {
+        // Only the lockout fast-path keys: the paired failure counter is derived
+        // and cleared alongside each below. A bare fails_/reset_fails_ key with no
+        // lockout is just an in-progress attempt counter, not an active lockout.
+        if (
+            strpos( $transient_name, 'wldelay_lockout_' ) !== 0
+            && strpos( $transient_name, 'wldelay_reset_lockout_' ) !== 0
+        ) {
+            continue;
+        }
+
+        // Snapshot the record BEFORE clearing, then conditionally unregister via
+        // the atomic compare-and-delete (mirrors wldelay_flush_lockout_transients).
+        $record_snapshot = wldelay_get_transient_registry_record( $transient_name );
+        if ( delete_transient( $transient_name ) ) {
+            $deleted++;
+        }
+        wldelay_unregister_transient_record_if_unchanged( $transient_name, $record_snapshot );
+
+        // Clear the paired failure counter so the threshold is reset; otherwise the
+        // next failed attempt re-locks immediately (same rationale as the snapshot
+        // path in wldelay_clear_lockout_transients_for_snapshot).
+        $fails_name = wldelay_derive_failure_transient_key( $transient_name );
+        if ( null !== $fails_name ) {
+            $fails_record_snapshot = wldelay_get_transient_registry_record( $fails_name );
+            if ( delete_transient( $fails_name ) ) {
+                $deleted++;
+            }
+            wldelay_unregister_transient_record_if_unchanged( $fails_name, $fails_record_snapshot );
+        }
+    }
+
+    return $deleted;
+}
+
+/**
+ * Handle admin action to clear every currently-active lockout (F-1-1).
+ *
+ * Reuses the single get_active_lockouts() snapshot already read: clears each
+ * subject's transient fast-path from that snapshot (grouped by IP) and batches
+ * the durable compare-and-delete into one pass, rather than re-reading and
+ * deleting per subject (R2-3 — avoids the ~2N+1 query fan-out on a site with
+ * thousands of active lockouts). Also sweeps registered lockout transients with
+ * no durable row (the wldelay_lock_ip() fail-open path). Still generation-aware
+ * and transient-registry-safe — deliberately NOT a raw clear_all() on the table
+ * (which would leave orphaned transients and bypass the compare-and-delete
+ * contract, consistent with M5b). A durable-delete or read failure makes the
+ * whole operation report a failure rather than a clean flush (F-3-1).
+ *
+ * NON-ATOMIC (R2-4): the batched durable delete carries no transaction, so a
+ * mid-run DB failure can leave a PARTIAL clear — some lockouts released, the
+ * rest still on disk — and is reported to the admin as a failure (not a clean
+ * flush). Re-running clear-all is safe and idempotent: it re-snapshots and
+ * retries the survivors. See remove_lockouts_matching_generation()'s interface
+ * docblock for the full failure contract.
+ */
+function wldelay_handle_clear_all_lockouts() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+    }
+
+    check_admin_referer( 'wldelay_clear_all_lockouts' );
+
+    $store    = wldelay_get_persistence_store();
+    $lockouts = $store->get_active_lockouts( PHP_INT_MAX );
+
+    // FALSE (NOT an empty array) is a DB read failure: rows may persist on disk.
+    // Report a failure rather than "nothing to clear" while the user stays locked
+    // (F-3-1 read contract). Still sweep the registry-only transients below so a
+    // cache-only lockout is released even when the durable read is down.
+    $read_failed = ( false === $lockouts );
+    if ( $read_failed ) {
+        $lockouts = array();
+    }
+
+    // Track durable subjects removed SEPARATELY from transient-only sweeps so the
+    // admin notice and audit removed_rows reflect lockout rows, not an inflated
+    // transient+durable sum (F-1-1 review).
+    $removed = 0;
+    $failed  = $read_failed;
+
+    if ( ! empty( $lockouts ) ) {
+        // Group the already-read rows by IP so each IP's transient fast-path is
+        // cleared from the snapshot in hand — no per-subject re-read. Rows with
+        // no IP are skipped (nothing to release / match).
+        $by_ip      = array();
+        $valid_rows = array();
+        foreach ( $lockouts as $lockout ) {
+            $ip = isset( $lockout['ip_address'] ) ? (string) $lockout['ip_address'] : '';
+            if ( '' === $ip ) {
+                continue;
+            }
+            $by_ip[ $ip ][] = $lockout;
+            $valid_rows[]   = $lockout;
+        }
+
+        // Clear transients for their side effect (release the fast path); the
+        // return value is discarded so the reported count tracks durable rows
+        // only (F-1-1 review: 1 subject must report 1).
+        foreach ( $by_ip as $ip => $rows ) {
+            wldelay_clear_lockout_transients_for_snapshot( $ip, $rows );
+        }
+
+        // One generation-gated batched delete for every durable row. FALSE is a
+        // DB error: rows may persist on disk, so report a failure rather than a
+        // clean flush while the user stays locked (F-3-1).
+        $durable_removed = $store->remove_lockouts_matching_generation( $valid_rows );
+        if ( false === $durable_removed ) {
+            $failed = true;
+        } else {
+            $removed = (int) $durable_removed;
+        }
+    }
+
+    // Sweep registered lockout transient keys (and their paired failure counters)
+    // that have NO durable row. wldelay_lock_ip() intentionally KEEPS a registered
+    // transient lockout when the durable add_lockout() fails but the registry write
+    // succeeds — a genuinely-active, durable-row-less lockout. The durable-row loop
+    // above can never reach it, so clear-all would report success while the user
+    // stays locked. Reuse the registry-enumeration + compare-and-delete machinery
+    // to release it (F-1-1 review). These transient deletions are NOT added to
+    // $removed: the notice/audit count tracks durable subjects.
+    wldelay_sweep_registered_lockout_transients();
+
+    if ( function_exists( 'wldelay_audit_log' ) ) {
+        wldelay_audit_log(
+            'lockout_cleared',
+            array(
+                'object'    => __( 'All active lockouts', 'login-delay-shield' ),
+                'new_value' => array(
+                    'removed_rows' => $removed,
+                    'source'       => 'clear-all',
+                    'failed'       => $failed,
+                ),
+            )
+        );
+    }
+
+    if ( $failed ) {
+        $status = 'failed';
+    } elseif ( $removed > 0 ) {
+        $status = 'success';
+    } else {
+        $status = 'none';
+    }
+
+    $redirect_url = add_query_arg(
+        array(
+            'page'                  => 'login-delay-shield-admin',
+            'wldelay_clear_all'     => $status,
+            'wldelay_clear_count'   => $removed,
+        ),
+        admin_url( 'options-general.php' )
+    );
+
+    wp_safe_redirect( $redirect_url );
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        return;
+    }
+    exit;
+}
+add_action( 'admin_post_wldelay_clear_all_lockouts', 'wldelay_handle_clear_all_lockouts' );
 
 /**
  * Mitigate CSV formula injection for values opened in spreadsheet tools.
@@ -592,6 +1637,132 @@ function wldelay_get_login_log_attempts( $args = array() ) {
     return $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
 }
 
+
+/**
+ * Fetch a keyset page of login-log rows for an EXACT username (privacy export).
+ *
+ * The admin-search path (wldelay_build_login_log_where_clause) matches username
+ * with a substring LIKE so an operator can find "admin*" probes. That is wrong
+ * for a GDPR export: exporting the subject `ann` would also return rows for
+ * `joann`, `ann-admin`, etc., disclosing unrelated users' IPs and timestamps.
+ * This path matches `username = %s` exactly so only the subject's own rows are
+ * returned.
+ *
+ * Pagination is KEYSET over the immutable id, NOT offset. WordPress drives the
+ * exporter in pages, but offset pagination over `attempted_at DESC` is unstable:
+ * on a brute-force-targeted site new rows land at the top BETWEEN page calls, so
+ * the offset window shifts and a boundary row is duplicated while an older row is
+ * skipped (a concurrent retention-purge causes the inverse). The exporter
+ * snapshots a max_id ceiling on page 1 and pages by keyset under it: every page
+ * fetches `WHERE username = %s AND id <= ceiling AND id < cursor ORDER BY id DESC
+ * LIMIT n`. Rows inserted after the run started (id > ceiling) are excluded
+ * (correct — they post-date the request); deletes can only shrink the set, never
+ * shift the cursor onto an already-emitted row. Ordering by id (not attempted_at)
+ * keeps the keyset cursor monotonic and unambiguous (F-3-1).
+ *
+ * @param string $username   Exact username to match.
+ * @param int    $limit      Maximum rows for this page.
+ * @param int    $max_id     Ceiling: only rows with id <= this are considered.
+ * @param int    $after_id   Keyset cursor: only rows with id < this are returned
+ *                           (pass the smallest id from the previous page; pass
+ *                           $max_id + 1 / 0-means-no-cursor for the first page).
+ * @return array Result rows (id, ip_address, username, attempted_at, source),
+ *               ordered id DESC.
+ */
+function wldelay_get_login_log_for_username( $username, $limit, $max_id, $after_id = 0 ) {
+    global $wpdb;
+
+    $username = (string) $username;
+    $limit    = max( 1, absint( $limit ) );
+    $max_id   = max( 0, absint( $max_id ) );
+    $after_id = max( 0, absint( $after_id ) );
+
+    if ( 0 === $max_id ) {
+        return array();
+    }
+
+    // The cursor defaults to "just past the ceiling" on the first page so the
+    // first keyset window starts at the ceiling itself.
+    if ( 0 === $after_id ) {
+        $after_id = $max_id + 1;
+    }
+
+    $table_name = wldelay_get_log_table_name();
+
+    // $table_name is derived from $wpdb->prefix (not user input). id is the
+    // immutable PK, so the keyset window is stable under concurrent insert/delete.
+    $sql = "SELECT id, ip_address, username, attempted_at, source FROM $table_name WHERE username = %s AND id <= %d AND id < %d ORDER BY id DESC LIMIT %d";
+
+    return $wpdb->get_results( $wpdb->prepare( $sql, $username, $max_id, $after_id, $limit ) );
+}
+
+/**
+ * Highest login-log id for an EXACT username — the keyset export ceiling.
+ *
+ * Captured once on export page 1 and held across pages so the export run sees a
+ * fixed snapshot of the subject's rows; rows inserted after this point (id above
+ * the ceiling) are excluded from the run (F-3-1).
+ *
+ * Returns FALSE (NOT 0) when the read FAILS at the DB layer. A failed query and
+ * "subject has no rows" both make get_var() return null → (int) 0; collapsing a
+ * failed read to 0 would mark the group done=true on page 1 and emit a spurious
+ * empty group while the subject's rows are still on disk. The export caller turns
+ * a FALSE ceiling into a WP_Error so WordPress aborts the request instead of
+ * handing the admin a partial archive (F-3-1).
+ *
+ * @param string $username Exact username to match.
+ * @return int|false Highest matching id, 0 when the subject has no rows, or
+ *                   FALSE when the read failed at the DB layer.
+ */
+function wldelay_get_max_login_log_id_for_username( $username ) {
+    global $wpdb;
+
+    $table_name = wldelay_get_log_table_name();
+
+    // Clear last_error so a stale error from an earlier query on this request is
+    // not misread as a failure of this read.
+    $wpdb->last_error = '';
+
+    $max = $wpdb->get_var(
+        $wpdb->prepare( "SELECT MAX(id) FROM $table_name WHERE username = %s", (string) $username )
+    );
+
+    // get_var() returns null both for "no rows" (MAX of an empty set) AND for a
+    // SELECT that errored. Distinguish via last_error: a failed read returns
+    // FALSE so the exporter can abort with a WP_Error (F-3-1).
+    if ( '' !== (string) $wpdb->last_error ) {
+        return false;
+    }
+
+    return (int) $max;
+}
+
+/**
+ * Count login-log rows for an EXACT username up to the export ceiling.
+ *
+ * Companion to wldelay_get_login_log_for_username(): an exact `username = %s`
+ * count, bounded by the same max_id ceiling the keyset pages use, so the export's
+ * group total is stable across pages and never includes substring-adjacent
+ * accounts (F-3-1). A 0 ceiling (subject has no rows) yields 0.
+ *
+ * @param string $username Exact username to match.
+ * @param int    $max_id   Ceiling: only rows with id <= this are counted.
+ * @return int Matching row count.
+ */
+function wldelay_count_login_log_for_username( $username, $max_id ) {
+    global $wpdb;
+
+    $max_id = max( 0, absint( $max_id ) );
+    if ( 0 === $max_id ) {
+        return 0;
+    }
+
+    $table_name = wldelay_get_log_table_name();
+
+    return (int) $wpdb->get_var(
+        $wpdb->prepare( "SELECT COUNT(*) FROM $table_name WHERE username = %s AND id <= %d", (string) $username, $max_id )
+    );
+}
 
 /**
  * Build a reusable WHERE clause for login-log filters.
@@ -896,14 +2067,87 @@ function wldelay_render_unlock_notice() {
     }
 
     $status = sanitize_text_field( wp_unslash( $_GET['wldelay_unlock_ip'] ) );
-    $class = ( $status === 'success' ) ? 'notice-success' : 'notice-warning';
-    $message = ( $status === 'success' )
-        ? __( 'Current IP lockout removed.', 'login-delay-shield' )
-        : __( 'No active lockout was found for your current IP.', 'login-delay-shield' );
+
+    if ( 'success' === $status ) {
+        $class   = 'notice-success';
+        $message = __( 'Current IP lockout removed.', 'login-delay-shield' );
+    } elseif ( 'failed' === $status ) {
+        // A durable delete failed at the DB layer; the lockout may still be in
+        // force. Report an error (not a benign "none") so the admin retries
+        // rather than assuming the IP was cleared (F-3-1).
+        $class   = 'notice-error';
+        $message = __( 'Login Delay Shield could not clear the lockout for your current IP — a database error occurred and the lockout may still be in force. Check the database and try again.', 'login-delay-shield' );
+    } else {
+        $class   = 'notice-warning';
+        $message = __( 'No active lockout was found for your current IP.', 'login-delay-shield' );
+    }
 
     echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
 }
 add_action( 'admin_notices', 'wldelay_render_unlock_notice' );
+
+/**
+ * Render the admin notice for per-subject and clear-all lockout actions (F-1-1).
+ *
+ * Mirrors wldelay_render_unlock_notice(): scoped to the plugin page and to users
+ * who can act, with aria-live so the status is announced to screen readers.
+ */
+function wldelay_render_lockout_manager_notice() {
+    if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'login-delay-shield-admin' ) {
+        return;
+    }
+
+    $class   = '';
+    $message = '';
+
+    if ( isset( $_GET['wldelay_unlock_subject'] ) ) {
+        $status = sanitize_text_field( wp_unslash( $_GET['wldelay_unlock_subject'] ) );
+
+        if ( 'success' === $status ) {
+            $class   = 'notice-success';
+            $message = __( 'Lockout removed.', 'login-delay-shield' );
+        } elseif ( 'failed' === $status ) {
+            $class   = 'notice-error';
+            $message = __( 'Login Delay Shield could not remove this lockout — a database error occurred and it may still be in force. Check the database and try again.', 'login-delay-shield' );
+        } else {
+            $class   = 'notice-warning';
+            $message = __( 'No active lockout was found for that subject.', 'login-delay-shield' );
+        }
+    } elseif ( isset( $_GET['wldelay_clear_all'] ) ) {
+        $status = sanitize_text_field( wp_unslash( $_GET['wldelay_clear_all'] ) );
+        $count  = isset( $_GET['wldelay_clear_count'] ) ? absint( wp_unslash( $_GET['wldelay_clear_count'] ) ) : 0;
+
+        if ( 'failed' === $status ) {
+            $class = 'notice-error';
+            $message = sprintf(
+                /* translators: %s: number of lockouts that were removed before the error */
+                __( 'Login Delay Shield cleared %s lockout(s), but a database error stopped it from clearing the rest — some lockouts may still be in force. Check the database and try again.', 'login-delay-shield' ),
+                number_format_i18n( $count )
+            );
+        } elseif ( 'success' === $status ) {
+            $class = 'notice-success';
+            $message = sprintf(
+                /* translators: %s: number of lockouts removed */
+                _n( '%s active lockout cleared.', '%s active lockouts cleared.', $count, 'login-delay-shield' ),
+                number_format_i18n( $count )
+            );
+        } else {
+            $class   = 'notice-warning';
+            $message = __( 'There were no active lockouts to clear.', 'login-delay-shield' );
+        }
+    }
+
+    if ( '' === $message ) {
+        return;
+    }
+
+    echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible" role="status" aria-live="polite"><p>' . esc_html( $message ) . '</p></div>';
+}
+add_action( 'admin_notices', 'wldelay_render_lockout_manager_notice' );
 
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
     /**
@@ -932,6 +2176,51 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
             }
 
             $deleted = wldelay_delete_lockout_for_ip( $ip );
+
+            // FALSE (NOT a count) means the durable conditional delete failed at
+            // the DB layer: the lockout row may still be on disk. Surface a hard
+            // error rather than reporting a clean removal (F-3-1). WP_CLI::error()
+            // halts with a non-zero exit so a script driving the unlock can tell
+            // it did not succeed.
+            if ( false === $deleted ) {
+                if ( function_exists( 'wldelay_audit_log' ) ) {
+                    wldelay_audit_log(
+                        'lockout_cleared',
+                        array(
+                            'object'    => $ip,
+                            'new_value' => array(
+                                'removed_rows' => 0,
+                                'source'       => 'wp-cli',
+                                'failed'       => true,
+                            ),
+                        )
+                    );
+                }
+                WP_CLI::error(
+                    sprintf(
+                        /* translators: %s: IP address */
+                        __( 'A database error occurred while clearing the lockout for %s; it may still be in force. Check the database and retry.', 'login-delay-shield' ),
+                        $ip
+                    )
+                );
+            }
+
+            // Record the CLI unlock in the audit trail (F-2-7). Logged on every
+            // invocation, not only on a hit, so the privileged action itself is
+            // auditable — a compromised shell clearing lockouts must leave a
+            // forensic record, same as the web admin unlock handler.
+            if ( function_exists( 'wldelay_audit_log' ) ) {
+                wldelay_audit_log(
+                    'lockout_cleared',
+                    array(
+                        'object'    => $ip,
+                        'new_value' => array(
+                            'removed_rows' => (int) $deleted,
+                            'source'       => 'wp-cli',
+                        ),
+                    )
+                );
+            }
 
             if ( $deleted > 0 ) {
                 WP_CLI::success(
@@ -971,6 +2260,44 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
         public function flush_lockouts() {
             $deleted = wldelay_flush_lockout_transients();
 
+            // FALSE (NOT a count) means the durable conditional delete failed at
+            // the DB layer: some lockout rows may still be on disk. Surface a
+            // hard error rather than reporting a clean flush (F-3-1).
+            if ( false === $deleted ) {
+                if ( function_exists( 'wldelay_audit_log' ) ) {
+                    wldelay_audit_log(
+                        'lockouts_flushed',
+                        array(
+                            'object'    => 'all',
+                            'new_value' => array(
+                                'removed_rows' => 0,
+                                'source'       => 'wp-cli',
+                                'failed'       => true,
+                            ),
+                        )
+                    );
+                }
+                WP_CLI::error(
+                    __( 'A database error occurred while flushing lockouts; some may still be in force. Check the database and retry.', 'login-delay-shield' )
+                );
+            }
+
+            // Audit the bulk clear under a distinct action so a wholesale flush
+            // is never mistaken for a single-IP unlock in the forensic trail
+            // (F-2-7). Includes the removed count and the CLI source.
+            if ( function_exists( 'wldelay_audit_log' ) ) {
+                wldelay_audit_log(
+                    'lockouts_flushed',
+                    array(
+                        'object'    => 'all',
+                        'new_value' => array(
+                            'removed_rows' => (int) $deleted,
+                            'source'       => 'wp-cli',
+                        ),
+                    )
+                );
+            }
+
             WP_CLI::success(
                 sprintf(
                     /* translators: %d: number of removed lockout/failure entries */
@@ -995,24 +2322,26 @@ function wldelay_dashboard_widget_content() {
         return;
     }
 
-    $cache_key = 'wldelay_dashboard_attempts';
-    $dashboard_data = get_transient( $cache_key );
+    // Onboarding CTA (F-1-7): render BEFORE the no-attempts early return so a
+    // brand-new install (0 attempts, 0% score) still sees the prompt to run the
+    // Setup Wizard. The CTA self-suppresses once the score reaches 50%.
+    wldelay_render_dashboard_onboarding_cta();
 
-    if (
-        false === $dashboard_data ||
-        ! is_array( $dashboard_data ) ||
-        ! isset( $dashboard_data['attempts'] ) ||
-        ! isset( $dashboard_data['trends'] )
-    ) {
-        $dashboard_data = array(
-            'attempts' => wldelay_get_recent_failed_attempts( 10 ),
-            'trends'   => wldelay_get_failed_login_trends( 7 ),
-        );
-        set_transient( $cache_key, $dashboard_data, 2 * MINUTE_IN_SECONDS );
+    // Independent sub-caches (F-4-1): the cheap recent-attempts list and the
+    // expensive 7-day trends aggregate each have their own key and TTL, and each
+    // is rebuilt independently on miss so invalidating one never recomputes the
+    // other.
+    $attempts = get_transient( WLDELAY_DASH_RECENT_CACHE );
+    if ( false === $attempts || ! is_array( $attempts ) ) {
+        $attempts = wldelay_get_recent_failed_attempts( 10 );
+        set_transient( WLDELAY_DASH_RECENT_CACHE, $attempts, WLDELAY_DASH_RECENT_TTL );
     }
 
-    $attempts = $dashboard_data['attempts'];
-    $trends   = $dashboard_data['trends'];
+    $trends = get_transient( WLDELAY_DASH_TRENDS_CACHE );
+    if ( false === $trends || ! is_array( $trends ) ) {
+        $trends = wldelay_get_failed_login_trends( 7 );
+        set_transient( WLDELAY_DASH_TRENDS_CACHE, $trends, WLDELAY_DASH_TRENDS_TTL );
+    }
 
     if ( empty( $attempts ) ) {
         echo '<p>' . esc_html__( 'No failed login attempts recorded.', 'login-delay-shield' ) . '</p>';
@@ -1080,6 +2409,136 @@ function wldelay_render_referral_card() {
     echo '</a>';
     echo '</p>';
     echo '</div>';
+}
+
+/**
+ * Render an onboarding call-to-action card when the security posture is weak.
+ *
+ * When the Health Score is below 50% (which always covers a brand-new all-off
+ * install) this surfaces a prominent card at the top of the dashboard widget
+ * pointing the admin at the Setup Wizard. Rather than dumping every disabled
+ * protection with a raw deficit score, it frames the gap as an achievable goal:
+ * the smallest set of highest-value protections that reaches the 50% "strong
+ * setup" line (R4-4). Once enough protection is configured to reach 50% the card
+ * disappears on its own, so there is no dismiss state.
+ */
+function wldelay_render_dashboard_onboarding_cta() {
+    $score_data = wldelay_get_security_score();
+    $score      = isset( $score_data['score'] ) ? (int) $score_data['score'] : 0;
+    $max        = isset( $score_data['max'] ) ? (int) $score_data['max'] : 0;
+    $pct        = (int) round( $score / max( 1, $max ) * 100 );
+
+    // Self-resolving: a sufficiently configured install hides the CTA.
+    if ( $pct >= 50 ) {
+        return;
+    }
+
+    // Collect the disabled features, ranked by defensive weight.
+    $missing = array();
+    if ( ! empty( $score_data['features'] ) && is_array( $score_data['features'] ) ) {
+        foreach ( $score_data['features'] as $feature ) {
+            if ( empty( $feature['enabled'] ) ) {
+                $missing[] = $feature;
+            }
+        }
+    }
+
+    usort(
+        $missing,
+        static function ( $a, $b ) {
+            return (int) $b['points'] - (int) $a['points'];
+        }
+    );
+
+    // Frame the card around an achievable goal, not a raw deficit: pick the
+    // smallest set of the highest-value disabled protections that carries the
+    // install across the 50% "strong setup" line, and show those as the next
+    // steps. A short, finish-able list reads as "enable 2 things" rather than an
+    // overwhelming dump of everything that is off (R4-4). Capped at 5 so a wildly
+    // misconfigured install still shows a bounded list.
+    $threshold_points = (int) ceil( $max * 0.5 );
+    $needed           = max( 0, $threshold_points - $score );
+    $recommended      = array();
+    $accumulated      = 0;
+    foreach ( $missing as $feature ) {
+        $recommended[] = $feature;
+        $accumulated  += isset( $feature['points'] ) ? (int) $feature['points'] : 0;
+        if ( $accumulated >= $needed || count( $recommended ) >= 5 ) {
+            break;
+        }
+    }
+    $steps = count( $recommended );
+
+    $wizard_url = add_query_arg(
+        'page',
+        'login-delay-shield-admin',
+        admin_url( 'options-general.php' )
+    ) . '#wldelay-setup-wizard-title';
+
+    echo '<section class="wldelay-onboarding-cta" aria-labelledby="wldelay-onboarding-cta-title">';
+
+    echo '<h3 class="wldelay-onboarding-cta-title" id="wldelay-onboarding-cta-title">';
+    echo '<span class="dashicons dashicons-shield-alt" aria-hidden="true"></span> ';
+    echo esc_html__( 'Finish setting up your login protection', 'login-delay-shield' );
+    echo '</h3>';
+
+    echo '<p class="wldelay-onboarding-cta-score">';
+    if ( $steps > 0 ) {
+        echo esc_html(
+            sprintf(
+                /* translators: 1: current security score percentage, 2: number of protections to enable to reach a strong setup */
+                _n(
+                    'You\'re at %1$d%%. Enable the protection below to reach a strong setup.',
+                    'You\'re at %1$d%%. Enable the %2$d protections below to reach a strong setup.',
+                    $steps,
+                    'login-delay-shield'
+                ),
+                $pct,
+                $steps
+            )
+        );
+    } else {
+        echo esc_html(
+            sprintf(
+                /* translators: %d: current security score percentage */
+                __( 'You\'re at %d%%. Turn on a few more protections to harden your login.', 'login-delay-shield' ),
+                $pct
+            )
+        );
+    }
+    echo '</p>';
+
+    if ( ! empty( $recommended ) ) {
+        echo '<p class="wldelay-onboarding-cta-subhead">' . esc_html__( 'Recommended next steps:', 'login-delay-shield' ) . '</p>';
+        echo '<ul class="wldelay-onboarding-cta-list">';
+        foreach ( $recommended as $feature ) {
+            $label  = isset( $feature['label'] ) ? $feature['label'] : '';
+            $points = isset( $feature['points'] ) ? (int) $feature['points'] : 0;
+            echo '<li>';
+            echo '<span class="dashicons dashicons-warning" aria-hidden="true"></span> ';
+            echo esc_html( $label );
+            echo ' <span class="wldelay-onboarding-cta-points">';
+            echo esc_html(
+                sprintf(
+                    /* translators: %d: number of security-score points the feature is worth */
+                    _n( '+%d point', '+%d points', $points, 'login-delay-shield' ),
+                    $points
+                )
+            );
+            echo '</span>';
+            echo '</li>';
+        }
+        echo '</ul>';
+    }
+
+    echo '<p class="wldelay-onboarding-cta-action">';
+    echo '<a class="button button-primary" href="' . esc_url( $wizard_url ) . '">';
+    echo esc_html__( 'Run the Setup Wizard', 'login-delay-shield' );
+    echo '<span class="screen-reader-text"> ' . esc_html__( '(opens the Login Delay Shield settings page)', 'login-delay-shield' ) . '</span>';
+    echo '</a>';
+    echo '</p>';
+
+    echo '</section>';
 }
 
 /**
@@ -1364,11 +2823,74 @@ function wldelay_create_log_table() {
 
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
     dbDelta( $sql );
-
-    update_option( 'wldelay_db_version', WLDELAY_VERSION );
 }
 
-register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_log_table' );
+/**
+ * Create every plugin-owned table.
+ *
+ * Used on activation and on the DB upgrade path so the log table and the
+ * durable lockout store (F-2-1) are provisioned together behind one schema
+ * version. Kept separate from wldelay_create_log_table() so creating the
+ * lockout table (DDL, which implicitly commits) is not triggered on every
+ * call to the log-table helper.
+ *
+ * The schema version is recorded only after both tables are confirmed to
+ * exist AND the gen-3 username widening has actually taken effect AND the gen-4
+ * transient_key column is present, so a failed or interrupted CREATE — or an
+ * ALTER that could not widen the column (e.g. a 767-byte index-limit failure on
+ * old MySQL) or add the column — leaves the stored version untouched and
+ * wldelay_maybe_upgrade_db() retries on the next request instead of masking a
+ * half-applied schema (F-2-1).
+ */
+function wldelay_create_tables() {
+    global $wpdb;
+
+    wldelay_create_log_table();
+    wldelay_create_lockout_table();
+    wldelay_create_audit_table();
+
+    $log_table     = wldelay_get_log_table_name();
+    $lockout_table = wldelay_get_lockout_table_name();
+    $audit_table   = wldelay_get_audit_table_name();
+
+    $log_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
+    $lockout_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $lockout_table ) ) === $lockout_table;
+    $audit_exists   = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $audit_table ) ) === $audit_table;
+
+    if (
+        $log_exists
+        && $lockout_exists
+        && $audit_exists
+        && wldelay_lockout_username_is_widened()
+        && wldelay_lockout_has_transient_key_column()
+        && wldelay_lockout_has_generation_column()
+    ) {
+        update_option( 'wldelay_db_version', WLDELAY_DB_VERSION );
+    }
+}
+
+register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_create_tables' );
+
+/**
+ * Stamp a fresh activation at the latest settings version so a brand-new
+ * install never replays historical settings migrations (F-2-6).
+ *
+ * Only stamps a genuinely fresh install — no recorded settings version AND no
+ * stored options — matching WLDelay_Migration::is_fresh_install(). A legacy
+ * install (stored options present, version absent) must NOT be stamped here:
+ * doing so would mark it current and make the plugins_loaded migration runner
+ * skip the v1 default-key backfill, permanently. Such installs are left
+ * unstamped so WLDelay_Migration::run() migrates them on the next load.
+ */
+function wldelay_stamp_settings_version_on_activation() {
+    if (
+        false === get_option( WLDELAY_SETTINGS_VERSION_OPTION, false )
+        && false === get_option( WLDELAY_OPTION_NAME, false )
+    ) {
+        update_option( WLDELAY_SETTINGS_VERSION_OPTION, WLDELAY_SETTINGS_VERSION );
+    }
+}
+register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_stamp_settings_version_on_activation' );
 
 // ==========================================================================
 // Trend Analytics Queries
@@ -1472,11 +2994,37 @@ function wldelay_unschedule_cleanup() {
 }
 register_deactivation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_unschedule_cleanup' );
 
+// Schedule the F-4-9 async cron backstop on activation so the maintenance tick
+// exists immediately, without waiting for a front-end `wp` action that may never
+// fire on admin-only, AJAX, or externally-cronned sites. The scheduling function
+// is idempotent (no-op if already scheduled). Both scheduling/callback live in
+// wldelay-async.php; the hook is registered here alongside the deactivation
+// teardown so both plugin-owned cron events are managed together.
+register_activation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_schedule_async_cron' );
+
+// Unschedule the F-4-9 async cron backstop on deactivation as well. The
+// scheduling/callback live in wldelay-async.php; the deactivation hook is
+// registered here alongside the existing cleanup-cron deactivation so both
+// plugin-owned cron events are torn down together.
+register_deactivation_hook( WLDELAY_PLUGIN_FILE, 'wldelay_unschedule_async_cron' );
+
 /**
  * Delete log entries older than the retention period
  */
 function wldelay_cleanup_old_logs() {
     global $wpdb;
+
+    // Purge expired rows from the durable lockout store (F-2-1) first, before
+    // any retention-based early return. Lockout rows are bounded by their own
+    // expiry rather than the log retention setting, so they must be reaped even
+    // when logs are kept forever (retention = 0) — otherwise a rotating-IP
+    // attack grows the lockout table without bound.
+    wldelay_get_persistence_store()->purge_expired();
+
+    // Reap per-key transient registry records whose transient has expired, so a
+    // rotating-identity attack cannot grow wp_options without bound. Bounded by
+    // its own expiry, independent of log retention (Codex-2 round-3 review).
+    wldelay_purge_expired_transient_registry_records();
 
     $options = get_option( WLDELAY_OPTION_NAME );
     $retention_days = isset( $options['wldelay_log_retention_days'] )
@@ -1509,9 +3057,12 @@ function wldelay_cleanup_old_logs() {
         }
     } while ( $deleted === $batch_size );
 
-    // Invalidate dashboard widget cache after cleanup
+    // A bulk log deletion changes both fast-moving and aggregate data, so unlike
+    // a single failed attempt this correctly invalidates BOTH sub-caches (F-4-1)
+    // — the 7-day trends are genuinely stale once old rows are gone.
     if ( $total_deleted > 0 ) {
-        delete_transient( 'wldelay_dashboard_attempts' );
+        delete_transient( WLDELAY_DASH_RECENT_CACHE );
+        delete_transient( WLDELAY_DASH_TRENDS_CACHE );
     }
 }
 add_action( 'wldelay_cleanup_logs', 'wldelay_cleanup_old_logs' );
@@ -1521,11 +3072,26 @@ add_action( 'wldelay_cleanup_logs', 'wldelay_cleanup_old_logs' );
  */
 function wldelay_maybe_upgrade_db() {
     $installed_version = get_option( 'wldelay_db_version' );
-    if ( $installed_version !== WLDELAY_VERSION ) {
-        wldelay_create_log_table();
+    if ( $installed_version !== WLDELAY_DB_VERSION ) {
+        wldelay_create_tables();
     }
 }
 add_action( 'plugins_loaded', 'wldelay_maybe_upgrade_db' );
+
+/**
+ * Run pending settings (options-array) migrations.
+ *
+ * Distinct from the DB schema upgrade above: this transforms the stored
+ * wldelay_options array via the ordered WLDelay_Migration registry (F-2-6).
+ * Hooked at priority 11 so it runs after wldelay_maybe_upgrade_db (priority 10)
+ * yet still on plugins_loaded — before any admin/front-end code reads settings.
+ * The runner early-returns cheaply when already current, so the per-request
+ * cost on a migrated install is a single get_option() comparison.
+ */
+function wldelay_maybe_migrate_settings() {
+    WLDelay_Migration::run();
+}
+add_action( 'plugins_loaded', 'wldelay_maybe_migrate_settings', 11 );
 
 /**
  * Show upgrade notice for name change
@@ -1809,7 +3375,8 @@ function wldelay_get_security_score( $options = null ) {
         'wldelay_rest_enabled'                 => array( 'label' => __( 'REST API Protection', 'login-delay-shield' ), 'points' => 5 ),
         'wldelay_application_password_enabled' => array( 'label' => __( 'Application Password Protection', 'login-delay-shield' ), 'points' => 5 ),
         'wldelay_password_reset_enabled'       => array( 'label' => __( 'Password Reset Protection', 'login-delay-shield' ), 'points' => 5 ),
-        'wldelay_fail2ban_enabled'             => array( 'label' => __( 'fail2ban Logging', 'login-delay-shield' ), 'points' => 10 ),
+        'wldelay_enumeration_hardening_enabled' => array( 'label' => __( 'Username Enumeration Hardening', 'login-delay-shield' ), 'points' => 5 ),
+        'wldelay_fail2ban_enabled'             => array( 'label' => __( 'fail2ban Logging', 'login-delay-shield' ), 'points' => 5 ),
     );
 
     $score          = 0;
@@ -1855,29 +3422,14 @@ function wldelay_get_options() {
             $options = array();
         }
 
-        // Security feature defaults must stay opt-in.
-        if ( ! array_key_exists( 'wldelay_rest_enabled', $options ) ) {
-            $options['wldelay_rest_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_application_password_enabled', $options ) ) {
-            $options['wldelay_application_password_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_password_reset_enabled', $options ) ) {
-            $options['wldelay_password_reset_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_fail2ban_enabled', $options ) ) {
-            $options['wldelay_fail2ban_enabled'] = false;
-        }
-
-        if ( ! array_key_exists( 'wldelay_fail2ban_log_path', $options ) ) {
-            $options['wldelay_fail2ban_log_path'] = '';
-        }
-
-        if ( ! array_key_exists( 'wldelay_fail2ban_include_lockouts', $options ) ) {
-            $options['wldelay_fail2ban_include_lockouts'] = LDS_Settings::_DEFAULT_FAIL2BAN_INCLUDE_LOCKOUTS;
+        // Materialise the opt-in security feature defaults from the declarative
+        // registry (F-2-2). Only registry keys flagged for injection are filled,
+        // and only when absent, exactly like the array_key_exists guards this
+        // replaced — so the cached option shape and every default stay identical.
+        foreach ( WLDelay_Features::injected_defaults() as $registry_key => $registry_default ) {
+            if ( ! array_key_exists( $registry_key, $options ) ) {
+                $options[ $registry_key ] = $registry_default;
+            }
         }
 
         $GLOBALS['wldelay_options_cache'] = $options;
@@ -2066,6 +3618,22 @@ function wldelay_get_lockout_transient_key( $ip, $username = '', $options = null
 }
 
 /**
+ * Get the effective username used for persistent-store lockout keys.
+ *
+ * Mirrors the transient keying: under the IP-only strategy the username is
+ * dropped so the transient fast-path and the durable store agree on identity.
+ *
+ * @param string     $username Username attempted.
+ * @param array|null $options  Optional options array.
+ * @return string Effective username ('' under the IP-only strategy).
+ */
+function wldelay_get_effective_lockout_username( $username = '', $options = null ) {
+    $strategy = wldelay_get_lockout_attempt_strategy( $options );
+
+    return ( $strategy === 'ip_username' ) ? (string) $username : '';
+}
+
+/**
  * Get username from current login request.
  *
  * @return string Normalized username or empty string.
@@ -2116,7 +3684,16 @@ function wldelay_get_lockout_remaining_seconds( $ip = null, $username = '' ) {
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username );
     $locked_at = get_transient( $transient_key );
     if ( false === $locked_at ) {
-        return 0;
+        // Durable fallback (F-2-1): derive the countdown from the persistent
+        // store when the transient has been evicted. Called through the
+        // interface so any filtered backend supplies the countdown too.
+        $remaining = wldelay_get_persistence_store()->get_remaining_seconds(
+            $ip,
+            wldelay_get_effective_lockout_username( $username ),
+            'login'
+        );
+
+        return max( 0, (int) $remaining );
     }
 
     $lockout_duration = wldelay_get_lockout_duration_seconds();
@@ -2651,7 +4228,18 @@ function wldelay_is_ip_locked( $ip = null, $username = '' ) {
 
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username );
 
-    return get_transient( $transient_key ) !== false;
+    // Hot-path fast read: the transient (object cache) answers most requests.
+    if ( get_transient( $transient_key ) !== false ) {
+        return true;
+    }
+
+    // Durable fallback (F-2-1): the transient may have been evicted while the
+    // lockout is still in force — the DB-backed store is authoritative.
+    return wldelay_get_persistence_store()->is_locked(
+        $ip,
+        wldelay_get_effective_lockout_username( $username ),
+        'login'
+    );
 }
 
 /**
@@ -2687,8 +4275,84 @@ function wldelay_lock_ip( $ip, $username = '', $source = null ) {
     $lockout_duration = wldelay_get_lockout_duration_seconds( $options );
     $transient_key = wldelay_get_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
-    wldelay_register_transient_key( $transient_key );
+    $registered = wldelay_register_transient_key( $transient_key, time() + $lockout_duration );
+
+    // Persist to the durable store (F-2-1) so the lockout survives transient /
+    // object-cache eviction and can be enumerated. The transient above remains
+    // the hot-path fast read; this is the authoritative fallback.
+    $persisted = wldelay_get_persistence_store()->add_lockout(
+        $ip,
+        wldelay_get_effective_lockout_username( $username, $options ),
+        $lockout_duration,
+        'login',
+        $source,
+        $transient_key
+    );
+
+    if ( ! $persisted ) {
+        wldelay_note_persistence_failure( $ip, 'login' );
+
+        // When the durable write AND the registry write both failed (a DB
+        // outage while an external object cache still accepted the transient),
+        // the lockout exists only as a cache-only transient with no record in
+        // SQL or the durable table — recovery could never discover or clear it,
+        // so it would strand the user until the transient expires. Fail fully
+        // open: drop the orphan rather than create an unrecoverable lockout
+        // (Codex round-3 review).
+        if ( ! $registered ) {
+            delete_transient( $transient_key );
+        }
+    }
+
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, $source );
+}
+
+/**
+ * Surface a durable lockout-write failure (F-2-1).
+ *
+ * When the persistent store cannot record a lockout (missing table mid-upgrade,
+ * or a DB error), the lockout is protected only by the transient fast-path and
+ * will NOT survive object-cache eviction. Both reviewers flagged that this
+ * degradation was silent.
+ *
+ * Policy is fail-open by design: the transient lockout still applies and login
+ * is NOT blocked on a persistence error — failing closed would lock out
+ * legitimate users during any DB hiccup. This helper makes the degraded state
+ * observable without changing that policy: it fires an action so monitoring can
+ * alert, and ALWAYS writes an operator log line (not gated behind WP_DEBUG, so
+ * production sites — where WP_DEBUG is normally off — still surface the degraded
+ * security state). The log is rate-limited to one line per type per 5 minutes so
+ * a sustained DB/store outage cannot flood the error log. Whether to adopt a
+ * fail-closed policy instead is a security-vs-availability decision left to the
+ * site owner.
+ *
+ * @param string $ip   IP address whose durable lockout write failed.
+ * @param string $type Lockout type ('login' or 'password-reset').
+ */
+function wldelay_note_persistence_failure( $ip, $type ) {
+    /**
+     * Fires when a lockout could not be written to the durable store.
+     *
+     * @param string $ip   IP address whose durable lockout write failed.
+     * @param string $type Lockout type ('login' or 'password-reset').
+     */
+    do_action( 'wldelay_persistence_write_failed', $ip, $type );
+
+    // Rate-limit the operator log to one line per type per 5 minutes. The guard
+    // is best-effort: if the transient store is itself the failure, set_transient
+    // may not stick and we log on every failure — acceptable during an outage.
+    $throttle_key = 'wldelay_persist_fail_logged_' . md5( (string) $type );
+    if ( false === get_transient( $throttle_key ) ) {
+        set_transient( $throttle_key, 1, 5 * MINUTE_IN_SECONDS );
+
+        error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            sprintf(
+                'WP Login Delay: durable lockout write failed for %s (%s); lockout is transient-only until the store recovers.',
+                $ip,
+                $type
+            )
+        );
+    }
 }
 
 /**
@@ -2718,8 +4382,11 @@ function wldelay_log_failed_attempt( $ip, $username, $source = null ) {
         array( '%s', '%s', '%s', '%s' )
     );
 
-    // Invalidate dashboard widget cache so new attempts appear immediately
-    delete_transient( 'wldelay_dashboard_attempts' );
+    // Invalidate ONLY the cheap recent-attempts sub-cache so the new attempt
+    // appears immediately (F-4-1). The expensive 7-day trends aggregate is
+    // intentionally left to expire on its own TTL — invalidating it per attempt
+    // is what thrashed the cache under brute-force load.
+    delete_transient( WLDELAY_DASH_RECENT_CACHE );
 
     wldelay_write_fail2ban_log( 'failed login', $ip, $username, $source );
 }
@@ -3024,7 +4691,16 @@ function wldelay_is_password_reset_locked( $ip = null, $username = '' ) {
 
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
 
-    return get_transient( $transient_key ) !== false;
+    if ( get_transient( $transient_key ) !== false ) {
+        return true;
+    }
+
+    // Durable fallback (F-2-1).
+    return wldelay_get_persistence_store()->is_locked(
+        $ip,
+        wldelay_get_effective_lockout_username( $username ),
+        'password-reset'
+    );
 }
 
 /**
@@ -3038,7 +4714,30 @@ function wldelay_lock_password_reset( $ip, $username = '' ) {
     $lockout_duration = wldelay_get_lockout_duration_seconds( $options );
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username, $options );
     set_transient( $transient_key, time(), $lockout_duration );
-    wldelay_register_transient_key( $transient_key );
+    $registered = wldelay_register_transient_key( $transient_key, time() + $lockout_duration );
+
+    // Persist to the durable store (F-2-1) under the password-reset type so it
+    // is isolated from login lockouts but equally survives cache eviction.
+    $persisted = wldelay_get_persistence_store()->add_lockout(
+        $ip,
+        wldelay_get_effective_lockout_username( $username, $options ),
+        $lockout_duration,
+        'password-reset',
+        'password-reset',
+        $transient_key
+    );
+
+    if ( ! $persisted ) {
+        wldelay_note_persistence_failure( $ip, 'password-reset' );
+
+        // Both durable and registry writes failed: drop the orphaned cache-only
+        // transient so recovery is never left with an undiscoverable lockout
+        // (see wldelay_lock_ip; Codex round-3 review).
+        if ( ! $registered ) {
+            delete_transient( $transient_key );
+        }
+    }
+
     wldelay_write_fail2ban_log( 'lockout', $ip, $username, 'password-reset' );
 }
 
@@ -3060,7 +4759,15 @@ function wldelay_get_password_reset_lockout_remaining_seconds( $ip = null, $user
     $transient_key = wldelay_get_password_reset_lockout_transient_key( $ip, $username );
     $locked_at = get_transient( $transient_key );
     if ( false === $locked_at ) {
-        return 0;
+        // Durable fallback (F-2-1). Called through the interface so any
+        // filtered backend supplies the countdown too.
+        $remaining = wldelay_get_persistence_store()->get_remaining_seconds(
+            $ip,
+            wldelay_get_effective_lockout_username( $username ),
+            'password-reset'
+        );
+
+        return max( 0, (int) $remaining );
     }
 
     $lockout_duration = wldelay_get_lockout_duration_seconds();
@@ -3121,7 +4828,12 @@ function wldelay_track_password_reset_attempt( $username ) {
 
     $failed_attempts++;
     set_transient( $transient_key, $failed_attempts, HOUR_IN_SECONDS );
-    wldelay_register_transient_key( $transient_key );
+    if ( ! wldelay_register_transient_key( $transient_key, time() + HOUR_IN_SECONDS ) ) {
+        // Same as the login counter: an unregistered, durable-less counter
+        // transient is undiscoverable by recovery, so fail open and drop it
+        // (Codex round-3 review).
+        delete_transient( $transient_key );
+    }
 
     if ( $lockout_enabled ) {
         $lockout_threshold = isset( $options['wldelay_lockout_threshold'] )
@@ -3221,7 +4933,14 @@ function wldelay_track_failed_attempt( $username, $source = null ) {
 
     $failed_attempts++;
     set_transient( $transient_key, $failed_attempts, HOUR_IN_SECONDS );
-    wldelay_register_transient_key( $transient_key );
+    if ( ! wldelay_register_transient_key( $transient_key, time() + HOUR_IN_SECONDS ) ) {
+        // The counter has no durable backing, so an unregistered counter
+        // transient (registry write failed during a DB outage while an external
+        // object cache still accepted the set_transient) is undiscoverable by
+        // recovery — flush would report success while it lingered. Fail open:
+        // drop it. Worst case the count restarts next request (Codex round-3 review).
+        delete_transient( $transient_key );
+    }
 
     // Check email notification threshold
     if ( $email_enabled ) {
@@ -3617,3 +5336,267 @@ function wldelay_filter_retrieve_password_message( $message, $key, $user_login, 
     return str_replace( $old_url, $new_url, $message );
 }
 add_filter( 'retrieve_password_message', 'wldelay_filter_retrieve_password_message', 10, 4 );
+
+// ==========================================================================
+// Login page lockout feedback (F-1-4)
+//
+// Pure frontend presentation over the existing auth/lockout data. Surfaces a
+// distinct, accessible status block on wp-login.php when the current IP is
+// locked, with a live countdown and a help link. No backend/auth behaviour
+// change and no new option keys — every value is derived from the existing
+// lockout helpers.
+// ==========================================================================
+
+/**
+ * Resolve the "Need help getting in?" link target for the login feedback block.
+ *
+ * Defaults to the site's lost-password URL (respecting any custom-login-slug
+ * filter already applied to lostpassword_url) and is filterable so site owners
+ * can point it at a support/docs page instead.
+ *
+ * @return string Help URL (unescaped; escape at output).
+ */
+function wldelay_login_help_url() {
+    /**
+     * Filter the help link shown in the login lockout feedback block.
+     *
+     * @param string $url Default help URL (the site's lost-password URL).
+     */
+    return apply_filters( 'wldelay_login_help_url', wp_lostpassword_url() );
+}
+
+/**
+ * Format a remaining-seconds value as a compact M:SS countdown string.
+ *
+ * Used for the static (no-JS) seed text; the inline JS reproduces the same
+ * format as it ticks down so the displayed value is consistent.
+ *
+ * @param int $seconds Remaining seconds (>= 0).
+ * @return string e.g. "1:59" or "0:08".
+ */
+function wldelay_format_countdown( $seconds ) {
+    $seconds = max( 0, (int) $seconds );
+    $minutes = (int) floor( $seconds / 60 );
+    $rest    = $seconds % 60;
+
+    return sprintf( '%d:%02d', $minutes, $rest );
+}
+
+/**
+ * Whether the login feedback block should render for the current request.
+ *
+ * True only when the lockout feature is enabled AND the current IP (optionally
+ * scoped to the submitted username) is locked. Cheap enough to gate the styles
+ * and footer-script hooks on without rebuilding the block markup.
+ *
+ * NOTE on the `ip_username` lockout strategy: the lockout transient is keyed on
+ * ip|username, but the submitted username is only available on the failed-login
+ * POST (via $_POST['log']). On a *fresh GET* of wp-login.php there is no
+ * username, so an ip_username lockout cannot be detected and the block does not
+ * render on that GET — it does render on the failed-POST re-render, which is the
+ * path a locked-out user actually takes. Under the default `ip` strategy the
+ * username is irrelevant and the block renders on GET and POST alike. The
+ * server-side gate in wldelay_auth_login() enforces the lockout regardless.
+ *
+ * @return bool
+ */
+function wldelay_login_feedback_active() {
+    $options = wldelay_get_options();
+
+    if ( empty( $options['wldelay_lockout_enabled'] ) ) {
+        return false;
+    }
+
+    $username = wldelay_get_requested_login_username();
+
+    return (bool) wldelay_is_ip_locked( null, $username );
+}
+
+/**
+ * Build the distinct, accessible lockout feedback block markup.
+ *
+ * Returns an empty string when the lockout feature is disabled or the current
+ * IP is not locked, so callers can safely concatenate the result. All dynamic
+ * values (remaining seconds, countdown text, help URL) are escaped here.
+ *
+ * @return string HTML for the block, or '' when nothing should render.
+ */
+function wldelay_render_login_lockout_block() {
+    if ( ! wldelay_login_feedback_active() ) {
+        return '';
+    }
+
+    $username  = wldelay_get_requested_login_username();
+    $remaining = wldelay_get_lockout_remaining_seconds( null, $username );
+
+    // Human-readable static fallback (shown when JS is off). human_time_diff
+    // gives a friendly "2 minutes" phrasing matching the WP error line.
+    $human_remaining = ( $remaining > 0 )
+        ? human_time_diff( time(), time() + $remaining )
+        : '';
+
+    $countdown_seed = wldelay_format_countdown( $remaining );
+
+    if ( $remaining > 0 ) {
+        $intro = sprintf(
+            /* translators: %s: human-readable remaining lockout time, e.g. "2 minutes". */
+            __( 'Too many failed login attempts. You can try again in %s.', 'login-delay-shield' ),
+            $human_remaining
+        );
+    } else {
+        $intro = __( 'You can try again now.', 'login-delay-shield' );
+    }
+
+    $help_url   = wldelay_login_help_url();
+    $help_label = __( 'Need help getting in?', 'login-delay-shield' );
+    $ready_text = __( 'You can try again now.', 'login-delay-shield' );
+    $prefix     = __( 'Try again in', 'login-delay-shield' );
+
+    $html  = '<div class="wldelay-login-status wldelay-login-status--locked" role="alert" aria-live="assertive">';
+    $html .= '<p class="wldelay-login-status__intro">' . esc_html( $intro ) . '</p>';
+    // The countdown line carries the seed seconds + ready text for the JS.
+    $html .= '<p class="wldelay-login-status__countdown"'
+        . ' data-wldelay-remaining="' . esc_attr( (string) max( 0, (int) $remaining ) ) . '"'
+        . ' data-wldelay-prefix="' . esc_attr( $prefix ) . '"'
+        . ' data-wldelay-ready="' . esc_attr( $ready_text ) . '">'
+        . esc_html( $prefix ) . ' <span class="wldelay-login-status__time">' . esc_html( $countdown_seed ) . '</span>'
+        . '</p>';
+    $html .= '<p class="wldelay-login-status__help">'
+        . '<a href="' . esc_url( $help_url ) . '">' . esc_html( $help_label ) . '</a>'
+        . '</p>';
+    $html .= '</div>';
+
+    return $html;
+}
+
+/**
+ * login_message filter: prepend the rich lockout block above the login form.
+ *
+ * Augments (does not replace) WordPress's own messaging. Returns the input
+ * unchanged when nothing should render, so a normal login page is untouched.
+ *
+ * @param string $message Existing login message markup.
+ * @return string
+ */
+function wldelay_login_message_lockout( $message ) {
+    $block = wldelay_render_login_lockout_block();
+
+    if ( '' === $block ) {
+        return $message;
+    }
+
+    return $block . $message;
+}
+add_filter( 'login_message', 'wldelay_login_message_lockout' );
+
+/**
+ * wp_login_errors filter: present the attempts-remaining warning in the same
+ * distinct styling so the user notices it.
+ *
+ * The auth code adds the 'wldelay_attempts_remaining' code to the WP_Error; we
+ * only wrap a marker class around the existing (unchanged) message so the login
+ * page CSS can style it as a warning variant. The message text is not altered.
+ *
+ * @param WP_Error $errors      Login errors.
+ * @param string   $redirect_to Redirect target (unused).
+ * @return WP_Error
+ */
+function wldelay_login_errors_warning( $errors, $redirect_to = '' ) {
+    if ( ! is_wp_error( $errors ) ) {
+        return $errors;
+    }
+
+    $messages = $errors->get_error_messages( 'wldelay_attempts_remaining' );
+    if ( empty( $messages ) ) {
+        return $errors;
+    }
+
+    // Re-wrap each attempts-remaining message with a warning marker. The text
+    // is escaped because WordPress prints login error messages without
+    // additional escaping.
+    $errors->remove( 'wldelay_attempts_remaining' );
+    foreach ( $messages as $msg ) {
+        $errors->add(
+            'wldelay_attempts_remaining',
+            '<span class="wldelay-login-warning">' . esc_html( $msg ) . '</span>'
+        );
+    }
+
+    return $errors;
+}
+add_filter( 'wp_login_errors', 'wldelay_login_errors_warning', 10, 2 );
+
+/**
+ * Inline login-page CSS for the feedback block.
+ *
+ * Scoped to login hooks only — admin.css is NOT loaded here. Kept small and
+ * CSP-friendly (no external assets).
+ */
+function wldelay_login_feedback_styles() {
+    if ( ! wldelay_login_feedback_active() ) {
+        return;
+    }
+
+    $css = '
+.wldelay-login-status{margin:0 0 16px;padding:14px 16px;border-left:4px solid #d63638;background:#fcf0f1;border-radius:3px;color:#1d2327;}
+.wldelay-login-status__intro{margin:0 0 6px;font-weight:600;}
+.wldelay-login-status__countdown{margin:0 0 6px;font-size:13px;}
+.wldelay-login-status__time{font-variant-numeric:tabular-nums;font-weight:600;}
+.wldelay-login-status__help{margin:0;font-size:13px;}
+.wldelay-login-status.is-ready{border-left-color:#00a32a;background:#edfaef;}
+.wldelay-login-warning{display:inline-block;border-left:4px solid #dba617;padding-left:8px;}
+';
+
+    wp_register_style( 'wldelay-login-feedback', false );
+    wp_enqueue_style( 'wldelay-login-feedback' );
+    wp_add_inline_style( 'wldelay-login-feedback', $css );
+}
+add_action( 'login_enqueue_scripts', 'wldelay_login_feedback_styles' );
+
+/**
+ * Inline, unobtrusive countdown JS printed in the login footer.
+ *
+ * Reads the seed seconds from the block's data attribute and ticks the time
+ * down each second, updating the visible M:SS text. On reaching zero it swaps
+ * in the "ready" message and re-enables the submit button. No external assets,
+ * no eval — CSP friendly. With JS off, the static seeded text remains visible.
+ */
+function wldelay_login_feedback_script() {
+    // Only emit the script when a block is actually rendered, to avoid adding
+    // inert script to every login page view. Gate on the cheap predicate rather
+    // than rebuilding the full block markup + re-reading the store.
+    if ( ! wldelay_login_feedback_active() ) {
+        return;
+    }
+
+    ?>
+<script>
+(function(){
+    var el = document.querySelector('.wldelay-login-status__countdown');
+    if(!el){return;}
+    var remaining = parseInt(el.getAttribute('data-wldelay-remaining'), 10);
+    if(isNaN(remaining)){return;}
+    var prefix = el.getAttribute('data-wldelay-prefix') || '';
+    var ready = el.getAttribute('data-wldelay-ready') || '';
+    var timeEl = el.querySelector('.wldelay-login-status__time');
+    var box = el.closest('.wldelay-login-status');
+    function fmt(s){var m=Math.floor(s/60);var r=s%60;return m + ':' + (r<10?'0':'') + r;}
+    function finish(){
+        el.textContent = ready;
+        if(box){box.classList.add('is-ready');}
+        // Re-enable only the submit button (this feature never disables other
+        // fields, so leave any third party's disabled fields untouched).
+        var btn = document.getElementById('wp-submit');
+        if(btn){btn.disabled = false;}
+    }
+    if(remaining <= 0){finish();return;}
+    var timer = setInterval(function(){
+        remaining -= 1;
+        if(remaining <= 0){clearInterval(timer);finish();return;}
+        if(timeEl){timeEl.textContent = fmt(remaining);}
+    }, 1000);
+})();
+</script>
+    <?php
+}
+add_action( 'login_footer', 'wldelay_login_feedback_script' );

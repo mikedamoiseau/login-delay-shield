@@ -25,8 +25,9 @@ class DashboardWidgetTest extends WP_UnitTestCase {
         $table_name = wldelay_get_log_table_name();
         $wpdb->query( "TRUNCATE TABLE $table_name" );
 
-        // Clear dashboard widget cache
-        delete_transient( 'wldelay_dashboard_attempts' );
+        // Clear dashboard widget sub-caches
+        delete_transient( WLDELAY_DASH_RECENT_CACHE );
+        delete_transient( WLDELAY_DASH_TRENDS_CACHE );
 
         parent::tearDown();
     }
@@ -62,6 +63,11 @@ class DashboardWidgetTest extends WP_UnitTestCase {
         global $wpdb;
         $table_name = wldelay_get_log_table_name();
         $wpdb->query( "TRUNCATE TABLE $table_name" );
+
+        // Drop any sub-caches a prior test primed so the widget rebuilds from the
+        // now-empty table rather than serving a stale recent-attempts list.
+        delete_transient( WLDELAY_DASH_RECENT_CACHE );
+        delete_transient( WLDELAY_DASH_TRENDS_CACHE );
 
         ob_start();
         wldelay_dashboard_widget_content();
@@ -336,13 +342,16 @@ class DashboardWidgetTest extends WP_UnitTestCase {
     }
 
     /**
-     * Test widget can refresh stale cached data from the previous cache shape.
+     * Test widget rebuilds the recent sub-cache when only the trends cache is primed.
      */
-    public function test_widget_refreshes_legacy_attempts_cache_shape() {
+    public function test_widget_rebuilds_recent_when_only_trends_cached() {
         wldelay_create_log_table();
         wldelay_log_failed_attempt( '192.168.1.210', 'cached-user', 'wp-login' );
 
-        set_transient( 'wldelay_dashboard_attempts', wldelay_get_recent_failed_attempts( 10 ), 2 * MINUTE_IN_SECONDS );
+        // Prime only the trends sub-cache; leave recent unset so the widget must
+        // rebuild it independently.
+        set_transient( WLDELAY_DASH_TRENDS_CACHE, wldelay_get_failed_login_trends( 7 ), WLDELAY_DASH_TRENDS_TTL );
+        delete_transient( WLDELAY_DASH_RECENT_CACHE );
 
         ob_start();
         wldelay_dashboard_widget_content();
@@ -350,6 +359,7 @@ class DashboardWidgetTest extends WP_UnitTestCase {
 
         $this->assertStringContainsString( 'Failed login trends: last 7 days', $output );
         $this->assertStringContainsString( 'cached-user', $output );
+        $this->assertNotFalse( get_transient( WLDELAY_DASH_RECENT_CACHE ), 'Recent sub-cache should be rebuilt on miss' );
     }
 
     /**

@@ -4,9 +4,9 @@ Donate link: http://damoiseau.me/
 Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,password-protection
 Requires PHP: 7.4
 Requires at least: 3.5.1
-Tested up to: 6.9
-Version: 2.3.3
-Stable tag: 2.3.3
+Tested up to: 7.0
+Version: 2.3.4
+Stable tag: 2.3.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -96,7 +96,7 @@ A dashboard widget shows the 10 most recent failed login attempts, including the
 
 = How do I use fail2ban logging? =
 
-Enable fail2ban logging under `Settings` > `Login Delay Shield` > `Login Log`. If the log path is empty, Login Delay Shield writes to `login-delay-shield-fail2ban/login-delay-shield-fail2ban.log` in a plugin-owned temporary directory outside the WordPress uploads tree and adds basic `.htaccess`/`index.html` protections. Custom paths are restricted to the protected default directory by default; use the `wldelay_fail2ban_allowed_log_dirs` filter only for server-protected directories. If a custom path is rejected, logging is disabled instead of silently writing somewhere else. If lockout-event logging is enabled, an attempt that triggers a lockout may produce both a `failed login` line and a `lockout` line, so tune your jail's `maxretry` accordingly.
+Enable fail2ban logging under `Settings` > `Login Delay Shield` > `Login Log`. If the log path is empty, Login Delay Shield writes to `login-delay-shield-fail2ban/login-delay-shield-fail2ban.log` in a plugin-owned temporary directory outside the WordPress uploads tree and adds basic `.htaccess`/`index.html` protections. Custom paths are restricted to the protected default directory by default; use the `wldelay_fail2ban_allowed_log_dirs` filter only for server-protected directories. If a custom path is rejected, logging is disabled instead of silently writing somewhere else. If lockout-event logging is enabled, an attempt that triggers a lockout may produce both a `failed login` line and a `lockout` line, so tune your jail's `maxretry` accordingly. The log is rotated to a single `.log.1` backup once it reaches 5 MB so it cannot grow without bound; adjust or disable this with the `wldelay_fail2ban_max_log_bytes` filter (return `0` to rely on system logrotate instead).
 
 Log lines include an ISO-8601 timestamp, stable prefix, and fields such as:
 
@@ -166,6 +166,16 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.3.4 =
+fail2ban logging hardening.
+
+**Improvements:**
+* The fail2ban log is now rotated to a single `.log.1` backup once it reaches 5 MB, preventing unbounded growth on installs without external log rotation. Configure or disable via the new `wldelay_fail2ban_max_log_bytes` filter.
+* Web-server protection files (`.htaccess`, `index.html`, `index.php`) are now written to every fail2ban log directory, including custom directories added via the `wldelay_fail2ban_allowed_log_dirs` filter.
+
+**Maintenance:**
+* Added an uninstall routine that removes plugin options, the failed-login log table, registered transients, and the plugin-owned fail2ban log directory when the plugin is deleted (multisite-aware). Custom fail2ban log paths are left untouched.
 
 = 2.3.3 =
 Security Setup Wizard.

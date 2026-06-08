@@ -44,3 +44,8 @@ tests_add_filter( 'muplugins_loaded', '_manually_load_plugin' );
 
 // Start up the WP testing environment.
 require "{$_tests_dir}/includes/bootstrap.php";
+
+// Declarative integration-test fixture builder (F-2-5). Loaded after WP so it
+// can reference plugin functions; not a *Test.php file, so it is not picked up
+// by the test-suite directory glob and must be required explicitly.
+require_once __DIR__ . '/integration/fixtures/class-wldelay-test-fixture.php';

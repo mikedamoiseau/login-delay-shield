@@ -154,6 +154,63 @@
     vertical-align: middle;
 }
 
+/* Onboarding CTA card (dashboard widget) */
+.wldelay-onboarding-cta {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border: 1px solid #c3d4e6;
+    border-left: 4px solid #2271b1;
+    border-radius: 4px;
+    background: #f0f6fc;
+}
+
+.wldelay-onboarding-cta-title {
+    margin: 0 0 6px;
+    font-size: 14px;
+    color: #1d2327;
+}
+
+.wldelay-onboarding-cta-title .dashicons {
+    color: #2271b1;
+    vertical-align: text-bottom;
+}
+
+.wldelay-onboarding-cta-score {
+    margin: 0 0 8px;
+    color: #1d2327;
+}
+
+.wldelay-onboarding-cta-subhead {
+    margin: 0 0 4px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.wldelay-onboarding-cta-list {
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+}
+
+.wldelay-onboarding-cta-list li {
+    margin: 0 0 4px;
+    color: #1d2327;
+}
+
+.wldelay-onboarding-cta-list .dashicons-warning {
+    color: #8a6d00;
+    vertical-align: text-bottom;
+}
+
+.wldelay-onboarding-cta-points {
+    color: #50575e;
+    font-size: 12px;
+}
+
+.wldelay-onboarding-cta-action {
+    margin: 0;
+}
+
 /* ==========================================================================
    Settings Page Styles
    ========================================================================== */
@@ -202,6 +259,14 @@
 .wldelay-card-header:focus-visible {
     outline: 2px solid #2271b1;
     outline-offset: -2px;
+}
+
+/* Pressed cue for the disclosure. Enter/Space fire :active on a focused
+   role="button", so keyboard users get the same momentary feedback as a
+   mouse press instead of only a static focus ring (R1-2). */
+.wldelay-card-header:active {
+    background: #e5e5e5;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .wldelay-card-header .dashicons {
@@ -889,6 +954,15 @@
     gap: 12px;
 }
 
+/* Below ~600px the 180px min-track wedges two cramped columns side by side;
+   collapse to a single full-width column so each field stays usable on narrow
+   and tablet widths (R1-9). */
+@media (max-width: 600px) {
+    .wldelay-filter-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .wldelay-filter-grid label {
     display: flex;
     flex-direction: column;
@@ -941,6 +1015,31 @@
     background: #fff;
 }
 
+.wldelay-active-lockouts-table {
+    margin-top: 8px;
+}
+
+/* The lockout table is dense and the Unlock button is destructive, so give
+   each cell breathing room and a row-hover highlight to tie the button back to
+   its IP/username and cut misclicks (R1-5). */
+.wldelay-active-lockouts-table td,
+.wldelay-active-lockouts-table th {
+    padding: 8px 10px;
+}
+
+.wldelay-active-lockouts-table tbody tr:hover td {
+    background: #f0f6fc;
+}
+
+.wldelay-unlock-form,
+.wldelay-clear-all-form {
+    margin: 0;
+}
+
+.wldelay-clear-all {
+    margin-top: 12px;
+}
+
 .wldelay-pagination {
     margin-top: 12px;
 }
@@ -949,4 +1048,48 @@
     display: inline-block;
     margin: 0 8px;
     color: #50575e;
+}
+
+/* Changelog / "What's New" page (F-5-5). */
+.wldelay-changelog-entry {
+    padding: 4px 0 8px;
+    border-top: 1px solid #dcdcde;
+    margin-top: 12px;
+}
+
+.wldelay-changelog-entry:first-of-type {
+    border-top: 0;
+    margin-top: 0;
+}
+
+.wldelay-changelog-entry--current {
+    border-left: 4px solid #2271b1;
+    padding-left: 12px;
+    background: #f0f6fc;
+}
+
+.wldelay-changelog-current-badge {
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    /* Neutralise the <mark> UA yellow highlight; the brand-blue text on the
+       page background keeps the existing look while <mark> supplies semantics. */
+    background: transparent;
+    color: #135e96;
+    vertical-align: middle;
+}
+
+.wldelay-changelog-summary {
+    font-weight: 600;
+    margin: 0 0 8px;
+}
+
+.wldelay-changelog-items {
+    list-style: disc;
+    margin: 0 0 12px 20px;
+}
+
+.wldelay-changelog-older {
+    color: #50575e;
+    font-style: italic;
 }

@@ -7,24 +7,54 @@
 # only download new packages.
 #
 # Usage:
-#   ./bin/test.sh                       # full suite (unit + integration)
-#   ./bin/test.sh --testsuite=unit      # unit tests only
+#   ./bin/test.sh                       # full suite: unit + integration
+#   ./bin/test.sh --configuration phpunit-unit.xml   # unit tests only
 #   ./bin/test.sh --filter Whitelist    # forward args to phpunit
+#
+# The unit and integration suites require different PHPUnit bootstraps
+# (unit uses Brain Monkey with no WordPress; integration loads the WP test
+# harness), so they cannot share a single phpunit config. With no args this
+# script therefore runs both configs sequentially -- unit first, then
+# integration -- and fails if either suite fails. Any arguments are
+# forwarded verbatim to a single phpunit invocation, so passing an explicit
+# --configuration / --testsuite / --filter runs exactly that.
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="login-delay-shield-dev:latest"
 COMPOSER_CACHE_VOLUME="login-delay-shield-composer-cache"
 
+# Tag the dev image by a fingerprint of the Dockerfile content rather than a
+# fixed ":latest". A Dockerfile change (e.g. F-4-7 adding the pcntl extension
+# that PHPUnit's php-invoker needs to enforce defaultTimeLimit) produces a new
+# tag, so an existing local image is NOT silently reused — the missing-tag
+# check below rebuilds. Unchanged Dockerfile => same tag => no rebuild, no
+# per-run `docker build` overhead.
+if command -v sha256sum >/dev/null 2>&1; then
+    DOCKERFILE_HASH="$(sha256sum "$REPO_DIR/Dockerfile" | cut -c1-12)"
+else
+    DOCKERFILE_HASH="$(shasum -a 256 "$REPO_DIR/Dockerfile" | cut -c1-12)"
+fi
+IMAGE="login-delay-shield-dev:${DOCKERFILE_HASH}"
+
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    echo ">>> Building $IMAGE (first run; ~3 min)..."
+    echo ">>> Building $IMAGE (Dockerfile changed or first run; ~3 min)..."
     docker build -t "$IMAGE" "$REPO_DIR"
 fi
 
 TTY_FLAG=""
 if [ -t 0 ]; then
     TTY_FLAG="-t"
+fi
+
+# With no args, run both suites (separate bootstraps -> separate configs).
+# With args, forward them verbatim to a single phpunit invocation. The inner
+# command text is a fixed literal; caller arguments are passed as positional
+# parameters ("$@") so they are never reparsed as shell source.
+if [ "$#" -eq 0 ]; then
+    PHPUNIT_CMD='echo ">>> Unit suite" && vendor/bin/phpunit --configuration phpunit-unit.xml && echo ">>> Integration suite" && vendor/bin/phpunit --configuration phpunit.xml.dist'
+else
+    PHPUNIT_CMD='vendor/bin/phpunit "$@"'
 fi
 
 docker run --rm -i $TTY_FLAG \
@@ -35,4 +65,4 @@ docker run --rm -i $TTY_FLAG \
     -e WP_CORE_DIR=/tmp/wordpress \
     -w /app \
     "$IMAGE" \
-    bash -c "composer install --prefer-dist --no-interaction && vendor/bin/phpunit $*"
+    bash -c 'php -m | grep -qx pcntl || { echo "ERROR: pcntl extension missing — per-test timeouts (enforceTimeLimit) would silently no-op. Rebuild the image." >&2; exit 1; }; composer install --prefer-dist --no-interaction && ('"$PHPUNIT_CMD"')' bash "$@"
