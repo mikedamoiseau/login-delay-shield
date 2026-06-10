@@ -91,6 +91,10 @@ add_filter( 'plugin_action_links_' . plugin_basename( WLDELAY_PLUGIN_FILE ), 'wl
  * Dashboard Widget
  */
 function wldelay_add_dashboard_widget() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
     wp_add_dashboard_widget(
         'wldelay_failed_logins_widget',
         __( 'Recent Failed Login Attempts', 'login-delay-shield' ),
@@ -2313,6 +2317,11 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 }
 
 function wldelay_dashboard_widget_content() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        echo '<p>' . esc_html__( 'You do not have permission to view Login Delay Shield telemetry.', 'login-delay-shield' ) . '</p>';
+        return;
+    }
+
     // Onboarding CTA (F-1-7): render BEFORE the no-attempts early return so a
     // brand-new install (0 attempts, 0% score) still sees the prompt to run the
     // Setup Wizard. The CTA self-suppresses once the score reaches 50%.
@@ -2544,7 +2553,8 @@ function wldelay_render_dashboard_onboarding_cta() {
  *     peak_day:array{date:string,count:int},
  *     daily_counts:array<int,array{date:string,count:int}>,
  *     source_counts:array<int,array{source:string,count:int}>,
- *     top_ips:array<int,array{ip_address:string,count:int}>
+ *     top_ips:array<int,array{ip_address:string,count:int}>,
+ *     top_usernames:array<int,array{username:string,count:int}>
  * }
  */
 function wldelay_get_failed_login_trends( $days = 7 ) {
@@ -2641,6 +2651,28 @@ function wldelay_get_failed_login_trends( $days = 7 ) {
         );
     }
 
+    $username_rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT username, COUNT(*) AS failures
+            FROM $table_name
+            WHERE attempted_at >= %s
+                AND username IS NOT NULL
+                AND TRIM(username) <> ''
+            GROUP BY username
+            ORDER BY failures DESC, username ASC
+            LIMIT 3",
+            $cutoff
+        )
+    );
+
+    $top_usernames = array();
+    foreach ( $username_rows as $row ) {
+        $top_usernames[] = array(
+            'username' => (string) $row->username,
+            'count'    => (int) $row->failures,
+        );
+    }
+
     return array(
         'window_days'    => $days,
         'total_attempts' => $total_attempts,
@@ -2648,6 +2680,7 @@ function wldelay_get_failed_login_trends( $days = 7 ) {
         'daily_counts'   => $daily_counts,
         'source_counts'  => $source_counts,
         'top_ips'        => $top_ips,
+        'top_usernames'  => $top_usernames,
     );
 }
 
@@ -2663,6 +2696,7 @@ function wldelay_render_dashboard_trends( $trends ) {
     $daily_counts = isset( $trends['daily_counts'] ) && is_array( $trends['daily_counts'] ) ? $trends['daily_counts'] : array();
     $source_counts = isset( $trends['source_counts'] ) && is_array( $trends['source_counts'] ) ? $trends['source_counts'] : array();
     $top_ips = isset( $trends['top_ips'] ) && is_array( $trends['top_ips'] ) ? $trends['top_ips'] : array();
+    $top_usernames = isset( $trends['top_usernames'] ) && is_array( $trends['top_usernames'] ) ? $trends['top_usernames'] : array();
 
     echo '<div class="wldelay-widget-trends" aria-labelledby="wldelay-widget-trends-title">';
     echo '<h3 id="wldelay-widget-trends-title" class="wldelay-widget-trends-title">';
@@ -2732,6 +2766,19 @@ function wldelay_render_dashboard_trends( $trends ) {
     } else {
         foreach ( $top_ips as $ip_count ) {
             echo '<li><span>' . esc_html( $ip_count['ip_address'] ) . '</span><strong>' . esc_html( number_format_i18n( (int) $ip_count['count'] ) ) . '</strong></li>';
+        }
+    }
+    echo '</ol>';
+    echo '</section>';
+
+    echo '<section class="wldelay-trend-card" aria-labelledby="wldelay-trend-usernames-title">';
+    echo '<h4 id="wldelay-trend-usernames-title">' . esc_html__( 'Top usernames', 'login-delay-shield' ) . '</h4>';
+    echo '<ol class="wldelay-trend-list wldelay-trend-list-ordered">';
+    if ( empty( $top_usernames ) ) {
+        echo '<li><span>' . esc_html__( 'No recent data', 'login-delay-shield' ) . '</span><strong>0</strong></li>';
+    } else {
+        foreach ( $top_usernames as $username_count ) {
+            echo '<li><span>' . esc_html( $username_count['username'] ) . '</span><strong>' . esc_html( number_format_i18n( (int) $username_count['count'] ) ) . '</strong></li>';
         }
     }
     echo '</ol>';

@@ -5,6 +5,13 @@
 
 class DashboardOnboardingTest extends WP_UnitTestCase {
 
+    public function setUp(): void {
+        parent::setUp();
+
+        $admin_id = $this->factory->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $admin_id );
+    }
+
     /**
      * Reset options and dashboard sub-caches after each test.
      */
