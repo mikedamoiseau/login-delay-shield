@@ -1,0 +1,30 @@
+name: Generate Screenshots
+
+# On-demand regeneration of the wordpress.org listing screenshots (F-5-5).
+# Produces the four screenshot-N.png files as a build artifact for human
+# review — nothing is committed automatically. Download the artifact,
+# inspect, then commit to .wordpress-org/ and copy to the SVN assets/ dir.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  screenshots:
+    name: Capture wordpress.org screenshots
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Generate screenshots
+        run: ./bin/screenshots.sh
+
+      - name: Upload screenshots artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: wordpress-org-screenshots
+          path: .wordpress-org/screenshot-*.png
+          if-no-files-found: error
+          retention-days: 14
