@@ -92,7 +92,7 @@ When enabled, the plugin tracks failed login attempts per IP address. Once the t
 
 = Where can I see failed login attempts? =
 
-A dashboard widget shows the 10 most recent failed login attempts, including the time, username attempted, IP address, and source. It also includes a lightweight 7-day trends panel with daily totals, top sources, top IPs, and top targeted usernames.
+A dashboard widget shows the 10 most recent failed login attempts, including the time, username attempted, IP address, and source. It also includes a lightweight 7-day trends panel with daily totals, top sources, top IPs, and top targeted usernames. The widget is only visible to administrators (`manage_options`). Note: because the log records whatever was typed into the username field, a user who accidentally types their password there will have it shown in the widget and stored in the log — treat the log as sensitive.
 
 = How do I use fail2ban logging? =
 

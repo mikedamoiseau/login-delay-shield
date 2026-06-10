@@ -43,6 +43,46 @@ class DashboardWidgetTest extends WP_UnitTestCase {
     }
 
     /**
+     * Test that the dashboard widget is not registered for users without
+     * manage_options (e.g. subscribers, who can see the WP dashboard).
+     */
+    public function test_widget_not_registered_for_non_admin() {
+        global $wp_meta_boxes;
+
+        require_once ABSPATH . 'wp-admin/includes/dashboard.php';
+
+        $subscriber_id = $this->factory->user->create( array( 'role' => 'subscriber' ) );
+        wp_set_current_user( $subscriber_id );
+
+        $wp_meta_boxes = array();
+        set_current_screen( 'dashboard' );
+        wldelay_add_dashboard_widget();
+
+        $registered = isset( $wp_meta_boxes['dashboard']['normal']['core']['wldelay_failed_logins_widget'] );
+        $this->assertFalse( $registered, 'Widget should not be registered for users without manage_options' );
+
+        set_current_screen( 'front' );
+    }
+
+    /**
+     * Test that the dashboard widget is registered for administrators.
+     */
+    public function test_widget_registered_for_admin() {
+        global $wp_meta_boxes;
+
+        require_once ABSPATH . 'wp-admin/includes/dashboard.php';
+
+        $wp_meta_boxes = array();
+        set_current_screen( 'dashboard' );
+        wldelay_add_dashboard_widget();
+
+        $registered = isset( $wp_meta_boxes['dashboard']['normal']['core']['wldelay_failed_logins_widget'] );
+        $this->assertTrue( $registered, 'Widget should be registered for administrators' );
+
+        set_current_screen( 'front' );
+    }
+
+    /**
      * Test that dashboard widget telemetry requires administrator capability.
      */
     public function test_widget_requires_manage_options_capability() {
