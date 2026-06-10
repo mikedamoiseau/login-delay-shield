@@ -68,6 +68,7 @@ class LDS_Settings_View {
 
             <?php echo $this->render_summary_box(); ?>
             <?php $this->render_2fa_health_notice(); ?>
+            <?php $this->render_proxy_health_notice(); ?>
             <?php $this->render_enumeration_hardening_notice(); ?>
             <?php $this->render_object_cache_notice(); ?>
 
@@ -493,6 +494,49 @@ class LDS_Settings_View {
             </span>
         </div>
         <?php
+    }
+
+    /**
+     * Render a proxy/CDN configuration health notice.
+     *
+     * Surfaces the two dangerous misconfigurations: proxy headers present
+     * while trust is disabled (every visitor shares the CDN IP — one attacker
+     * locks out everyone), and trust enabled with no proxy in front (any
+     * attacker can spoof their IP). Silent when nothing is wrong.
+     */
+    private function render_proxy_health_notice() {
+        $health = wldelay_get_proxy_health_status();
+
+        if ( 'misconfigured-cdn' === $health['status'] ) {
+            ?>
+            <div class="wldelay-health-notice" role="note">
+                <span class="dashicons dashicons-warning" aria-hidden="true"></span>
+                <span>
+                    <strong><?php esc_html_e( 'Proxy check:', 'login-delay-shield' ); ?></strong>
+                    <?php
+                    printf(
+                        /* translators: %s: comma-separated list of detected proxy headers, e.g. "CF-Connecting-IP, X-Forwarded-For". */
+                        esc_html__( 'This site appears to be behind a proxy or CDN (detected: %s), but "Trust proxy headers" is disabled. Visitors currently share the proxy\'s IP address, so a single attacker could lock out all users. Enable "Trust proxy headers" under Advanced settings.', 'login-delay-shield' ),
+                        esc_html( implode( ', ', $health['headers'] ) )
+                    );
+                    ?>
+                </span>
+            </div>
+            <?php
+            return;
+        }
+
+        if ( 'spoofable' === $health['status'] ) {
+            ?>
+            <div class="wldelay-health-notice" role="note">
+                <span class="dashicons dashicons-warning" aria-hidden="true"></span>
+                <span>
+                    <strong><?php esc_html_e( 'Proxy check:', 'login-delay-shield' ); ?></strong>
+                    <?php esc_html_e( '"Trust proxy headers" is enabled, but no proxy headers were detected on this request. If this site is not behind a proxy or CDN, attackers can spoof their IP address to bypass lockouts — disable "Trust proxy headers" under Advanced settings.', 'login-delay-shield' ); ?>
+                </span>
+            </div>
+            <?php
+        }
     }
 
     /**
@@ -1479,7 +1523,7 @@ class LDS_Settings_View {
             ! empty( $this->options['wldelay_trust_proxy_headers'] ) ? 'checked="checked"' : ''
         );
         echo $this->tooltip( __( 'Enable this only if your site is behind a reverse proxy or load balancer (e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct connection IP is used, preventing attackers from spoofing their IP address.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_trust_proxy_desc" class="description">' . esc_html__( 'Leave disabled unless behind a trusted proxy. Enabling this on a non-proxied site allows IP spoofing.', 'login-delay-shield' ) . '</p>';
+        echo '<p id="wldelay_trust_proxy_desc" class="description">' . esc_html__( 'Required when behind a proxy or CDN (Cloudflare, Sucuri, nginx) so visitors are identified by their real IP. Supported headers: CF-Connecting-IP (validated against Cloudflare\'s published IP ranges), X-Sucuri-ClientIP, Client-IP, X-Real-IP, X-Forwarded-For. Leave disabled on direct-connection sites — enabling it there allows IP spoofing.', 'login-delay-shield' ) . '</p>';
     }
 
     /**
@@ -1647,7 +1691,19 @@ class LDS_Settings_View {
      * Print custom login section info
      */
     public function print_custom_login_section_info() {
-        // Description is now in card structure
+        // Bookmark warning + recovery instructions. Competing login-URL
+        // plugins are notorious for stranding admins behind a 404; surfacing
+        // the recovery path BEFORE enabling is deliberate.
+        echo '<p class="description">' . esc_html__( 'After enabling, bookmark your new login URL immediately — the standard wp-login.php will return a 404. The new URL is also emailed to the site admin, and the plugin verifies the URL works before leaving the feature enabled.', 'login-delay-shield' ) . '</p>';
+        printf(
+            '<p class="description">%s</p>',
+            sprintf(
+                /* translators: 1: WLDELAY_DISABLE_CUSTOM_LOGIN constant code snippet, 2: wp-config.php file name. */
+                esc_html__( 'Emergency recovery: add %1$s to %2$s to restore wp-login.php at any time, without disabling the plugin.', 'login-delay-shield' ),
+                '<code>define( \'WLDELAY_DISABLE_CUSTOM_LOGIN\', true );</code>',
+                '<code>wp-config.php</code>'
+            )
+        );
     }
 
     /**

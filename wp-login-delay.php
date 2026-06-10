@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.3.4' );
+define( 'WLDELAY_VERSION', '2.4.0' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
@@ -36,7 +36,7 @@ define( 'WLDELAY_DASH_TRENDS_TTL', 5 * MINUTE_IN_SECONDS );
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC/password-reset protection, custom login URL, and email alerts.
-Version: 2.3.4
+Version: 2.4.0
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
@@ -3200,6 +3200,11 @@ add_action( 'admin_notices', 'wldelay_show_whats_new_notice' );
  */
 function wldelay_get_version_highlights( $version ) {
     $highlights = array(
+        '2.4.0' => array(
+            __( 'Proxy/CDN-aware IP detection — Cloudflare, Sucuri, and nginx headers are now supported, with spoof-proof validation of CF-Connecting-IP.', 'login-delay-shield' ),
+            __( 'A proxy health check warns about the misconfigurations that cause mass lockouts or IP spoofing.', 'login-delay-shield' ),
+            __( 'New safety nets: the WLDELAY_SAFE_MODE emergency constant, and a Custom Login URL self-check that auto-disables instead of locking everyone out.', 'login-delay-shield' ),
+        ),
         '2.3.3' => array(
             __( 'Security Setup Wizard — apply Conservative, Balanced, or Aggressive protection profiles in one step.', 'login-delay-shield' ),
             __( 'Profiles configure delay, lockout, alerts, and authentication endpoints while keeping every control editable.', 'login-delay-shield' ),
@@ -3489,31 +3494,185 @@ function wldelay_get_delay_value( $failure_count = 0 ) {
     return $delay;
 }
 
+/**
+ * Cloudflare edge IP ranges, bundled statically so validating the
+ * CF-Connecting-IP header never requires an external request.
+ *
+ * Source: https://www.cloudflare.com/ips/ — these ranges change very rarely;
+ * override or extend with the `wldelay_cloudflare_ip_ranges` filter if they
+ * drift before a plugin update catches up.
+ *
+ * @return string[] CIDR ranges (IPv4 and IPv6).
+ */
+function wldelay_get_cloudflare_ip_ranges() {
+    $ranges = array(
+        // IPv4.
+        '173.245.48.0/20',
+        '103.21.244.0/22',
+        '103.22.200.0/22',
+        '103.31.4.0/22',
+        '141.101.64.0/18',
+        '108.162.192.0/18',
+        '190.93.240.0/20',
+        '188.114.96.0/20',
+        '197.234.240.0/22',
+        '198.41.128.0/17',
+        '162.158.0.0/15',
+        '104.16.0.0/13',
+        '104.24.0.0/14',
+        '172.64.0.0/13',
+        '131.0.72.0/22',
+        // IPv6.
+        '2400:cb00::/32',
+        '2606:4700::/32',
+        '2803:f800::/32',
+        '2405:b500::/32',
+        '2405:8100::/32',
+        '2a06:98c0::/29',
+        '2c0f:f248::/32',
+    );
+
+    /**
+     * Filters the Cloudflare IP ranges used to validate CF-Connecting-IP.
+     *
+     * @param string[] $ranges CIDR ranges.
+     */
+    return apply_filters( 'wldelay_cloudflare_ip_ranges', $ranges );
+}
+
+/**
+ * Whether the TCP peer (REMOTE_ADDR) is a Cloudflare edge server.
+ *
+ * @param string $remote_addr The REMOTE_ADDR value.
+ * @return bool
+ */
+function wldelay_is_cloudflare_remote_addr( $remote_addr ) {
+    if ( '' === $remote_addr || false === filter_var( $remote_addr, FILTER_VALIDATE_IP ) ) {
+        return false;
+    }
+
+    foreach ( wldelay_get_cloudflare_ip_ranges() as $range ) {
+        if ( wldelay_ip_in_range( $remote_addr, $range ) ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function wldelay_get_client_ip() {
     $options = get_option( WLDELAY_OPTION_NAME, [] );
     $trust_proxy = ! empty( $options['wldelay_trust_proxy_headers'] );
 
+    $remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? trim( $_SERVER['REMOTE_ADDR'] ) : '';
     $ip = '';
 
-    // Only check proxy headers if explicitly trusted (they can be spoofed)
+    // Only check proxy headers if explicitly trusted (they can be spoofed).
     if ( $trust_proxy ) {
-        $client_ip = isset( $_SERVER['HTTP_CLIENT_IP'] ) ? trim( $_SERVER['HTTP_CLIENT_IP'] ) : '';
-        $forwarded = isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ? trim( $_SERVER['HTTP_X_FORWARDED_FOR'] ) : '';
+        $candidates = array();
 
-        if ( ! empty( $client_ip ) ) {
-            $ip = $client_ip;
-        } elseif ( ! empty( $forwarded ) ) {
-            // Take the first IP (client IP) from the chain
-            $ip = trim( explode( ',', $forwarded )[0] );
+        // CF-Connecting-IP is only honored when the TCP peer really is a
+        // Cloudflare edge — anyone can send the header, only Cloudflare can
+        // send it from a Cloudflare IP. Most specific header, checked first.
+        if ( isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) && wldelay_is_cloudflare_remote_addr( $remote_addr ) ) {
+            $candidates[] = $_SERVER['HTTP_CF_CONNECTING_IP'];
+        }
+
+        // Sucuri firewall.
+        if ( isset( $_SERVER['HTTP_X_SUCURI_CLIENTIP'] ) ) {
+            $candidates[] = $_SERVER['HTTP_X_SUCURI_CLIENTIP'];
+        }
+
+        if ( isset( $_SERVER['HTTP_CLIENT_IP'] ) ) {
+            $candidates[] = $_SERVER['HTTP_CLIENT_IP'];
+        }
+
+        // nginx reverse-proxy convention.
+        if ( isset( $_SERVER['HTTP_X_REAL_IP'] ) ) {
+            $candidates[] = $_SERVER['HTTP_X_REAL_IP'];
+        }
+
+        if ( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
+            // Take the first IP (client IP) from the chain.
+            $candidates[] = explode( ',', $_SERVER['HTTP_X_FORWARDED_FOR'] )[0];
+        }
+
+        foreach ( $candidates as $candidate ) {
+            $candidate = trim( $candidate );
+            // A garbage header value falls through to the next candidate (and
+            // ultimately REMOTE_ADDR) instead of poisoning lockout keys.
+            if ( '' !== $candidate && false !== filter_var( $candidate, FILTER_VALIDATE_IP ) ) {
+                $ip = $candidate;
+                break;
+            }
         }
     }
 
     // Fall back to REMOTE_ADDR (the actual TCP connection IP)
-    if ( empty( $ip ) && ! empty( $_SERVER['REMOTE_ADDR'] ) ) {
-        $ip = $_SERVER['REMOTE_ADDR'];
+    if ( empty( $ip ) && '' !== $remote_addr ) {
+        $ip = $remote_addr;
     }
 
     return sanitize_text_field( trim( $ip ) );
+}
+
+/**
+ * Detect proxy/CDN forwarding headers on the current request.
+ *
+ * @return string[] Human-readable names of the headers present.
+ */
+function wldelay_detect_proxy_headers() {
+    $known = array(
+        'HTTP_CF_CONNECTING_IP'  => 'CF-Connecting-IP',
+        'HTTP_X_SUCURI_CLIENTIP' => 'X-Sucuri-ClientIP',
+        'HTTP_X_REAL_IP'         => 'X-Real-IP',
+        'HTTP_X_FORWARDED_FOR'   => 'X-Forwarded-For',
+        'HTTP_CLIENT_IP'         => 'Client-IP',
+    );
+
+    $present = array();
+    foreach ( $known as $key => $label ) {
+        if ( ! empty( $_SERVER[ $key ] ) ) {
+            $present[] = $label;
+        }
+    }
+
+    return $present;
+}
+
+/**
+ * Proxy-configuration health status for the settings page.
+ *
+ * Mass lockouts on Cloudflare sites are the most painful misconfiguration
+ * this plugin can cause: with proxy trust disabled every visitor shares the
+ * CDN's IP, so one attacker locks out everyone. The inverse is just as bad —
+ * trust enabled on a direct-connection site lets attackers spoof any IP.
+ * This check surfaces both, next to the security score.
+ *
+ * @return array {
+ *     @type string   $status  'misconfigured-cdn' | 'spoofable' | 'ok' | 'none'.
+ *     @type string[] $headers Proxy headers present on the current request.
+ * }
+ */
+function wldelay_get_proxy_health_status() {
+    $options     = wldelay_get_options();
+    $trust_proxy = ! empty( $options['wldelay_trust_proxy_headers'] );
+    $headers     = wldelay_detect_proxy_headers();
+
+    if ( ! $trust_proxy && ! empty( $headers ) ) {
+        $status = 'misconfigured-cdn';
+    } elseif ( $trust_proxy && empty( $headers ) ) {
+        $status = 'spoofable';
+    } elseif ( $trust_proxy ) {
+        $status = 'ok';
+    } else {
+        $status = 'none';
+    }
+
+    return array(
+        'status'  => $status,
+        'headers' => $headers,
+    );
 }
 
 /**
@@ -4176,6 +4335,58 @@ add_action( 'delete_option_wldelay_options', 'wldelay_clear_whitelist_cache' );
  * @param string|null $ip Optional IP to check. Defaults to client IP.
  * @return bool True if IP is whitelisted
  */
+/**
+ * Check whether safe mode is active.
+ *
+ * Safe mode is an emergency kill switch for admins locked out of their own
+ * site: defining `WLDELAY_SAFE_MODE` as true in wp-config.php disables every
+ * delay, lockout, and tracking path (login, XML-RPC, REST, application
+ * passwords, password reset) — the plugin behaves as if every IP were
+ * whitelisted. Mirrors the WLDELAY_DISABLE_CUSTOM_LOGIN recovery pattern.
+ *
+ * A persistent admin notice is shown while safe mode is active so the
+ * disabled protection cannot go unnoticed (see wldelay_safe_mode_admin_notice).
+ *
+ * @return bool True when safe mode is active.
+ */
+function wldelay_is_safe_mode() {
+    $safe_mode = defined( 'WLDELAY_SAFE_MODE' ) && WLDELAY_SAFE_MODE;
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+        // Test-only override, ignored in production (same pattern as the
+        // WP_TESTS_DOMAIN exit guards): constants cannot be undefined, so the
+        // integration suite toggles safe mode through this filter instead.
+        $safe_mode = (bool) apply_filters( 'wldelay_test_safe_mode', $safe_mode );
+    }
+
+    return $safe_mode;
+}
+
+/**
+ * Warn administrators while safe mode is active.
+ *
+ * Protection silently disabled is worse than no protection: an admin who
+ * defines WLDELAY_SAFE_MODE to recover access and forgets to remove it would
+ * otherwise run unprotected indefinitely. Intentionally not dismissible.
+ */
+function wldelay_safe_mode_admin_notice() {
+    if ( ! wldelay_is_safe_mode() || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    printf(
+        '<div class="notice notice-warning"><p><strong>%s</strong> %s</p></div>',
+        esc_html__( 'Login Delay Shield safe mode is active.', 'login-delay-shield' ),
+        sprintf(
+            /* translators: 1: WLDELAY_SAFE_MODE constant name, 2: wp-config.php file name. */
+            esc_html__( 'All delays and lockouts are disabled. Remove the %1$s constant from %2$s to re-enable protection.', 'login-delay-shield' ),
+            '<code>WLDELAY_SAFE_MODE</code>',
+            '<code>wp-config.php</code>'
+        )
+    );
+}
+add_action( 'admin_notices', 'wldelay_safe_mode_admin_notice' );
+
 function wldelay_is_ip_whitelisted( $ip = null ) {
     $options = wldelay_get_options();
 
@@ -4413,7 +4624,7 @@ function wldelay_get_recent_failed_attempts( $limit = 20 ) {
  */
 function wldelay_on_login_failed( $username ) {
     // Skip if IP is whitelisted
-    if ( wldelay_is_ip_whitelisted() ) {
+    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted() ) {
         return;
     }
 
@@ -4451,7 +4662,7 @@ function wldelay_block_xmlrpc_auth( $user, $username, $password ) {
     }
 
     // Check if IP is whitelisted
-    if ( wldelay_is_ip_whitelisted() ) {
+    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted() ) {
         return $user;
     }
 
@@ -4502,7 +4713,7 @@ function wldelay_handle_rest_authentication( $errors ) {
         return $errors;
     }
 
-    if ( wldelay_is_ip_whitelisted() ) {
+    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted() ) {
         return $errors;
     }
 
@@ -4570,7 +4781,7 @@ function wldelay_handle_application_password_auth( $user, $username, $password )
         return $user;
     }
 
-    if ( wldelay_is_ip_whitelisted() ) {
+    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted() ) {
         return $user;
     }
 
@@ -4859,7 +5070,7 @@ function wldelay_handle_password_reset_request( $errors ) {
         return;
     }
 
-    if ( wldelay_is_ip_whitelisted() ) {
+    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted() ) {
         return;
     }
 
@@ -5006,7 +5217,7 @@ function wldelay_send_notification_email( $ip, $username, $attempts ) {
 
 function wldelay_auth_login ($user, $password) {
     // Check if IP is whitelisted - bypass all security measures
-    if ( wldelay_is_ip_whitelisted() ) {
+    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted() ) {
         return $user;
     }
 
@@ -5103,6 +5314,189 @@ function wldelay_custom_login_is_active() {
 function wldelay_get_custom_login_slug() {
     $options = wldelay_get_options();
     return isset( $options['wldelay_custom_login_slug'] ) ? trim( $options['wldelay_custom_login_slug'] ) : 'my-login';
+}
+
+/**
+ * Loopback self-check for the custom login URL.
+ *
+ * Requests the custom slug from the outside, the way a logged-out admin
+ * would. Competing login-URL plugins are notorious for stranding admins
+ * behind a 404 — this check catches that before it can happen.
+ *
+ * @param string $slug Custom login slug to probe.
+ * @return string 'ok' when the URL responds, 'unreachable' on a definitive
+ *                404, 'unverified' when the loopback request itself failed
+ *                (some hosts block loopback connections entirely).
+ */
+function wldelay_custom_login_self_check( $slug ) {
+    $url = home_url( '/' . rawurlencode( $slug ) . '/' );
+
+    $response = wp_remote_get(
+        $url,
+        array(
+            'timeout'   => 10,
+            // Self-signed certificates are common on staging/local hosts and
+            // irrelevant here — we only care whether the route resolves.
+            'sslverify' => false,
+        )
+    );
+
+    if ( is_wp_error( $response ) ) {
+        return 'unverified';
+    }
+
+    return ( 404 === (int) wp_remote_retrieve_response_code( $response ) ) ? 'unreachable' : 'ok';
+}
+
+/**
+ * React to custom-login settings changes: verify the new URL actually works
+ * and email it to the site admin as a recovery aid.
+ *
+ * Runs on update_option_wldelay_options whenever the feature is newly enabled
+ * or the slug changes while enabled. If the loopback self-check gets a
+ * definitive 404 the feature is auto-disabled — wp-login.php keeps working
+ * and the admin is told why — instead of stranding everyone behind a dead
+ * URL. An inconclusive check (blocked loopback) leaves the feature enabled
+ * but surfaces a warning.
+ *
+ * @param mixed $old_value Previous option value.
+ * @param mixed $value     New option value.
+ */
+function wldelay_custom_login_handle_settings_change( $old_value, $value ) {
+    // The auto-disable path below calls update_option on the same option,
+    // which re-fires this hook; the guard breaks the recursion.
+    static $running = false;
+    if ( $running ) {
+        return;
+    }
+
+    if ( defined( 'WP_TESTS_DOMAIN' ) && ! apply_filters( 'wldelay_test_enable_custom_login_self_check', false ) ) {
+        // Inside the integration suite every update_option('wldelay_options')
+        // would otherwise fire a real loopback request and an email. Tests
+        // that exercise this handler opt in through the filter; production
+        // ignores it (same pattern as the WP_TESTS_DOMAIN exit guards).
+        return;
+    }
+
+    $old_enabled = is_array( $old_value ) && ! empty( $old_value['wldelay_custom_login_enabled'] );
+    $new_enabled = is_array( $value ) && ! empty( $value['wldelay_custom_login_enabled'] );
+    $old_slug    = ( is_array( $old_value ) && isset( $old_value['wldelay_custom_login_slug'] ) ) ? trim( $old_value['wldelay_custom_login_slug'] ) : '';
+    $new_slug    = ( is_array( $value ) && isset( $value['wldelay_custom_login_slug'] ) ) ? trim( $value['wldelay_custom_login_slug'] ) : '';
+
+    $newly_active = $new_enabled && '' !== $new_slug && ( ! $old_enabled || $old_slug !== $new_slug );
+    if ( ! $newly_active ) {
+        return;
+    }
+
+    $check = wldelay_custom_login_self_check( $new_slug );
+
+    if ( 'unreachable' === $check ) {
+        $running = true;
+        $value['wldelay_custom_login_enabled'] = false;
+        update_option( 'wldelay_options', $value );
+        $running = false;
+        wldelay_clear_options_cache();
+
+        add_settings_error(
+            'wldelay_options',
+            'wldelay_custom_login_unreachable',
+            sprintf(
+                /* translators: %s: the custom login URL that failed the self-check. */
+                __( 'Custom Login URL was disabled automatically: %s returned a 404 in a self-check, which would have locked you out. The standard wp-login.php still works.', 'login-delay-shield' ),
+                esc_url( home_url( '/' . $new_slug . '/' ) )
+            ),
+            'error'
+        );
+        return;
+    }
+
+    if ( 'unverified' === $check ) {
+        add_settings_error(
+            'wldelay_options',
+            'wldelay_custom_login_unverified',
+            sprintf(
+                /* translators: 1: the custom login URL, 2: WLDELAY_DISABLE_CUSTOM_LOGIN constant name. */
+                __( 'Custom Login URL is enabled, but the self-check could not reach %1$s (the host may block loopback requests). Verify the URL in a private browser window before logging out. Emergency bypass: define %2$s in wp-config.php.', 'login-delay-shield' ),
+                esc_url( home_url( '/' . $new_slug . '/' ) ),
+                'WLDELAY_DISABLE_CUSTOM_LOGIN'
+            ),
+            'warning'
+        );
+    } else {
+        add_settings_error(
+            'wldelay_options',
+            'wldelay_custom_login_active',
+            sprintf(
+                /* translators: %s: the new custom login URL. */
+                __( 'Custom Login URL is active and verified. Bookmark your new login URL now: %s — wp-login.php returns a 404 from this point on.', 'login-delay-shield' ),
+                esc_url( home_url( '/' . $new_slug . '/' ) )
+            ),
+            'success'
+        );
+    }
+
+    wldelay_send_custom_login_url_email( $new_slug );
+}
+add_action( 'update_option_wldelay_options', 'wldelay_custom_login_handle_settings_change', 20, 2 );
+
+/**
+ * First-ever save of the option goes through add_option, which fires
+ * add_option_{option} instead of update_option_{option} — without this
+ * bridge the self-check would silently skip on a fresh install.
+ *
+ * @param string $option Option name (unused).
+ * @param mixed  $value  Saved option value.
+ */
+function wldelay_custom_login_handle_option_added( $option, $value ) {
+    wldelay_custom_login_handle_settings_change( array(), $value );
+}
+add_action( 'add_option_wldelay_options', 'wldelay_custom_login_handle_option_added', 20, 2 );
+
+/**
+ * Email the new custom login URL to the site admin.
+ *
+ * A recovery aid for the "browser history cleared, URL forgotten" scenario.
+ * Disable with: add_filter( 'wldelay_send_custom_login_email', '__return_false' );
+ *
+ * @param string $slug The active custom login slug.
+ */
+function wldelay_send_custom_login_url_email( $slug ) {
+    /**
+     * Filters whether the new-login-URL notification email is sent.
+     *
+     * @param bool $send Default true.
+     */
+    if ( ! apply_filters( 'wldelay_send_custom_login_email', true ) ) {
+        return;
+    }
+
+    $login_url = home_url( '/' . $slug . '/' );
+
+    $subject = sprintf(
+        /* translators: %s: site name. */
+        __( '[%s] Your login URL has changed', 'login-delay-shield' ),
+        wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES )
+    );
+
+    $message = sprintf(
+        /* translators: 1: new login URL, 2: WLDELAY_DISABLE_CUSTOM_LOGIN constant name. */
+        __(
+            'Login Delay Shield moved the login page of your site to:
+
+%1$s
+
+Bookmark this URL — the standard wp-login.php now returns a 404.
+
+If you ever lose access, add this line to wp-config.php to restore wp-login.php:
+
+define( \'%2$s\', true );',
+            'login-delay-shield'
+        ),
+        $login_url,
+        'WLDELAY_DISABLE_CUSTOM_LOGIN'
+    );
+
+    wp_mail( get_option( 'admin_email' ), $subject, $message );
 }
 
 /**
@@ -5401,6 +5795,10 @@ function wldelay_format_countdown( $seconds ) {
  * @return bool
  */
 function wldelay_login_feedback_active() {
+    if ( wldelay_is_safe_mode() ) {
+        return false;
+    }
+
     $options = wldelay_get_options();
 
     if ( empty( $options['wldelay_lockout_enabled'] ) ) {

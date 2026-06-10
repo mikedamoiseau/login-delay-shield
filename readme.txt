@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 7.0
-Version: 2.3.4
-Stable tag: 2.3.4
+Version: 2.4.0
+Stable tag: 2.4.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -37,6 +37,19 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support
 * **Multilingual** — Translated into 18 languages including French, German, Spanish, Japanese, Chinese, Arabic, and more
 * Lightweight and compatible with other security plugins
+
+**Free means free**
+
+Login Delay Shield has no ads, no upsells, no premium tier, and no account or API key requirement. Every admin notice is dismissible, and the plugin never nags you to upgrade — there is nothing to upgrade to.
+
+**You can always get back in**
+
+A security plugin that locks out its own administrator is worse than no security at all. Login Delay Shield is built so an admin can always recover access:
+
+* Whitelisted IPs (including CIDR ranges) bypass every delay and lockout
+* The Active Lockouts manager on the settings page lists current lockouts with a one-click Unlock for each, plus an "Unlock Current IP" action
+* WP-CLI recovery commands: `wp login-delay-shield unlock-ip <ip>` and `wp login-delay-shield flush-lockouts`
+* Lockouts are always temporary (24 hours maximum) — there are no permanent bans
 
 *This plugin is not a complete security solution — dedicated security plugins offer more comprehensive protection.* However, Login Delay Shield adds an effective layer of defense that works alongside your existing security measures without conflict.
 
@@ -77,6 +90,27 @@ When lockout is enabled, failed logins show how many attempts remain before temp
 = How do I whitelist my own IP? =
 
 Enable the IP whitelist feature and add your IP address (or a range using CIDR notation like `192.168.1.0/24`). Whitelisted IPs bypass all delays and lockouts, ensuring you never lock yourself out.
+
+= What happens if I lock myself out? =
+
+You can always get back in. Lockouts are temporary by design (24 hours maximum — there are no permanent bans), so waiting always works. To recover immediately:
+
+* If another administrator can log in, the Active Lockouts manager on the settings page shows every current lockout with a one-click Unlock, and an "Unlock Current IP" action.
+* With shell access, use WP-CLI: `wp login-delay-shield unlock-ip <ip>` or `wp login-delay-shield flush-lockouts`.
+* With only FTP access, add `define( 'WLDELAY_SAFE_MODE', true );` to `wp-config.php` — this safe mode disables all delays and lockouts until you remove the line (a warning shows in the admin while it is active).
+* To avoid lockouts entirely, whitelist your own IP (CIDR ranges supported) — whitelisted IPs bypass all delays and lockouts.
+
+= Is there a premium version? Will I see ads or upsells? =
+
+No. Login Delay Shield is completely free: no ads, no upsells, no premium tier, no account, and no API keys. Every admin notice is dismissible.
+
+= What if my custom login URL stops working? =
+
+Some plugins that move the login page can lock you out behind a 404 with no way back. Login Delay Shield ships an emergency bypass: add `define( 'WLDELAY_DISABLE_CUSTOM_LOGIN', true );` to `wp-config.php` and the standard `wp-login.php` works again immediately — no need to disable the plugin. The custom slug also uses raw path matching, so it keeps working even with stale rewrite rules or plain permalinks.
+
+= I use Cloudflare (or another proxy/CDN) — do I need to configure anything? =
+
+Yes: enable "Trust proxy headers" under Advanced settings. Behind a proxy or CDN, every visitor reaches your server from the proxy's IP address — without this setting, one attacker's failed logins would count against everyone and could lock out all users. With it enabled, the plugin reads the visitor's real IP from `CF-Connecting-IP` (accepted only when the connection actually comes from Cloudflare's published IP ranges, so it cannot be spoofed), `X-Sucuri-ClientIP`, `Client-IP`, `X-Real-IP`, or `X-Forwarded-For`. The settings page shows a warning when it detects a proxy while this setting is off — and the reverse warning if it is on without a proxy in front, since that would allow IP spoofing.
 
 = Should I block XML-RPC? =
 
@@ -166,6 +200,23 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.4.0 =
+Lockout-proof recovery and proxy/CDN awareness.
+
+**New Features:**
+* Proxy/CDN-aware IP detection — new supported headers behind the "Trust proxy headers" setting: `CF-Connecting-IP` (accepted only when the connection comes from Cloudflare's published IP ranges, so it cannot be spoofed), `X-Sucuri-ClientIP`, and `X-Real-IP`.
+* Proxy configuration health check on the settings page — warns when the site appears to be behind a proxy or CDN while header trust is disabled (mass-lockout risk), and when trust is enabled without a proxy in front (spoofing risk).
+* `WLDELAY_SAFE_MODE` emergency constant — define it as true in wp-config.php to disable all delays and lockouts while you recover access. A persistent admin warning shows while it is active.
+* Custom Login URL self-check — when the feature is enabled or the slug changes, the plugin verifies the new URL responds and automatically disables the feature if it would return a 404, instead of stranding everyone behind a dead login page.
+* The new custom login URL is emailed to the site admin as a recovery aid (disable with the `wldelay_send_custom_login_email` filter).
+
+**Security:**
+* All proxy header values are now validated as IP addresses; garbage values fall back to the connection IP instead of poisoning lockout keys.
+
+**Improvements:**
+* The Custom Login URL settings card now documents the `WLDELAY_DISABLE_CUSTOM_LOGIN` emergency bypass and prompts you to bookmark the new URL before enabling.
+* New FAQ entries: self-lockout recovery, Cloudflare/proxy configuration, custom login URL recovery, and ads/premium policy (there are none — and now the readme says so).
 
 = 2.3.4 =
 fail2ban logging hardening.
@@ -444,6 +495,9 @@ Major release with comprehensive security features and modern admin interface.
 * First version of the plugin
 
 == Upgrade Notice ==
+
+= 2.4.0 =
+Adds proxy/CDN-aware IP detection (Cloudflare, Sucuri, nginx), a WLDELAY_SAFE_MODE emergency constant, and a Custom Login URL self-check that prevents 404 lockouts. No behavior change unless you enable the features.
 
 = 2.2.0 =
 Adds Custom Login URL feature: move the login page to a custom URL and block direct access to `wp-login.php`. Disabled by default — no behavior change on upgrade.
