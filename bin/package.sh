@@ -37,6 +37,7 @@ zip -qr "$OUT_ZIP" \
     wldelay-privacy.php \
     wldelay-settings.php \
     wldelay-settings-view.php \
+    uninstall.php \
     admin.css \
     admin.js \
     README.md \

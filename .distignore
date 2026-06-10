@@ -1,0 +1,29 @@
+# Files excluded from the wordpress.org deploy (10up/action-wordpress-plugin-deploy).
+# Keep in sync with the allowlist in bin/package.sh — what ships is:
+# *.php plugin files, admin.css, admin.js, readme.txt, README.md, languages/.
+
+/.git
+/.github
+/.wordpress-org
+/bin
+/tests
+/tools
+/vendor
+/node_modules
+
+/.distignore
+/.gitignore
+/.gitattributes
+/.dockerignore
+/Dockerfile
+/composer.json
+/composer.lock
+/phpunit-unit.xml
+/phpunit.xml.dist
+/.phpunit.result.cache
+/login-delay-shield.zip
+
+.DS_Store
+/CLAUDE.local.md
+/.pr-reviews
+/.playwright-mcp

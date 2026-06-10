@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,passwor
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 7.0
-Version: 2.4.0
-Stable tag: 2.4.0
+Version: 2.4.1
+Stable tag: 2.4.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -200,6 +200,13 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.4.1 =
+Packaging fix.
+
+**Maintenance:**
+* The wordpress.org package no longer includes development files (test suite, Docker setup, build scripts, composer manifest). These were never loaded or executed by WordPress, but they inflated the download since 2.2.4. Added a `.distignore` so automated deploys ship only runtime files.
+* Fixed the packaging validation script omitting `uninstall.php`; the uninstall cleanup routine itself always shipped correctly.
 
 = 2.4.0 =
 Lockout-proof recovery and proxy/CDN awareness.
