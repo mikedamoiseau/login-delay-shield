@@ -63,6 +63,7 @@ require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
 require_once dirname( __FILE__ ) . '/wldelay-features.php';
 require_once dirname( __FILE__ ) . '/wldelay-migration.php';
 require_once dirname( __FILE__ ) . '/wldelay-async.php';
+require_once dirname( __FILE__ ) . '/wldelay-pipeline.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
