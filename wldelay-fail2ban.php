@@ -478,15 +478,43 @@ function wldelay_fail2ban_maybe_rotate_log( $path, $max_bytes = null ) {
 }
 
 /**
- * Write a fail2ban-compatible log line when enabled.
+ * Request-scoped fail2ban line buffer (F-4-5).
  *
- * @param string      $event Event key.
- * @param string      $ip IP address.
- * @param string      $username Attempted username.
- * @param string|null $source Login source.
- * @return bool True when a line was written.
+ * Lines are formatted at call time (the timestamp must reflect the attempt,
+ * not the flush) and appended to the log in ONE locked write on shutdown,
+ * taking file I/O off the auth hot path. A fatal before shutdown loses at
+ * most this request's lines — the accepted trade-off vs. a sync write per
+ * attempt. WP-CLI fires shutdown at process end, so CLI lines flush too.
+ *
+ * @return array<int,string> Reference to the buffer.
  */
-function wldelay_write_fail2ban_log( $event, $ip, $username, $source = null ) {
+function &wldelay_get_fail2ban_buffer() {
+    static $buffer = array();
+    return $buffer;
+}
+
+/**
+ * Test helper: empty the buffer between unit tests.
+ */
+function wldelay_reset_fail2ban_buffer() {
+    $buffer = &wldelay_get_fail2ban_buffer();
+    $buffer = array();
+}
+
+/**
+ * Buffer a fail2ban-compatible log line for the shutdown flush.
+ *
+ * Same validation/enable gating as the old synchronous writer; only the file
+ * write is deferred, and path/dir checks now happen at flush time (an unusable
+ * path means buffered lines are dropped then, not rejected here).
+ *
+ * @param string      $event    Event key ('failed login'|'lockout').
+ * @param string      $ip       IP address.
+ * @param string      $username Attempted username.
+ * @param string|null $source   Login source.
+ * @return bool True when the line was buffered.
+ */
+function wldelay_buffer_fail2ban_line( $event, $ip, $username, $source = null ) {
     if ( ! function_exists( 'wldelay_get_options' ) ) {
         return false;
     }
@@ -496,17 +524,50 @@ function wldelay_write_fail2ban_log( $event, $ip, $username, $source = null ) {
         return false;
     }
 
-    $path = isset( $options['wldelay_fail2ban_log_path'] )
+    $line = wldelay_format_fail2ban_line( $event, $ip, $username, $source );
+    if ( $line === '' ) {
+        return false;
+    }
+
+    $buffer   = &wldelay_get_fail2ban_buffer();
+    $buffer[] = $line;
+
+    if ( count( $buffer ) === 1 && function_exists( 'add_action' ) ) {
+        // Flush AFTER wldelay_flush_deferred_tasks (shutdown@10): deferred handlers
+        // (m3 botnet task, any future deferred lockout) may buffer f2b lines during
+        // the queue drain; flushing last keeps them from stranding in the buffer.
+        add_action( 'shutdown', 'wldelay_flush_fail2ban_buffer', PHP_INT_MAX );
+    }
+
+    return true;
+}
+
+/**
+ * Flush buffered fail2ban lines in a single locked append.
+ *
+ * Registered lazily on shutdown by the first buffered line. Path resolution,
+ * directory protection, and rotation run once per flush instead of per line.
+ *
+ * @return int Lines written (0 when buffer empty or path unusable; buffered
+ *             lines are DISCARDED when the path is unusable at flush time).
+ */
+function wldelay_flush_fail2ban_buffer() {
+    $buffer = &wldelay_get_fail2ban_buffer();
+    if ( empty( $buffer ) ) {
+        return 0;
+    }
+
+    $lines  = $buffer;
+    $buffer = array();
+
+    $options = wldelay_get_options();
+    $path    = isset( $options['wldelay_fail2ban_log_path'] )
         ? wldelay_fail2ban_resolve_log_path( $options['wldelay_fail2ban_log_path'] )
         : wldelay_fail2ban_resolve_log_path();
 
     if ( $path === '' ) {
-        return false;
-    }
-
-    $line = wldelay_format_fail2ban_line( $event, $ip, $username, $source );
-    if ( $line === '' ) {
-        return false;
+        error_log( sprintf( 'Login Delay Shield: fail2ban flush dropped %d line(s): unresolvable log path.', count( $lines ) ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        return 0;
     }
 
     $dir = dirname( $path );
@@ -519,11 +580,35 @@ function wldelay_write_fail2ban_log( $event, $ip, $username, $source = null ) {
     }
 
     if ( ! is_dir( $dir ) || ! is_writable( $dir ) ) {
-        return false;
+        error_log( sprintf( 'Login Delay Shield: fail2ban flush dropped %d line(s): log directory not writable.', count( $lines ) ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        return 0;
     }
 
     wldelay_fail2ban_protect_log_dir( $dir );
     wldelay_fail2ban_maybe_rotate_log( $path );
 
-    return false !== @file_put_contents( $path, $line . PHP_EOL, FILE_APPEND | LOCK_EX );
+    $payload = implode( PHP_EOL, $lines ) . PHP_EOL;
+    if ( false === @file_put_contents( $path, $payload, FILE_APPEND | LOCK_EX ) ) {
+        error_log( sprintf( 'Login Delay Shield: fail2ban flush dropped %d line(s): write failed.', count( $lines ) ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        return 0;
+    }
+
+    return count( $lines );
+}
+
+/**
+ * Buffer a fail2ban-compatible log line when enabled.
+ *
+ * BC wrapper around wldelay_buffer_fail2ban_line() (F-4-5): the line is no
+ * longer written synchronously — it is buffered and appended to the log in a
+ * single locked write on the shutdown hook.
+ *
+ * @param string      $event Event key.
+ * @param string      $ip IP address.
+ * @param string      $username Attempted username.
+ * @param string|null $source Login source.
+ * @return bool True when a line was buffered (not yet written).
+ */
+function wldelay_write_fail2ban_log( $event, $ip, $username, $source = null ) {
+    return wldelay_buffer_fail2ban_line( $event, $ip, $username, $source );
 }
