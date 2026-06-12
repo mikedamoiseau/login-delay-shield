@@ -63,6 +63,7 @@ require_once dirname( __FILE__ ) . '/wldelay-persistence.php';
 require_once dirname( __FILE__ ) . '/wldelay-features.php';
 require_once dirname( __FILE__ ) . '/wldelay-migration.php';
 require_once dirname( __FILE__ ) . '/wldelay-async.php';
+require_once dirname( __FILE__ ) . '/wldelay-pipeline.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
@@ -4623,18 +4624,14 @@ function wldelay_get_recent_failed_attempts( $limit = 20 ) {
  * @param string $username Username attempted
  */
 function wldelay_on_login_failed( $username ) {
-    // Skip if IP is whitelisted
-    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted() ) {
-        return;
-    }
-
-    $ip = wldelay_get_client_ip();
-    if ( empty( $ip ) ) {
-        return;
-    }
-
-    // Log to database with source
-    wldelay_log_failed_attempt( $ip, $username );
+    // Log-only path: for wp-login the wp_authenticate_user handler owns tracking
+    // and delay; other sources' own handlers do.
+    // The pipeline gates safe-mode/whitelist/empty-IP internally.
+    wldelay_process_failed_attempt(
+        $username,
+        wldelay_get_login_source(),
+        array( 'track' => false, 'delay' => false, 'lockout' => false )
+    );
 }
 add_action( 'wp_login_failed', 'wldelay_on_login_failed' );
 
@@ -4672,10 +4669,9 @@ function wldelay_block_xmlrpc_auth( $user, $username, $password ) {
     if ( ! empty( $options['wldelay_xmlrpc_block'] ) ) {
         // Log the blocked attempt (only if this is a real auth attempt with username)
         if ( ! empty( $username ) ) {
-            $ip = wldelay_get_client_ip();
-            if ( ! empty( $ip ) ) {
-                wldelay_log_failed_attempt( $ip, $username, 'xmlrpc' );
-            }
+            // Block branch: log + event only — the request is rejected outright,
+            // so no counter, delay, or lockout lookup.
+            wldelay_process_failed_attempt( $username, 'xmlrpc', array( 'track' => false, 'delay' => false, 'lockout' => false ) );
         }
 
         return new WP_Error(
@@ -4741,17 +4737,10 @@ function wldelay_handle_rest_authentication( $errors ) {
         return $errors;
     }
 
-    $failure_count = wldelay_get_failure_count( null, $username );
-    $delay         = wldelay_get_delay_value( $failure_count );
-    if ( empty( $delay ) ) {
-        $delay = LDS_Settings::_DEFAULT_DELAY_IN_SECONDS;
-    }
+    $pipeline = wldelay_process_failed_attempt( $username, 'rest' );
+    sleep( $pipeline['delay'] );
 
-    $failed_attempts = wldelay_track_failed_attempt( $username, 'rest' );
-    wldelay_log_failed_attempt( $ip, $username, 'rest' );
-    sleep( $delay );
-
-    if ( ! empty( $options['wldelay_lockout_enabled'] ) && $failed_attempts > 0 && wldelay_is_ip_locked( null, $username ) ) {
+    if ( $pipeline['failed_attempts'] > 0 && $pipeline['locked'] ) {
         return new WP_Error(
             'wldelay_ip_locked',
             wldelay_get_lockout_error_message( null, $username ),
@@ -4806,17 +4795,10 @@ function wldelay_handle_application_password_auth( $user, $username, $password )
         return $user;
     }
 
-    $failure_count = wldelay_get_failure_count( null, $username );
-    $delay         = wldelay_get_delay_value( $failure_count );
-    if ( empty( $delay ) ) {
-        $delay = LDS_Settings::_DEFAULT_DELAY_IN_SECONDS;
-    }
+    $pipeline = wldelay_process_failed_attempt( $username, 'application-password' );
+    sleep( $pipeline['delay'] );
 
-    $failed_attempts = wldelay_track_failed_attempt( $username, 'application-password' );
-    wldelay_log_failed_attempt( $ip, $username, 'application-password' );
-    sleep( $delay );
-
-    if ( ! empty( $options['wldelay_lockout_enabled'] ) && $failed_attempts > 0 && wldelay_is_ip_locked( null, $username ) ) {
+    if ( $pipeline['failed_attempts'] > 0 && $pipeline['locked'] ) {
         return new WP_Error(
             'wldelay_ip_locked',
             wldelay_get_lockout_error_message( null, $username )
@@ -5094,7 +5076,8 @@ function wldelay_handle_password_reset_request( $errors ) {
     $delay         = wldelay_get_delay_value( $failure_count );
 
     $failed_attempts = wldelay_track_password_reset_attempt( $username );
-    wldelay_log_failed_attempt( $ip, $username, 'password-reset' );
+    // Reset attempts use their own counter/lockout; the pipeline only handles the log + event here.
+    wldelay_process_failed_attempt( $username, 'password-reset', array( 'track' => false, 'delay' => false, 'lockout' => false ) );
 
     if ( $delay > 0 ) {
         sleep( $delay );
@@ -5233,20 +5216,17 @@ function wldelay_auth_login ($user, $password) {
     }
 
     if( is_wp_error( $user ) ) {
-        // Get current failure count BEFORE incrementing (for progressive delay)
-        $failure_count = wldelay_get_failure_count( null, $username );
+        $pipeline        = wldelay_process_failed_attempt(
+            $username,
+            wldelay_get_login_source(),
+            array(
+                'log'     => false, // wp_login_failed handles DB logging for this path.
+                'lockout' => false, // The lockout shaping below performs its own locked check.
+            )
+        );
+        $failed_attempts = $pipeline['failed_attempts'];
 
-        // Calculate delay with progressive increase if enabled
-        $delay = wldelay_get_delay_value( $failure_count );
-
-        if( empty( $delay ) ) {
-            $delay = LDS_Settings::_DEFAULT_DELAY_IN_SECONDS;
-        }
-
-        // Track failed attempt for email notifications and lockout
-        $failed_attempts = wldelay_track_failed_attempt( $username, wldelay_get_login_source() );
-
-        sleep( $delay );
+        sleep( $pipeline['delay'] );
 
         if ( ! empty( $options['wldelay_lockout_enabled'] ) && $failed_attempts > 0 ) {
             $lockout_threshold = isset( $options['wldelay_lockout_threshold'] )

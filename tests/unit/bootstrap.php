@@ -67,3 +67,7 @@ require_once dirname( dirname( __DIR__ ) ) . '/wldelay-privacy.php';
 // available to unit tests. Its admin_menu hook registration is guarded by
 // function_exists( 'add_action' ) so it stays inert without a WP runtime.
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-changelog.php';
+
+// Load the shared failed-auth pipeline (F-2-4). Pure logic — all of its
+// collaborators are stubbed via Brain Monkey in the tests.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-pipeline.php';
