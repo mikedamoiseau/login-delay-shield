@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.4.1' );
+define( 'WLDELAY_VERSION', '2.5.0' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
@@ -39,7 +39,7 @@ define( 'WLDELAY_DASH_TRENDS_TTL', 5 * MINUTE_IN_SECONDS );
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC/password-reset protection, custom login URL, and email alerts.
-Version: 2.4.1
+Version: 2.5.0
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
@@ -3359,6 +3359,11 @@ add_action( 'admin_notices', 'wldelay_show_whats_new_notice' );
  */
 function wldelay_get_version_highlights( $version ) {
     $highlights = array(
+        '2.5.0' => array(
+            __( 'Distributed attack detection — alerts when one username is hit from many IPs, the credential-stuffing pattern per-IP lockouts miss. On by default; alert-only, never blocks.', 'login-delay-shield' ),
+            __( 'Downloadable fail2ban filter and jail config that matches your current log format in one click.', 'login-delay-shield' ),
+            __( 'Settings coherence warnings flag contradictory option combinations before they bite.', 'login-delay-shield' ),
+        ),
         '2.4.0' => array(
             __( 'Proxy/CDN-aware IP detection — Cloudflare, Sucuri, and nginx headers are now supported, with spoof-proof validation of CF-Connecting-IP.', 'login-delay-shield' ),
             __( 'A proxy health check warns about the misconfigurations that cause mass lockouts or IP spoofing.', 'login-delay-shield' ),

@@ -1,12 +1,12 @@
 === Login Delay Shield ===
 Contributors: michael.damoiseau
 Donate link: http://damoiseau.me/
-Tags: security,login,brute-force,lockout,xmlrpc,authentication,anti-spam,password-protection
+Tags: security,login,brute-force,lockout,authentication
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 7.0
-Version: 2.4.1
-Stable tag: 2.4.1
+Version: 2.5.0
+Stable tag: 2.5.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -20,6 +20,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 
 **Features:**
 
+* **Distributed attack detection** — spot credential-stuffing that rotates IPs, which per-IP lockouts miss.
 * **Security Setup Wizard** — Choose Conservative, Balanced, or Aggressive protection profiles from the settings page
 * **Login delay** — Fixed or random delay on failed login attempts (1-10 seconds)
 * **Progressive delay** — Delay increases with each consecutive failed attempt from the same IP
@@ -202,6 +203,19 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
 
 == Changelog ==
+
+= 2.5.0 =
+Distributed attack detection.
+
+**New Features:**
+* Distributed-attack (botnet) detection — alerts when one username is targeted from many IP addresses, the credential-stuffing pattern that per-IP lockouts cannot see. Detection is on by default and never blocks: you get an audit-log entry, a dashboard warning, and (when email alerts are enabled) an email with the targeted username and sample IPs. Threshold and detection window are configurable.
+* Downloadable fail2ban configuration — one click generates the filter and jail config matching your current log path and format.
+* Settings coherence warnings — the settings page now flags contradictory combinations (empty whitelist, unwritable fail2ban path, alert thresholds that can never fire) without blocking the save.
+
+**Improvements:**
+* All login-protection entry points now share one failure-processing pipeline, eliminating drift between wp-login, XML-RPC, REST, application-password, and password-reset handling.
+* fail2ban log lines are buffered and written once per request instead of one write per attempt — less disk I/O under brute-force load.
+* Login-log statistics and CSV export on the settings page are rate-limited per administrator to one expensive query per minute.
 
 = 2.4.1 =
 Packaging fix.
