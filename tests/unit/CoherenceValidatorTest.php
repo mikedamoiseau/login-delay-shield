@@ -196,26 +196,28 @@ class CoherenceValidatorTest extends LDS_Unit_Test_Case {
     }
 
     // =========================================================================
-    // Rule: xmlrpc_block + xmlrpc_enabled both true
+    // XML-RPC block + enabled is NOT a coherence problem
     // =========================================================================
 
     /**
-     * XML-RPC fully blocked AND delay enabled → warning containing 'XML-RPC'.
+     * XML-RPC protection enabled AND set to block → no warning. wldelay_xmlrpc_enabled
+     * is the master "protect XML-RPC" toggle and wldelay_xmlrpc_block is the method
+     * (block vs delay), so this is the intended Aggressive-profile config, not a
+     * misconfiguration. Regression guard: applying the recommended Aggressive profile
+     * must not surface a coherence warning.
      */
-    public function test_warns_xmlrpc_block_and_enabled_both_true() {
+    public function test_no_warning_when_xmlrpc_block_and_enabled_both_true() {
         $o = array_merge( $this->clean_options(), array(
             'wldelay_xmlrpc_enabled' => true,
             'wldelay_xmlrpc_block'   => true,
         ) );
-        $w = wldelay_settings_coherence_warnings( $o );
-        $this->assertCount( 1, $w );
-        $this->assertStringContainsString( 'XML-RPC', $w[0] );
+        $this->assertSame( array(), wldelay_settings_coherence_warnings( $o ) );
     }
 
     /**
-     * XML-RPC blocked but delay disabled → no warning (delay setting irrelevant).
+     * XML-RPC blocked but protection master toggle off → no warning.
      */
-    public function test_no_warning_when_xmlrpc_block_true_but_delay_disabled() {
+    public function test_no_warning_when_xmlrpc_block_true_but_protection_disabled() {
         $o = array_merge( $this->clean_options(), array(
             'wldelay_xmlrpc_enabled' => false,
             'wldelay_xmlrpc_block'   => true,

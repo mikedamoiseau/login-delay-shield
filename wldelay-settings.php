@@ -742,12 +742,7 @@ function wldelay_settings_coherence_warnings( array $options ) {
         }
     }
 
-    // Rule 3: XML-RPC is fully blocked, making the XML-RPC delay redundant.
-    if ( ! empty( $options['wldelay_xmlrpc_block'] ) && ! empty( $options['wldelay_xmlrpc_enabled'] ) ) {
-        $warnings[] = __( 'XML-RPC is fully blocked, so the XML-RPC delay setting has no effect.', 'wp-login-delay' );
-    }
-
-    // Rule 4: progressive delay maximum is below the base delay.
+    // Rule 3: progressive delay maximum is below the base delay.
     if ( ! empty( $options['wldelay_progressive_enabled'] ) ) {
         $base = isset( $options['wldelay_delay'] ) ? (int) $options['wldelay_delay'] : 0;
         $max  = isset( $options['wldelay_progressive_max'] ) ? (int) $options['wldelay_progressive_max'] : 0;
@@ -756,7 +751,7 @@ function wldelay_settings_coherence_warnings( array $options ) {
         }
     }
 
-    // Rule 5: email alert threshold is above the lockout threshold (alert may never fire).
+    // Rule 4: email alert threshold is above the lockout threshold (alert may never fire).
     if ( ! empty( $options['wldelay_email_enabled'] ) && ! empty( $options['wldelay_lockout_enabled'] ) ) {
         $email_t   = isset( $options['wldelay_email_threshold'] ) ? (int) $options['wldelay_email_threshold'] : 0;
         $lockout_t = isset( $options['wldelay_lockout_threshold'] ) ? (int) $options['wldelay_lockout_threshold'] : 0;
@@ -765,7 +760,7 @@ function wldelay_settings_coherence_warnings( array $options ) {
         }
     }
 
-    // Rule 6: distributed-attack detection on but email alerts are off.
+    // Rule 5: distributed-attack detection on but email alerts are off.
     if ( ! empty( $options['wldelay_botnet_enabled'] ) && empty( $options['wldelay_email_enabled'] ) ) {
         $warnings[] = __( 'Distributed-attack detection is on but email alerts are off — detections will appear on the dashboard only.', 'wp-login-delay' );
     }

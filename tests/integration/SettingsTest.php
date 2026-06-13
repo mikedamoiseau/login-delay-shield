@@ -211,6 +211,28 @@ class SettingsTest extends WP_UnitTestCase {
     }
 
     /**
+     * Applying any built-in protection profile must produce a coherent settings
+     * set — a recommended profile that immediately trips a coherence warning is
+     * a confusing UX (regression guard for the removed XML-RPC block+enabled rule).
+     */
+    public function test_built_in_profiles_produce_no_coherence_warnings() {
+        foreach ( array_keys( wldelay_get_protection_profiles() ) as $profile_id ) {
+            $result = $this->settings->sanitize(
+                array(
+                    'wldelay_profile_action'     => 'apply',
+                    'wldelay_protection_profile' => $profile_id,
+                )
+            );
+
+            $this->assertSame(
+                array(),
+                wldelay_settings_coherence_warnings( $result ),
+                "Profile '{$profile_id}' should not surface coherence warnings."
+            );
+        }
+    }
+
+    /**
      * Test invalid profile input cannot apply unexpected settings.
      */
     public function test_invalid_protection_profile_does_not_apply_profile_settings() {
