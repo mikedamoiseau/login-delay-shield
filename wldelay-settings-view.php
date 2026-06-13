@@ -1665,6 +1665,18 @@ class LDS_Settings_View {
     }
 
     /**
+     * fail2ban config download button callback (F-5-8).
+     */
+    public function fail2ban_config_download_callback() {
+        ?>
+        <a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wldelay_download_fail2ban_config' ), 'wldelay_fail2ban_config' ) ); ?>" aria-describedby="wldelay-f2b-config-desc">
+            <?php esc_html_e( 'Download fail2ban config', 'login-delay-shield' ); ?>
+        </a>
+        <p class="description" id="wldelay-f2b-config-desc"><?php esc_html_e( 'Generates filter.d/wldelay.conf and a jail.local snippet matching your current log path and format.', 'login-delay-shield' ); ?></p>
+        <?php
+    }
+
+    /**
      * XMLRPC enabled callback
      */
     public function xmlrpc_enabled_callback() {

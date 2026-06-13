@@ -136,9 +136,11 @@ Log lines include an ISO-8601 timestamp, stable prefix, and fields such as:
 
 `2026-05-04T12:00:00+00:00 Login Delay Shield: failed login source=wp-login ip=203.0.113.10 username=admin`
 
-A fail2ban filter can match the IP with a regex like:
+A fail2ban filter can match the IP with the exact canonical failregex:
 
-`failregex = Login Delay Shield: (?:failed login|lockout) .* ip=<HOST>`
+`failregex = ^\s*\S+ Login Delay Shield: (?:failed login|lockout) source=\S+ ip=<HOST> username=\S+$`
+
+The **Download fail2ban config** button on the settings page generates the exact filter and jail files — prefer it over copying by hand.
 
 = Is the admin interface accessible? =
 

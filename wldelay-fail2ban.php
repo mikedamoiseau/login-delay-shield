@@ -612,3 +612,106 @@ function wldelay_flush_fail2ban_buffer() {
 function wldelay_write_fail2ban_log( $event, $ip, $username, $source = null ) {
     return wldelay_buffer_fail2ban_line( $event, $ip, $username, $source );
 }
+
+// ---------------------------------------------------------------------------
+// F-5-8: Downloadable fail2ban filter + jail config
+// ---------------------------------------------------------------------------
+
+/**
+ * The fail2ban failregex for our log line format (F-5-8).
+ *
+ * SINGLE SOURCE OF TRUTH for the downloadable filter. Lives next to
+ * wldelay_format_fail2ban_line() on purpose: change the line format and the
+ * sync-guard test (Fail2BanConfigTest) fails until this regex follows.
+ *
+ * Line format produced by wldelay_format_fail2ban_line():
+ *   <timestamp> Login Delay Shield: <event> source=<source> ip=<ip> username=<username>
+ *
+ * - timestamp : ISO 8601 with timezone offset (gmdate('c')), no spaces → \S+
+ * - event     : 'failed login' or 'lockout' (literal strings, may contain a space)
+ * - source    : sanitized field — [A-Za-z0-9@._:+-], no whitespace → \S+
+ * - ip        : validated IPv4 or IPv6 address → <HOST>
+ * - username  : sanitized field — spaces replaced with underscores → \S+
+ *
+ * @return string fail2ban-syntax failregex (uses <HOST>).
+ */
+function wldelay_fail2ban_get_failregex() {
+    return '^\s*\S+ Login Delay Shield: (?:failed login|lockout) source=\S+ ip=<HOST> username=\S+$';
+}
+
+/**
+ * Translate the fail2ban failregex into PCRE for the sync-guard test.
+ *
+ * fail2ban's <HOST> tag matches an IPv4/IPv6 address or hostname; a named
+ * capturing group is an adequate stand-in for our lines because ip= is always
+ * a validated address and contains no whitespace.
+ *
+ * @return string PCRE pattern with a `host` named group.
+ */
+function wldelay_fail2ban_failregex_as_pcre() {
+    return '/' . str_replace( '<HOST>', '(?P<host>\S+)', wldelay_fail2ban_get_failregex() ) . '/';
+}
+
+/**
+ * Generate the downloadable filter config (filter.d/wldelay.conf).
+ *
+ * @return string
+ */
+function wldelay_fail2ban_generate_filter_config() {
+    return "# Login Delay Shield fail2ban filter\n"
+        . "# Place in /etc/fail2ban/filter.d/wldelay.conf\n"
+        . "[Definition]\n"
+        . 'failregex = ' . wldelay_fail2ban_get_failregex() . "\n"
+        . "ignoreregex =\n"
+        . "# datepattern requires fail2ban >= 0.10 (for the +00:00 timezone form).\n"
+        . "# On older fail2ban, bans still work; only findtime-window precision is affected.\n"
+        . "datepattern = {^LN-BEG}%%Y-%%m-%%dT%%H:%%M:%%S%%z\n";
+}
+
+/**
+ * Generate the downloadable jail config (jail.local snippet) with the
+ * currently configured log path interpolated.
+ *
+ * @return string
+ */
+function wldelay_fail2ban_generate_jail_config() {
+    $options = function_exists( 'wldelay_get_options' ) ? wldelay_get_options() : array();
+    $path    = isset( $options['wldelay_fail2ban_log_path'] )
+        ? wldelay_fail2ban_resolve_log_path( $options['wldelay_fail2ban_log_path'] )
+        : wldelay_fail2ban_resolve_log_path();
+
+    return "# Login Delay Shield fail2ban jail\n"
+        . "# Append to /etc/fail2ban/jail.local\n"
+        . "[wldelay]\n"
+        . "enabled = true\n"
+        . "filter = wldelay\n"
+        . 'logpath = ' . $path . "\n"
+        . "# Set maxretry at or below your Login Delay Shield lockout threshold (plugin default: 10).\n"
+        . "maxretry = 3\n"
+        . "findtime = 600\n"
+        . "bantime = 3600\n";
+}
+
+/**
+ * admin_post handler: stream both configs as one text download.
+ */
+function wldelay_handle_fail2ban_config_download() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Insufficient permissions.', 'login-delay-shield' ) );
+    }
+    check_admin_referer( 'wldelay_fail2ban_config' );
+
+    $body = "# ===== filter.d/wldelay.conf =====\n\n"
+        . wldelay_fail2ban_generate_filter_config()
+        . "\n# ===== jail.local snippet =====\n\n"
+        . wldelay_fail2ban_generate_jail_config();
+
+    nocache_headers();
+    header( 'Content-Type: text/plain; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="wldelay-fail2ban.conf"' );
+    echo $body; // phpcs:ignore WordPress.Security.EscapeOutput -- plain-text file download, content is code-generated.
+    exit;
+}
+if ( function_exists( 'add_action' ) ) {
+    add_action( 'admin_post_wldelay_download_fail2ban_config', 'wldelay_handle_fail2ban_config_download' );
+}

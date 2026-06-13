@@ -320,6 +320,14 @@ class LDS_Settings {
             'wldelay_log_section_id'
         );
 
+        add_settings_field(
+            'wldelay_fail2ban_config_download',
+            esc_html__( 'fail2ban config', 'login-delay-shield' ),
+            array( $this->view, 'fail2ban_config_download_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_log_section_id'
+        );
+
         // XMLRPC Protection section
         add_settings_section(
             'wldelay_xmlrpc_section_id',
