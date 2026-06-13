@@ -27,6 +27,20 @@
  *     banner to silently miss the alert — worse than showing a stale entry.
  *   Both transients are therefore set without delete-on-failure.
  *
+ * Concurrency notes (both accepted for an alert-only, best-effort feature):
+ *   - The detections-feed transient is a read-modify-write (get → array_unshift
+ *     → set). Two flushes for DIFFERENT usernames completing simultaneously can
+ *     lose one entry (last write wins). Acceptable: the authoritative record is
+ *     the synchronous audit-log row (written inline, not deferred); the feed is
+ *     only the dashboard convenience banner.
+ *   - The per-username cooldown is set at the tightest safe point (right after
+ *     the COUNT confirms threshold, before fan-out) but without a lock, so two
+ *     concurrent same-username flushes can both alert once. Worst case is one
+ *     duplicate alert — a false positive, not a security gap.
+ *   - The (int)/(array) casts on the $wpdb query results intentionally treat a
+ *     null/error result as "no detection" (0 distinct IPs, empty samples) — the
+ *     fail-safe direction for an alert-only feature.
+ *
  * @package login-delay-shield
  */
 

@@ -2332,6 +2332,29 @@ function wldelay_dashboard_widget_content() {
     // Setup Wizard. The CTA self-suppresses once the score reaches 50%.
     wldelay_render_dashboard_onboarding_cta();
 
+    // Botnet / distributed-attack detection banner (F-1-9). Rendered before the
+    // no-attempts early return so a brand-new attack (no history yet but the
+    // detection transient already set) is still surfaced.
+    $botnet_detections = function_exists( 'wldelay_botnet_get_recent_detections' )
+        ? wldelay_botnet_get_recent_detections()
+        : array();
+    if ( ! empty( $botnet_detections ) ) {
+        echo '<div class="wldelay-botnet-alert notice notice-warning inline" aria-live="polite">';
+        echo '<p><span class="dashicons dashicons-warning" aria-hidden="true"></span> <strong>'
+            . esc_html__( 'Distributed attack detected', 'login-delay-shield' ) . '</strong></p><ul>';
+        foreach ( array_slice( $botnet_detections, 0, 3 ) as $d ) {
+            echo '<li>' . esc_html( sprintf(
+                /* translators: 1: username targeted by the attack, 2: number of distinct source IPs, 3: detection window in minutes, 4: human-readable time since detection */
+                __( '%1$s targeted from %2$d IPs within %3$d min — %4$s ago', 'login-delay-shield' ),
+                $d['username'],
+                $d['distinct_ips'],
+                $d['window_minutes'],
+                human_time_diff( $d['detected_at'], time() )
+            ) ) . '</li>';
+        }
+        echo '</ul></div>';
+    }
+
     // Independent sub-caches (F-4-1): the cheap recent-attempts list and the
     // expensive 7-day trends aggregate each have their own key and TTL, and each
     // is rebuilt independently on miss so invalidating one never recomputes the
