@@ -194,6 +194,24 @@ class WLDelay_Features {
                 'inject'  => true,
             ),
 
+            // Botnet / distributed-attack detection (F-1-9). Default ON:
+            // alert-only, never blocks, so enabling retroactively is safe.
+            'wldelay_botnet_enabled'                 => array(
+                'default' => true,
+                'type'    => 'bool',
+                'inject'  => true,
+            ),
+            'wldelay_botnet_ip_threshold'            => array(
+                'default' => 5,
+                'type'    => 'int',
+                'inject'  => true,
+            ),
+            'wldelay_botnet_window_minutes'          => array(
+                'default' => 15,
+                'type'    => 'int',
+                'inject'  => true,
+            ),
+
             // Protection profile (resolved at the read site; empty when no
             // profile is applied).
             'wldelay_protection_profile'             => array(

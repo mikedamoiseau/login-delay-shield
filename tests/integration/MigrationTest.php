@@ -86,6 +86,28 @@ class MigrationTest extends WP_UnitTestCase {
     }
 
     /**
+     * The v2 step seeds the v2.5.0 botnet-detection defaults into an install
+     * already stamped at v1, preserving user-set values. Regression test for
+     * the F-1-9 settings migration.
+     */
+    public function test_v2_backfills_botnet_keys_into_v1_install() {
+        // A v1-migrated install: options exist, botnet keys do not.
+        update_option( WLDELAY_OPTION_NAME, array( 'wldelay_delay' => 7 ) );
+        update_option( WLDELAY_SETTINGS_VERSION_OPTION, 1 );
+
+        $ran = WLDelay_Migration::run();
+
+        $this->assertTrue( $ran, 'A v1 install should migrate to v2.' );
+        $this->assertSame( WLDELAY_SETTINGS_VERSION, WLDelay_Migration::stored_version() );
+
+        $options = get_option( WLDELAY_OPTION_NAME );
+        $this->assertSame( 7, $options['wldelay_delay'], 'User value preserved.' );
+        $this->assertTrue( $options['wldelay_botnet_enabled'] );
+        $this->assertSame( 5, $options['wldelay_botnet_ip_threshold'] );
+        $this->assertSame( 15, $options['wldelay_botnet_window_minutes'] );
+    }
+
+    /**
      * A fresh install (no stored options, no version) jumps straight to the
      * latest version and does NOT fabricate a stored options array — it has
      * nothing to migrate, and wldelay_get_options() materialises defaults on read.

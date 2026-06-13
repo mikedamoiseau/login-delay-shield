@@ -32,7 +32,7 @@ defined( 'ABSPATH' ) || exit;
  * WLDelay_Migration::steps() whenever the stored options array needs a
  * one-time transformation on existing installs.
  */
-define( 'WLDELAY_SETTINGS_VERSION', 1 );
+define( 'WLDELAY_SETTINGS_VERSION', 2 );
 
 /**
  * Option name tracking the applied settings-migration version. Distinct from
@@ -67,6 +67,18 @@ class WLDelay_Migration {
             // declarative defaults actually seed already-installed sites, not
             // just fresh ones. Idempotent: only absent keys are written.
             1 => function ( $options ) {
+                foreach ( WLDelay_Features::defaults() as $key => $default ) {
+                    if ( ! array_key_exists( $key, $options ) ) {
+                        $options[ $key ] = $default;
+                    }
+                }
+
+                return $options;
+            },
+
+            // v2: persist the v2.5.0 botnet-detection defaults into existing
+            // installs (same backfill contract as v1 — only absent keys).
+            2 => function ( $options ) {
                 foreach ( WLDelay_Features::defaults() as $key => $default ) {
                     if ( ! array_key_exists( $key, $options ) ) {
                         $options[ $key ] = $default;

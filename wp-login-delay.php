@@ -12,10 +12,13 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 // recovery can delete the exact lockout transient without reconstructing it
 // from the truncated username column; gen 5 was the audit table; gen 6 added the
 // generation column so recovery can snapshot-then-conditionally-delete durable
-// rows and skip any a concurrent relock refreshed during the flush window).
+// rows and skip any a concurrent relock refreshed during the flush window;
+// gen 7 added the composite (username, attempted_at) index on the log table so
+// botnet detection (F-1-9) can count distinct IPs per username in a time
+// window without a full scan).
 // Kept separate from WLDELAY_VERSION so a schema upgrade fires on existing
 // installs without depending on a user-facing release version bump.
-define( 'WLDELAY_DB_VERSION', '6' );
+define( 'WLDELAY_DB_VERSION', '7' );
 
 // Dashboard widget sub-cache keys (F-4-1). The widget data was previously held
 // in a single transient that was deleted on every failed login, which thrashed
@@ -2819,7 +2822,8 @@ function wldelay_create_log_table() {
         KEY attempted_at (attempted_at),
         KEY ip_address (ip_address),
         KEY username (username),
-        KEY source (source)
+        KEY source (source),
+        KEY username_attempted (username, attempted_at)
     ) $charset_collate;";
 
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );

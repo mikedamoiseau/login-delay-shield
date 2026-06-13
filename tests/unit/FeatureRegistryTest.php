@@ -11,7 +11,9 @@
 class FeatureRegistryTest extends LDS_Unit_Test_Case {
 
     /**
-     * The opt-in security flags that wldelay_get_options() injects at read time.
+     * The opt-in security flags that wldelay_get_options() injects at read
+     * time, plus the botnet-detection keys (F-1-9) which default ON and are
+     * injected so existing installs see the feature before any save/migration.
      *
      * @var array<string,mixed>
      */
@@ -23,6 +25,9 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
         'wldelay_fail2ban_enabled'              => false,
         'wldelay_fail2ban_log_path'             => '',
         'wldelay_fail2ban_include_lockouts'     => LDS_Settings::_DEFAULT_FAIL2BAN_INCLUDE_LOCKOUTS,
+        'wldelay_botnet_enabled'                => true,
+        'wldelay_botnet_ip_threshold'           => 5,
+        'wldelay_botnet_window_minutes'         => 15,
     );
 
     public function test_defaults_contains_every_known_option_key() {
@@ -54,6 +59,9 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
             'wldelay_fail2ban_enabled',
             'wldelay_fail2ban_log_path',
             'wldelay_fail2ban_include_lockouts',
+            'wldelay_botnet_enabled',
+            'wldelay_botnet_ip_threshold',
+            'wldelay_botnet_window_minutes',
             'wldelay_protection_profile',
             'wldelay_trust_proxy_headers',
             'wldelay_whitelist_enabled',
@@ -95,6 +103,19 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
         $this->assertFalse( $defaults['wldelay_enumeration_hardening_enabled'] );
         $this->assertFalse( $defaults['wldelay_fail2ban_enabled'] );
         $this->assertSame( '', $defaults['wldelay_fail2ban_log_path'] );
+    }
+
+    /**
+     * Botnet detection (F-1-9) defaults ON — it is alert-only and never
+     * blocks, so retroactive enablement is safe — with a 5-IP threshold over
+     * a 15-minute window.
+     */
+    public function test_botnet_detection_defaults_on_with_thresholds() {
+        $defaults = WLDelay_Features::defaults();
+
+        $this->assertTrue( $defaults['wldelay_botnet_enabled'] );
+        $this->assertSame( 5, $defaults['wldelay_botnet_ip_threshold'] );
+        $this->assertSame( 15, $defaults['wldelay_botnet_window_minutes'] );
     }
 
     public function test_each_entry_declares_a_known_type_hint() {
