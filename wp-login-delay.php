@@ -12,10 +12,13 @@ define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 // recovery can delete the exact lockout transient without reconstructing it
 // from the truncated username column; gen 5 was the audit table; gen 6 added the
 // generation column so recovery can snapshot-then-conditionally-delete durable
-// rows and skip any a concurrent relock refreshed during the flush window).
+// rows and skip any a concurrent relock refreshed during the flush window;
+// gen 7 added the composite (username, attempted_at) index on the log table so
+// botnet detection (F-1-9) can count distinct IPs per username in a time
+// window without a full scan).
 // Kept separate from WLDELAY_VERSION so a schema upgrade fires on existing
 // installs without depending on a user-facing release version bump.
-define( 'WLDELAY_DB_VERSION', '6' );
+define( 'WLDELAY_DB_VERSION', '7' );
 
 // Dashboard widget sub-cache keys (F-4-1). The widget data was previously held
 // in a single transient that was deleted on every failed login, which thrashed
@@ -68,6 +71,7 @@ require_once dirname( __FILE__ ) . '/wldelay-settings-view.php';
 require_once dirname( __FILE__ ) . '/wldelay-settings.php';
 require_once dirname( __FILE__ ) . '/wldelay-enumeration.php';
 require_once dirname( __FILE__ ) . '/wldelay-audit.php';
+require_once dirname( __FILE__ ) . '/wldelay-botnet.php';
 require_once dirname( __FILE__ ) . '/wldelay-privacy.php';
 require_once dirname( __FILE__ ) . '/wldelay-changelog.php';
 if( is_admin() ) {
@@ -2328,6 +2332,29 @@ function wldelay_dashboard_widget_content() {
     // Setup Wizard. The CTA self-suppresses once the score reaches 50%.
     wldelay_render_dashboard_onboarding_cta();
 
+    // Botnet / distributed-attack detection banner (F-1-9). Rendered before the
+    // no-attempts early return so a brand-new attack (no history yet but the
+    // detection transient already set) is still surfaced.
+    $botnet_detections = function_exists( 'wldelay_botnet_get_recent_detections' )
+        ? wldelay_botnet_get_recent_detections()
+        : array();
+    if ( ! empty( $botnet_detections ) ) {
+        echo '<div class="wldelay-botnet-alert notice notice-warning inline" aria-live="polite">';
+        echo '<p><span class="dashicons dashicons-warning" aria-hidden="true"></span> <strong>'
+            . esc_html__( 'Distributed attack detected', 'login-delay-shield' ) . '</strong></p><ul>';
+        foreach ( array_slice( $botnet_detections, 0, 3 ) as $d ) {
+            echo '<li>' . esc_html( sprintf(
+                /* translators: 1: username targeted by the attack, 2: number of distinct source IPs, 3: detection window in minutes, 4: human-readable time since detection */
+                __( '%1$s targeted from %2$d IPs within %3$d min — %4$s ago', 'login-delay-shield' ),
+                $d['username'],
+                $d['distinct_ips'],
+                $d['window_minutes'],
+                human_time_diff( $d['detected_at'], time() )
+            ) ) . '</li>';
+        }
+        echo '</ul></div>';
+    }
+
     // Independent sub-caches (F-4-1): the cheap recent-attempts list and the
     // expensive 7-day trends aggregate each have their own key and TTL, and each
     // is rebuilt independently on miss so invalidating one never recomputes the
@@ -2819,7 +2846,8 @@ function wldelay_create_log_table() {
         KEY attempted_at (attempted_at),
         KEY ip_address (ip_address),
         KEY username (username),
-        KEY source (source)
+        KEY source (source),
+        KEY username_attempted (username, attempted_at)
     ) $charset_collate;";
 
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );

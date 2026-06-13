@@ -376,6 +376,38 @@ class LDS_Settings {
             'wldelay_xmlrpc_section_id'
         );
 
+        // Distributed Attack Detection section
+        add_settings_section(
+            'wldelay_botnet_section_id',
+            esc_html__( 'Distributed Attack Detection', 'login-delay-shield' ),
+            array( $this->view, 'print_botnet_section_info' ),
+            'login-delay-shield-admin'
+        );
+
+        add_settings_field(
+            'wldelay_botnet_enabled',
+            esc_html__( 'Enable distributed attack detection', 'login-delay-shield' ),
+            array( $this->view, 'botnet_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_botnet_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_botnet_ip_threshold',
+            esc_html__( 'Distinct IPs threshold', 'login-delay-shield' ),
+            array( $this->view, 'botnet_ip_threshold_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_botnet_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_botnet_window_minutes',
+            esc_html__( 'Detection window (minutes)', 'login-delay-shield' ),
+            array( $this->view, 'botnet_window_minutes_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_botnet_section_id'
+        );
+
         // Custom Login URL section
         add_settings_section(
             'wldelay_custom_login_section_id',
@@ -545,6 +577,19 @@ class LDS_Settings {
         // Username-enumeration hardening (default off; opt-in because it
         // changes login/password-reset UX site-wide).
         $new_input['wldelay_enumeration_hardening_enabled'] = ! empty( $input['wldelay_enumeration_hardening_enabled'] );
+
+        // Botnet / distributed-attack detection settings (F-1-9).
+        $new_input['wldelay_botnet_enabled'] = ! empty( $input['wldelay_botnet_enabled'] );
+
+        $botnet_threshold = isset( $input['wldelay_botnet_ip_threshold'] )
+            ? absint( $input['wldelay_botnet_ip_threshold'] )
+            : 5;
+        $new_input['wldelay_botnet_ip_threshold'] = max( 2, min( 100, $botnet_threshold ) );
+
+        $botnet_window = isset( $input['wldelay_botnet_window_minutes'] )
+            ? absint( $input['wldelay_botnet_window_minutes'] )
+            : 15;
+        $new_input['wldelay_botnet_window_minutes'] = max( 5, min( 60, $botnet_window ) );
 
         // Custom Login URL settings
         $new_input['wldelay_custom_login_enabled'] = ! empty( $input['wldelay_custom_login_enabled'] );

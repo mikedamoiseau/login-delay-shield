@@ -195,6 +195,75 @@ class DatabaseUpgradeTest extends WP_UnitTestCase {
         $this->assertContains( 'PRIMARY', $index_names );
         $this->assertContains( 'attempted_at', $index_names );
         $this->assertContains( 'ip_address', $index_names );
+        $this->assertContains( 'username_attempted', $index_names );
+    }
+
+    /**
+     * The gen-7 composite (username, attempted_at) index (F-1-9 groundwork)
+     * must cover both columns in order, so botnet detection can count distinct
+     * IPs per username in a time window without a full scan.
+     */
+    public function test_log_table_composite_index_covers_username_then_attempted_at() {
+        global $wpdb;
+
+        wldelay_create_log_table();
+        $table_name = wldelay_get_log_table_name();
+
+        $rows = $wpdb->get_results(
+            "SHOW INDEX FROM $table_name WHERE Key_name = 'username_attempted'"
+        );
+
+        $columns = array();
+        foreach ( $rows as $row ) {
+            $columns[ (int) $row->Seq_in_index ] = $row->Column_name;
+        }
+        ksort( $columns );
+
+        $this->assertSame(
+            array( 1 => 'username', 2 => 'attempted_at' ),
+            $columns,
+            'The composite index must be (username, attempted_at) in that order.'
+        );
+    }
+
+    /**
+     * A pre-gen-7 install (log table without the composite index, stored
+     * version behind) must gain the username_attempted index when the
+     * plugins_loaded upgrade path runs, and end stamped at WLDELAY_DB_VERSION.
+     */
+    public function test_composite_index_added_on_upgrade() {
+        global $wpdb;
+
+        $table_name = wldelay_get_log_table_name();
+
+        // Provision the current schema, then simulate a pre-gen-7 install by
+        // dropping the composite index and rewinding the stored version.
+        wldelay_create_tables();
+        $wpdb->query( "ALTER TABLE $table_name DROP INDEX username_attempted" );
+        update_option( 'wldelay_db_version', '6' );
+
+        $index_names = array_unique( array_column(
+            $wpdb->get_results( "SHOW INDEX FROM $table_name" ),
+            'Key_name'
+        ) );
+        $this->assertNotContains(
+            'username_attempted',
+            $index_names,
+            'Precondition: the composite index should be absent before the upgrade'
+        );
+
+        wldelay_maybe_upgrade_db();
+
+        $index_names = array_unique( array_column(
+            $wpdb->get_results( "SHOW INDEX FROM $table_name" ),
+            'Key_name'
+        ) );
+        $this->assertContains(
+            'username_attempted',
+            $index_names,
+            'The composite index must be added on upgrade'
+        );
+        $this->assertEquals( WLDELAY_DB_VERSION, get_option( 'wldelay_db_version' ) );
     }
 
     /**

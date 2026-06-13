@@ -190,6 +190,19 @@ class LDS_Settings_View {
                             <?php $this->do_settings_section_fields( 'wldelay_custom_login_section_id' ); ?>
                         </div>
                     </div>
+
+                    <div class="wldelay-card">
+                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-botnet-body">
+                            <span class="dashicons dashicons-networking" aria-hidden="true"></span>
+                            <?php esc_html_e( 'Distributed Attack Detection', 'login-delay-shield' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_botnet_enabled', __( 'Distributed Attack Detection', 'login-delay-shield' ) ); ?>
+                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                        </h2>
+                        <div id="wldelay-botnet-body" class="wldelay-card-body">
+                            <p class="description"><?php esc_html_e( 'Alerts when one username is targeted from many different IP addresses — the pattern per-IP lockouts cannot see. Detection never blocks logins; it informs you via the dashboard, the audit log, and (if email alerts are enabled) email.', 'login-delay-shield' ); ?></p>
+                            <?php $this->do_settings_section_fields( 'wldelay_botnet_section_id' ); ?>
+                        </div>
+                    </div>
                 </div>
 
                 <?php submit_button(); ?>
@@ -1754,6 +1767,54 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Apply delay, lockout checks, and logging to password reset submissions without revealing whether an account exists.', 'login-delay-shield' ) );
         echo '<p id="wldelay_password_reset_enabled_desc" class="description">' . esc_html__( 'Protect password reset requests with the same delay and lockout behavior.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Print botnet section info.
+     */
+    public function print_botnet_section_info() {
+        // Description is now in card structure.
+    }
+
+    /**
+     * Botnet detection enabled callback.
+     */
+    public function botnet_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_botnet_enabled" name="wldelay_options[wldelay_botnet_enabled]" value="1" %s aria-describedby="wldelay_botnet_enabled_desc" />',
+            ! empty( $this->options['wldelay_botnet_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'Watches whether a single username is targeted from many different IP addresses inside a short window — the pattern per-IP lockouts cannot see. Generates dashboard banner alerts, audit log entries, and optional emails. Never blocks logins.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_botnet_enabled_desc" class="description">' . esc_html__( 'Enable cross-IP botnet / credential-stuffing detection (alert only, never blocks).', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Botnet distinct-IP threshold callback.
+     */
+    public function botnet_ip_threshold_callback() {
+        printf(
+            '<input type="number" id="wldelay_botnet_ip_threshold" name="wldelay_options[wldelay_botnet_ip_threshold]" value="%d" min="2" max="100" aria-describedby="wldelay_botnet_ip_threshold_desc" />',
+            isset( $this->options['wldelay_botnet_ip_threshold'] )
+                ? esc_attr( $this->options['wldelay_botnet_ip_threshold'] )
+                : 5
+        );
+        echo $this->tooltip( __( 'How many distinct source IP addresses targeting the same username within the detection window triggers an alert. Lower values catch slower attacks; higher values reduce false positives on shared networks.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_botnet_ip_threshold_desc" class="description">' . esc_html__( 'Number of distinct source IPs (2–100) that trigger an alert.', 'login-delay-shield' ) . '</p>';
+    }
+
+    /**
+     * Botnet detection window callback.
+     */
+    public function botnet_window_minutes_callback() {
+        printf(
+            '<input type="number" id="wldelay_botnet_window_minutes" name="wldelay_options[wldelay_botnet_window_minutes]" value="%d" min="5" max="60" aria-describedby="wldelay_botnet_window_minutes_desc" />',
+            isset( $this->options['wldelay_botnet_window_minutes'] )
+                ? esc_attr( $this->options['wldelay_botnet_window_minutes'] )
+                : 15
+        );
+        echo ' <span class="description">' . esc_html__( 'minutes', 'login-delay-shield' ) . '</span>';
+        echo $this->tooltip( __( 'Sliding time window over which distinct source IPs are counted. Shorter windows catch faster attacks; longer windows catch slow-and-slow distributed campaigns.', 'login-delay-shield' ) );
+        echo '<p id="wldelay_botnet_window_minutes_desc" class="description">' . esc_html__( 'Detection window in minutes (5–60).', 'login-delay-shield' ) . '</p>';
     }
 
     /**

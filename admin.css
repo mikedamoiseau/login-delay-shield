@@ -51,6 +51,20 @@
     background: #f6f7f7;
 }
 
+/* Botnet / distributed-attack detection banner (dashboard widget, F-1-9) */
+.wldelay-botnet-alert {
+    margin: 0 0 16px;
+}
+
+.wldelay-botnet-alert .dashicons {
+    vertical-align: text-bottom;
+}
+
+.wldelay-botnet-alert ul {
+    margin: 4px 0 4px 20px;
+    list-style: disc;
+}
+
 .wldelay-widget-trends-title {
     margin: 0 0 8px;
     font-size: 14px;

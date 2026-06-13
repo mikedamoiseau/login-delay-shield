@@ -482,6 +482,152 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertStringNotContainsString( '2026-04-01 14:00', $output );
     }
 
+    // -------------------------------------------------------------------------
+    // Botnet sanitization tests (F-1-9, Task 7 durability fix)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Test botnet IP threshold is clamped (max 100).
+     */
+    public function test_botnet_ip_threshold_clamped_to_max() {
+        $result = $this->settings->sanitize( array( 'wldelay_botnet_ip_threshold' => 999 ) );
+        $this->assertSame( 100, $result['wldelay_botnet_ip_threshold'] );
+    }
+
+    /**
+     * Test botnet IP threshold is clamped (min 2).
+     */
+    public function test_botnet_ip_threshold_clamped_to_min() {
+        $result = $this->settings->sanitize( array( 'wldelay_botnet_ip_threshold' => 0 ) );
+        $this->assertSame( 2, $result['wldelay_botnet_ip_threshold'] );
+    }
+
+    /**
+     * Test botnet window minutes is clamped (max 60).
+     */
+    public function test_botnet_window_minutes_clamped_to_max() {
+        $result = $this->settings->sanitize( array( 'wldelay_botnet_window_minutes' => 999 ) );
+        $this->assertSame( 60, $result['wldelay_botnet_window_minutes'] );
+    }
+
+    /**
+     * Test botnet window minutes is clamped (min 5).
+     */
+    public function test_botnet_window_minutes_clamped_to_min() {
+        $result = $this->settings->sanitize( array( 'wldelay_botnet_window_minutes' => 1 ) );
+        $this->assertSame( 5, $result['wldelay_botnet_window_minutes'] );
+    }
+
+    /**
+     * Test botnet enabled checkbox: unchecked (absent) stores false.
+     */
+    public function test_botnet_enabled_absent_stores_false() {
+        $result = $this->settings->sanitize( array() );
+        $this->assertFalse( $result['wldelay_botnet_enabled'] );
+    }
+
+    /**
+     * Test botnet enabled checkbox: present stores true.
+     */
+    public function test_botnet_enabled_present_stores_true() {
+        $result = $this->settings->sanitize( array( 'wldelay_botnet_enabled' => '1' ) );
+        $this->assertTrue( $result['wldelay_botnet_enabled'] );
+    }
+
+    /**
+     * Test that a save round-trip now persists all 3 botnet keys (durability fix).
+     *
+     * Before this task, sanitize() built a fresh array without the botnet keys,
+     * so they were dropped from storage on every save. This test confirms the fix.
+     */
+    public function test_botnet_keys_persist_through_save_round_trip() {
+        $input = array(
+            'wldelay_botnet_enabled'       => '1',
+            'wldelay_botnet_ip_threshold'  => 8,
+            'wldelay_botnet_window_minutes' => 20,
+        );
+        $sanitized = $this->settings->sanitize( $input );
+
+        $this->assertArrayHasKey( 'wldelay_botnet_enabled', $sanitized );
+        $this->assertArrayHasKey( 'wldelay_botnet_ip_threshold', $sanitized );
+        $this->assertArrayHasKey( 'wldelay_botnet_window_minutes', $sanitized );
+
+        $this->assertTrue( $sanitized['wldelay_botnet_enabled'] );
+        $this->assertSame( 8, $sanitized['wldelay_botnet_ip_threshold'] );
+        $this->assertSame( 20, $sanitized['wldelay_botnet_window_minutes'] );
+    }
+
+    /**
+     * Test settings card for botnet detection is rendered on the admin page.
+     */
+    public function test_botnet_settings_card_is_rendered() {
+        $admin_id = $this->factory->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $admin_id );
+        $_SERVER['REQUEST_URI'] = '/wp-admin/options-general.php?page=login-delay-shield-admin';
+
+        ob_start();
+        $this->settings->create_admin_page();
+        $output = ob_get_clean();
+
+        unset( $_SERVER['REQUEST_URI'] );
+
+        $this->assertStringContainsString( 'Distributed Attack Detection', $output );
+        $this->assertStringContainsString( 'wldelay_botnet_enabled', $output );
+        $this->assertStringContainsString( 'wldelay_botnet_ip_threshold', $output );
+        $this->assertStringContainsString( 'wldelay_botnet_window_minutes', $output );
+    }
+
+    // -------------------------------------------------------------------------
+    // Dashboard widget banner tests (F-1-9)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Test dashboard widget shows botnet banner when detections transient is set.
+     */
+    public function test_dashboard_widget_shows_botnet_banner_when_detections_exist() {
+        $admin_id = $this->factory->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $admin_id );
+
+        set_transient(
+            'wldelay_botnet_detections',
+            array(
+                array(
+                    'username'       => 'targetuser',
+                    'distinct_ips'   => 12,
+                    'window_minutes' => 15,
+                    'detected_at'    => time() - 300,
+                ),
+            ),
+            DAY_IN_SECONDS
+        );
+
+        ob_start();
+        wldelay_dashboard_widget_content();
+        $output = ob_get_clean();
+
+        delete_transient( 'wldelay_botnet_detections' );
+
+        $this->assertStringContainsString( 'Distributed attack detected', $output );
+        $this->assertStringContainsString( 'targetuser', $output );
+    }
+
+    /**
+     * Test dashboard widget shows no botnet banner when no detections exist.
+     */
+    public function test_dashboard_widget_hides_botnet_banner_when_no_detections() {
+        $admin_id = $this->factory->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $admin_id );
+
+        delete_transient( 'wldelay_botnet_detections' );
+
+        ob_start();
+        wldelay_dashboard_widget_content();
+        $output = ob_get_clean();
+
+        $this->assertStringNotContainsString( 'Distributed attack detected', $output );
+        $this->assertStringNotContainsString( 'wldelay-botnet-alert', $output );
+    }
+
     /**
      * Test telemetry source dropdown preserves active legacy/future source filters.
      */
