@@ -1838,6 +1838,90 @@ function wldelay_count_login_log_attempts( $filters = array() ) {
 }
 
 /**
+ * Throttled wrapper for admin log-table counts (F-3-2).
+ *
+ * One transient per user, overwritten in place (no churn): identical filter
+ * sets within 60 s reuse the cached count, so a reload-hammering admin (or a
+ * CSRF'd browser) cannot multiply expensive aggregate queries. A call with a
+ * different filter set overwrites the same key — 100 different filter sets
+ * still leave exactly ONE transient per user, never 100. Counts may be up to
+ * 60 s stale inside the window — acceptable for a monitoring screen.
+ *
+ * Registration choice: we follow the non-critical (botnet cooldown) pattern
+ * from wldelay-botnet.php — we do NOT delete the transient on a failed
+ * registry write. A floating cache entry that might be missed by a global
+ * flush is far preferable to dropping the throttle entirely; the worst outcome
+ * is a single extra DB query, not a security regression.
+ *
+ * @param array $filters Filters as accepted by wldelay_count_login_log_attempts().
+ * @return int
+ */
+function wldelay_admin_throttled_log_count( array $filters ) {
+    $user_id = get_current_user_id();
+    if ( $user_id <= 0 ) {
+        // No per-user cache for logged-out / unauthenticated requests.
+        return wldelay_count_login_log_attempts( $filters );
+    }
+
+    $key    = 'wldelay_admin_qcache_' . $user_id;
+    $hash   = md5( wp_json_encode( $filters ) );
+    $cached = get_transient( $key );
+
+    if ( is_array( $cached )
+        && isset( $cached['hash'], $cached['count'], $cached['ts'] )
+        && $cached['hash'] === $hash
+        && ( time() - (int) $cached['ts'] ) < MINUTE_IN_SECONDS ) {
+        return (int) $cached['count'];
+    }
+
+    $count = wldelay_count_login_log_attempts( $filters );
+    set_transient(
+        $key,
+        array( 'hash' => $hash, 'count' => $count, 'ts' => time() ),
+        2 * MINUTE_IN_SECONDS
+    );
+    // Non-critical registration: see docblock above.
+    wldelay_register_transient_key( $key, time() + 2 * MINUTE_IN_SECONDS );
+
+    return $count;
+}
+
+/**
+ * Gate the login-log export to one run per user per 60 seconds (F-3-2).
+ *
+ * Sets the throttle transient on the ALLOWED path so the immediately following
+ * call is refused. Capability and nonce checks must be performed by the caller
+ * BEFORE invoking this function — this gate is not a substitute for auth.
+ *
+ * Registration choice: same non-critical pattern as wldelay_admin_throttled_log_count()
+ * above. A missed registry entry for a 60-second throttle is inconsequential.
+ *
+ * @return true|WP_Error true when the export may proceed; WP_Error when throttled.
+ */
+function wldelay_check_export_throttle() {
+    $user_id = get_current_user_id();
+    $key     = 'wldelay_export_throttle_' . $user_id;
+
+    if ( false !== get_transient( $key ) ) {
+        return new WP_Error(
+            'wldelay_export_throttled',
+            __( 'The log was exported less than a minute ago. Please wait before exporting again.', 'login-delay-shield' )
+        );
+    }
+
+    // Set the throttle on the allowed path BEFORE the export streams. A rare
+    // fopen('php://output') failure downstream therefore costs the admin a 60s
+    // wait before retry — accepted: php://output failures are essentially
+    // theoretical in an HTTP context, and gating on success would require
+    // threading the throttle set into the streaming handler.
+    set_transient( $key, time(), MINUTE_IN_SECONDS );
+    // Non-critical registration: a missed entry is a minor audit gap, not a security regression.
+    wldelay_register_transient_key( $key, time() + MINUTE_IN_SECONDS );
+
+    return true;
+}
+
+/**
  * Compute a lightweight snapshot hash for telemetry pagination.
  *
  * @param int   $total   Total matching rows.
@@ -2004,6 +2088,27 @@ function wldelay_handle_export_login_log() {
 
     check_admin_referer( 'wldelay_export_login_log' );
 
+    // F-3-2: rate-limit the export to one run per user per 60 seconds.
+    // Auth and nonce are verified above — the throttle check comes after them,
+    // not instead of them.
+    $throttle_result = wldelay_check_export_throttle();
+    if ( is_wp_error( $throttle_result ) ) {
+        $redirect_url = add_query_arg(
+            array(
+                'page'                    => 'login-delay-shield-admin',
+                'wldelay_export_throttled' => '1',
+            ),
+            admin_url( 'options-general.php' )
+        );
+
+        wp_safe_redirect( $redirect_url );
+
+        if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+            return;
+        }
+        exit;
+    }
+
     $batch_size = 1000;
 
     // In CLI/test runtime, headers may already be sent by bootstrap output.
@@ -2087,7 +2192,7 @@ function wldelay_render_unlock_notice() {
         $message = __( 'No active lockout was found for your current IP.', 'login-delay-shield' );
     }
 
-    echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
+    echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible" role="status" aria-live="polite"><p>' . esc_html( $message ) . '</p></div>';
 }
 add_action( 'admin_notices', 'wldelay_render_unlock_notice' );
 
@@ -2153,6 +2258,31 @@ function wldelay_render_lockout_manager_notice() {
     echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible" role="status" aria-live="polite"><p>' . esc_html( $message ) . '</p></div>';
 }
 add_action( 'admin_notices', 'wldelay_render_lockout_manager_notice' );
+
+/**
+ * Render the admin notice shown after a throttled CSV export attempt (F-3-2).
+ *
+ * Mirrors the pattern of wldelay_render_unlock_notice(): scoped to the plugin
+ * page and to users who hold manage_options.
+ */
+function wldelay_render_export_throttle_notice() {
+    if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'login-delay-shield-admin' ) {
+        return;
+    }
+
+    if ( empty( $_GET['wldelay_export_throttled'] ) ) {
+        return;
+    }
+
+    echo '<div class="notice notice-warning is-dismissible" role="status" aria-live="polite"><p>'
+        . esc_html__( 'The log was exported less than a minute ago. Please wait before exporting again.', 'login-delay-shield' )
+        . '</p></div>';
+}
+add_action( 'admin_notices', 'wldelay_render_export_throttle_notice' );
 
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
     /**

@@ -600,7 +600,7 @@ class LDS_Settings_View {
         $filters      = wldelay_get_login_log_filters_from_request();
         $current_page = isset( $_GET['wldelay_log_page'] ) ? max( 1, absint( wp_unslash( $_GET['wldelay_log_page'] ) ) ) : 1;
         $per_page     = 25;
-        $total        = wldelay_count_login_log_attempts( $filters );
+        $total        = wldelay_admin_throttled_log_count( $filters );
         $total_pages  = max( 1, (int) ceil( $total / $per_page ) );
 
         if ( $current_page > $total_pages ) {
