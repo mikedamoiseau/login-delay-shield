@@ -604,6 +604,15 @@ class LDS_Settings {
         $raw_slug = isset( $input['wldelay_custom_login_slug'] ) ? (string) $input['wldelay_custom_login_slug'] : '';
         $new_input['wldelay_custom_login_slug'] = $this->sanitize_login_slug( $raw_slug );
 
+        // Coherence check: surface advisory warnings for contradictory-but-valid
+        // combinations. Warnings never block the save — $new_input is returned
+        // unchanged.
+        if ( function_exists( 'add_settings_error' ) ) {
+            foreach ( wldelay_settings_coherence_warnings( $new_input ) as $i => $warning ) {
+                add_settings_error( WLDELAY_OPTION_NAME, 'wldelay_coherence_' . $i, $warning, 'warning' );
+            }
+        }
+
         return $new_input;
     }
 
@@ -699,4 +708,67 @@ class LDS_Settings {
         return implode( "\n", $valid_ips );
     }
 
+}
+
+/**
+ * Detect contradictory-but-valid settings combinations (F-1-3).
+ *
+ * Every rule is advisory: the save always succeeds; warnings surface via
+ * add_settings_error( ..., 'warning' ). Rules read like a table — one guard,
+ * one message — so each is independently unit-testable.
+ *
+ * @param array $options Sanitized options about to be persisted.
+ * @return string[] Translated warning messages (empty when coherent).
+ */
+function wldelay_settings_coherence_warnings( array $options ) {
+    $warnings = array();
+
+    // Rule 1: fail2ban enabled but log directory is not writable (or path unresolvable).
+    if ( ! empty( $options['wldelay_fail2ban_enabled'] ) ) {
+        $path = isset( $options['wldelay_fail2ban_log_path'] )
+            ? wldelay_fail2ban_resolve_log_path( $options['wldelay_fail2ban_log_path'] )
+            : wldelay_fail2ban_resolve_log_path();
+        $dir  = dirname( $path );
+        if ( '' === $path || ( is_dir( $dir ) && ! is_writable( $dir ) ) ) {
+            $warnings[] = __( 'fail2ban logging is enabled but the log directory is not writable — no lines will be written.', 'login-delay-shield' );
+        }
+    }
+
+    // Rule 2: whitelist enabled but no IP entries defined.
+    if ( ! empty( $options['wldelay_whitelist_enabled'] ) ) {
+        $ips = isset( $options['wldelay_whitelist_ips'] ) ? trim( (string) $options['wldelay_whitelist_ips'] ) : '';
+        if ( '' === $ips ) {
+            $warnings[] = __( 'The IP whitelist is enabled but empty — it currently bypasses nothing.', 'login-delay-shield' );
+        }
+    }
+
+    // Rule 3: XML-RPC is fully blocked, making the XML-RPC delay redundant.
+    if ( ! empty( $options['wldelay_xmlrpc_block'] ) && ! empty( $options['wldelay_xmlrpc_enabled'] ) ) {
+        $warnings[] = __( 'XML-RPC is fully blocked, so the XML-RPC delay setting has no effect.', 'login-delay-shield' );
+    }
+
+    // Rule 4: progressive delay maximum is below the base delay.
+    if ( ! empty( $options['wldelay_progressive_enabled'] ) ) {
+        $base = isset( $options['wldelay_delay'] ) ? (int) $options['wldelay_delay'] : 0;
+        $max  = isset( $options['wldelay_progressive_max'] ) ? (int) $options['wldelay_progressive_max'] : 0;
+        if ( $max > 0 && $max < $base ) {
+            $warnings[] = __( 'The progressive delay maximum is below the base delay — progression can never increase the delay.', 'login-delay-shield' );
+        }
+    }
+
+    // Rule 5: email alert threshold is above the lockout threshold (alert may never fire).
+    if ( ! empty( $options['wldelay_email_enabled'] ) && ! empty( $options['wldelay_lockout_enabled'] ) ) {
+        $email_t   = isset( $options['wldelay_email_threshold'] ) ? (int) $options['wldelay_email_threshold'] : 0;
+        $lockout_t = isset( $options['wldelay_lockout_threshold'] ) ? (int) $options['wldelay_lockout_threshold'] : 0;
+        if ( $email_t > $lockout_t && $lockout_t > 0 ) {
+            $warnings[] = __( 'The email alert threshold is above the lockout threshold — the counter freezes during a lockout, so the alert may never be sent.', 'login-delay-shield' );
+        }
+    }
+
+    // Rule 6: distributed-attack detection on but email alerts are off.
+    if ( ! empty( $options['wldelay_botnet_enabled'] ) && empty( $options['wldelay_email_enabled'] ) ) {
+        $warnings[] = __( 'Distributed-attack detection is on but email alerts are off — detections will appear on the dashboard only.', 'login-delay-shield' );
+    }
+
+    return $warnings;
 }
