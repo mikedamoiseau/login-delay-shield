@@ -217,6 +217,10 @@ Distributed attack detection.
 * fail2ban log lines are buffered and written once per request instead of one write per attempt — less disk I/O under brute-force load.
 * Login-log statistics and CSV export on the settings page are rate-limited per administrator to one expensive query per minute.
 
+**Fixes:**
+* Corrected the text domain to match the WordPress.org plugin slug so bundled and community translations load reliably.
+* Settings page layout fixes: profile cards no longer overflow their column, the two-column widgets size evenly on desktop, profile checkmarks align with their bullets, and the "Apply selected profile" button now works.
+
 = 2.4.1 =
 Packaging fix.
 
