@@ -71,3 +71,21 @@ require_once dirname( dirname( __DIR__ ) ) . '/wldelay-changelog.php';
 // Load the shared failed-auth pipeline (F-2-4). Pure logic — all of its
 // collaborators are stubbed via Brain Monkey in the tests.
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-pipeline.php';
+
+// WordPress time constants used by the botnet module (and available globally
+// in a real WP runtime). Define them here so unit tests run without WP.
+if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {
+    define( 'MINUTE_IN_SECONDS', 60 );
+}
+if ( ! defined( 'HOUR_IN_SECONDS' ) ) {
+    define( 'HOUR_IN_SECONDS', 3600 );
+}
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+    define( 'DAY_IN_SECONDS', 86400 );
+}
+
+// Load the botnet / credential-stuffing detection module (F-1-9). Its
+// wldelay_register_task_handler() and wldelay_on_event() calls at the bottom
+// are guarded or no-ops in the unit suite (function_exists is true for Brain
+// Monkey stubs, but the registrations are just array writes — harmless).
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-botnet.php';

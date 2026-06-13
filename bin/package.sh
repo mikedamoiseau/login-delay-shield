@@ -29,6 +29,7 @@ zip -qr "$OUT_ZIP" \
     wldelay-async.php \
     wldelay-changelog.php \
     wldelay-audit.php \
+    wldelay-botnet.php \
     wldelay-enumeration.php \
     wldelay-fail2ban.php \
     wldelay-features.php \
