@@ -1,87 +1,83 @@
-# Copyright (C) 2025 Mike
+# Copyright (C) 2026 Mike
 # This file is distributed under the GPL2.
 msgid ""
 msgstr ""
-"Project-Id-Version: Login Delay Shield 1.8.1\n"
+"Project-Id-Version: Login Delay Shield 2.1.0\n"
 "Report-Msgid-Bugs-To: https://damoiseau.me\n"
-"POT-Creation-Date: 2026-02-14 18:38+0700\n"
-"PO-Revision-Date: 2025-01-01 00:00+0000\n"
-"Last-Translator: Claude Code <code@anthropic.com>\n"
-"Language-Team: Dutch <nl@example.com>\n"
-"Language: nl_NL\n"
+"POT-Creation-Date: 2026-02-14T18:38:00+07:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Claude Code\n"
-"X-Domain: login-delay-shield\n"
+"X-Domain: wp-login-delay\n"
 
 #: wp-login-delay.php:48 wp-login-delay.php:129
 msgid "Settings"
-msgstr "Instellingen"
+msgstr ""
 
 #: wp-login-delay.php:61
 msgid "Recent Failed Login Attempts"
-msgstr "Recente mislukte inlogpogingen"
+msgstr ""
 
 #: wp-login-delay.php:95
 msgid "No failed login attempts recorded."
-msgstr "Geen mislukte inlogpogingen geregistreerd."
+msgstr ""
 
 #: wp-login-delay.php:100
 msgid "Recent failed login attempts"
-msgstr "Recente mislukte inlogpogingen"
+msgstr ""
 
 #: wp-login-delay.php:102
 msgid "Time"
-msgstr "Tijd"
+msgstr ""
 
 #: wp-login-delay.php:103
 msgid "Username"
-msgstr "Gebruikersnaam"
+msgstr ""
 
 #: wp-login-delay.php:104
 msgid "IP Address"
-msgstr "IP-adres"
+msgstr ""
 
 #: wp-login-delay.php:105
 msgid "Source"
-msgstr "Bron"
+msgstr ""
 
 #: wp-login-delay.php:113
 msgid "Login"
-msgstr "Inloggen"
+msgstr ""
 
 #. translators: %1$s: time ago, %2$s: exact timestamp
 #: wp-login-delay.php:117
 #, php-format
 msgid "%1$s ago"
-msgstr "%1$s geleden"
+msgstr ""
 
 #: wp-login-delay.php:276
 msgid "Login Delay Shield"
-msgstr "Login Delay Shield"
+msgstr ""
 
 #: wp-login-delay.php:277
 msgid ""
 "This plugin was formerly known as \"WP Login Delay\". The name has changed, "
 "but all your settings have been preserved."
 msgstr ""
-"Deze plugin heette voorheen \"WP Login Delay\". De naam is gewijzigd, maar "
-"al uw instellingen zijn behouden gebleven."
 
 #. translators: %s: remaining lockout duration, e.g. "2 minutes"
 #: wp-login-delay.php:563
-#, fuzzy, php-format
+#, php-format
 msgid "Too many failed login attempts. Please try again in %s."
-msgstr "Te veel mislukte inlogpogingen. Probeer het later opnieuw."
+msgstr ""
 
 #: wp-login-delay.php:568
 msgid "Too many failed login attempts. Please try again later."
-msgstr "Te veel mislukte inlogpogingen. Probeer het later opnieuw."
+msgstr ""
 
 #: wp-login-delay.php:859
 msgid "XML-RPC authentication is disabled on this site."
-msgstr "XML-RPC-authenticatie is op deze site uitgeschakeld."
+msgstr ""
 
 #: wp-login-delay.php:1019
 #, php-format
@@ -92,182 +88,154 @@ msgstr[1] ""
 
 #: wldelay-settings-view.php:45
 msgid "Help"
-msgstr "Hulp"
+msgstr ""
 
 #: wldelay-settings-view.php:68
 msgid "Delay Settings"
-msgstr "Vertragingsinstellingen"
+msgstr ""
 
 #: wldelay-settings-view.php:80 wldelay-settings-view.php:81
 msgid "Email Notifications"
-msgstr "E-mailmeldingen"
+msgstr ""
 
 #: wldelay-settings-view.php:85
 msgid ""
 "Receive email alerts when multiple failed login attempts are detected from "
 "the same IP address."
 msgstr ""
-"Ontvang e-mailwaarschuwingen wanneer meerdere mislukte inlogpogingen van "
-"hetzelfde IP-adres worden gedetecteerd."
 
 #: wldelay-settings-view.php:93 wldelay-settings-view.php:94
 #: wldelay-settings-view.php:155
 msgid "IP Lockout"
-msgstr "IP-vergrendeling"
+msgstr ""
 
 #: wldelay-settings-view.php:98
-#, fuzzy
 msgid ""
 "Temporarily block repeated failed login attempts by IP address or by IP + "
 "username."
-msgstr "Blokkeer IP-adressen tijdelijk na te veel mislukte inlogpogingen."
+msgstr ""
 
 #: wldelay-settings-view.php:106 wldelay-settings-view.php:107
 #: wldelay-settings-view.php:156
 msgid "IP Whitelist"
-msgstr "IP-whitelist"
+msgstr ""
 
 #: wldelay-settings-view.php:111
 msgid "Skip delay and lockout for trusted IP addresses (e.g., office, VPN)."
 msgstr ""
-"Sla vertraging en vergrendeling over voor vertrouwde IP-adressen (bijv. "
-"kantoor, VPN)."
 
 #: wldelay-settings-view.php:119
 msgid "Login Log"
-msgstr "Inloglogboek"
+msgstr ""
 
 #: wldelay-settings-view.php:123
 msgid "Failed login attempts are logged and displayed in the dashboard widget."
 msgstr ""
-"Mislukte inlogpogingen worden geregistreerd en weergegeven in de "
-"dashboardwidget."
 
 #: wldelay-settings-view.php:131 wldelay-settings-view.php:132
 #: wldelay-settings-view.php:158
 msgid "XML-RPC Protection"
-msgstr "XML-RPC-bescherming"
+msgstr ""
 
 #: wldelay-settings-view.php:136
 msgid ""
 "Protect against brute-force attacks via XML-RPC (used by the WordPress "
 "mobile app and remote publishing)."
 msgstr ""
-"Bescherm tegen brute-force-aanvallen via XML-RPC (gebruikt door de WordPress-"
-"mobiele app en extern publiceren)."
 
 #: wldelay-settings-view.php:154
 msgid "Email Alerts"
-msgstr "E-mailwaarschuwingen"
+msgstr ""
 
 #: wldelay-settings-view.php:157
 msgid "Progressive Delay"
-msgstr "Progressieve vertraging"
+msgstr ""
 
 #: wldelay-settings-view.php:171
 msgid "enabled"
-msgstr "ingeschakeld"
+msgstr ""
 
 #: wldelay-settings-view.php:171
 msgid "disabled"
-msgstr "uitgeschakeld"
+msgstr ""
 
 #: wldelay-settings-view.php:197
 msgid "Protection status summary"
-msgstr "Overzicht beschermingsstatus"
+msgstr ""
 
 #: wldelay-settings-view.php:200
 msgid "Protection Features Enabled"
-msgstr "Beschermingsfuncties ingeschakeld"
+msgstr ""
 
 #: wldelay-settings-view.php:218
 msgid "Performance tip:"
-msgstr "Prestatietip:"
+msgstr ""
 
 #: wldelay-settings-view.php:219
 msgid ""
 "For high-traffic sites, consider using a persistent object cache (Redis, "
 "Memcached) to reduce database load during attacks."
 msgstr ""
-"Voor sites met veel verkeer kunt u overwegen een persistent objectcache "
-"(Redis, Memcached) te gebruiken om de databasebelasting tijdens aanvallen te "
-"verminderen."
 
 #: wldelay-settings-view.php:234
 msgid "Enabled"
-msgstr "Ingeschakeld"
+msgstr ""
 
 #: wldelay-settings-view.php:234
 msgid "Disabled"
-msgstr "Uitgeschakeld"
+msgstr ""
 
 #. translators: 1: feature name, 2: enabled or disabled
 #: wldelay-settings-view.php:240
 #, php-format
 msgid "%1$s: %2$s"
-msgstr "%1$s: %2$s"
+msgstr ""
 
 #: wldelay-settings-view.php:451
 msgid ""
 "A fixed delay applied to every login attempt. Higher values slow down brute-"
 "force attacks but may slightly delay legitimate users."
 msgstr ""
-"Een vaste vertraging die op elke inlogpoging wordt toegepast. Hogere waarden "
-"vertragen brute-force-aanvallen, maar kunnen rechtmatige gebruikers licht "
-"vertragen."
 
 #: wldelay-settings-view.php:462
 msgid ""
 "Randomized delays make it harder for attackers to detect patterns or time "
 "their attempts. Recommended for better security."
 msgstr ""
-"Willekeurige vertragingen maken het moeilijker voor aanvallers om patronen "
-"op te sporen of hun pogingen in te plannen. Aanbevolen voor betere "
-"beveiliging."
 
 #: wldelay-settings-view.php:473
 msgid ""
 "The shortest possible delay. Each login attempt will wait at least this many "
 "seconds."
 msgstr ""
-"De kortst mogelijke vertraging. Elke inlogpoging wacht op zijn minst zoveel "
-"seconden."
 
 #: wldelay-settings-view.php:484
 msgid ""
 "The longest possible delay. Each login attempt will wait up to this many "
 "seconds."
 msgstr ""
-"De langst mogelijke vertraging. Elke inlogpoging wacht tot zoveel seconden."
 
 #: wldelay-settings-view.php:495
 msgid ""
 "Get notified when someone is trying to break into your site. Alerts are sent "
 "once per IP until the attack stops."
 msgstr ""
-"Ontvang een melding wanneer iemand uw site probeert binnen te dringen. "
-"Waarschuwingen worden eenmaal per IP-adres verzonden totdat de aanval stopt."
 
 #: wldelay-settings-view.php:506
 msgid ""
 "Number of failed attempts from one IP before sending an alert. Lower values "
 "mean earlier warnings but more emails."
 msgstr ""
-"Aantal mislukte pogingen van één IP-adres voordat een waarschuwing wordt "
-"verzonden. Lagere waarden betekenen vroegere waarschuwingen maar meer e-"
-"mails."
 
 #: wldelay-settings-view.php:518
 msgid ""
 "Where to send security alerts. If left blank, emails go to the WordPress "
 "admin address."
 msgstr ""
-"Waar u beveiligingswaarschuwingen wilt ontvangen. Als u dit leeg laat, gaan "
-"e-mails naar het WordPress-beheerdersadres."
 
 #: wldelay-settings-view.php:519
 msgid "Leave empty to use the site admin email."
-msgstr "Laat dit leeg om het e-mailadres van de site-beheerder te gebruiken."
+msgstr ""
 
 #: wldelay-settings-view.php:530
 msgid "minutes"
@@ -288,26 +256,20 @@ msgid ""
 "Temporarily block IPs after too many failures. Effective at stopping "
 "automated attacks cold."
 msgstr ""
-"Blokkeer IP-adressen tijdelijk na te veel fouten. Zeer effectief bij het "
-"stoppen van geautomatiseerde aanvallen."
 
 #: wldelay-settings-view.php:556
-#, fuzzy
 msgid ""
 "How many failed attempts before lockout is triggered for the selected "
 "strategy."
 msgstr ""
-"Hoeveel mislukte pogingen voordat het IP-adres wordt geblokkeerd. Stel hoger "
-"in als gebruikers vaak wachtwoorden verkeerd typen."
 
 #: wldelay-settings-view.php:580
 msgid "IP only"
 msgstr ""
 
 #: wldelay-settings-view.php:582
-#, fuzzy
 msgid "IP + username"
-msgstr "Gebruikersnaam"
+msgstr ""
 
 #: wldelay-settings-view.php:585
 msgid ""
@@ -326,17 +288,14 @@ msgid ""
 "How long to block an IP. Longer durations discourage persistent attackers "
 "but may inconvenience legitimate users who forgot their password."
 msgstr ""
-"Hoe lang een IP-adres moet worden geblokkeerd. Langere periodes ontmoedigen "
-"aanhoudende aanvallers, maar kunnen legitieme gebruikers die hun wachtwoord "
-"zijn vergeten, lastig vallen."
 
 #: wldelay-settings-view.php:600
 msgid "Maximum: 1440 minutes (24 hours)"
-msgstr "Maximum: 1440 minuten (24 uur)"
+msgstr ""
 
 #: wldelay-settings-view.php:610
 msgid "Trust X-Forwarded-For and HTTP_CLIENT_IP headers for IP detection."
-msgstr "Vertrouw X-Forwarded-For en HTTP_CLIENT_IP headers voor IP-detectie."
+msgstr ""
 
 #: wldelay-settings-view.php:612
 msgid ""
@@ -344,129 +303,147 @@ msgid ""
 "(e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct "
 "connection IP is used, preventing attackers from spoofing their IP address."
 msgstr ""
-"Schakel dit alleen in als uw site achter een reverse proxy of load balancer "
-"staat (bijv. Cloudflare, nginx proxy, AWS ELB). Wanneer dit is "
-"uitgeschakeld, wordt alleen het directe verbindings-IP gebruikt, wat "
-"voorkomt dat aanvallers hun IP-adres vervalsen."
 
 #: wldelay-settings-view.php:613
 msgid ""
 "Leave disabled unless behind a trusted proxy. Enabling this on a non-proxied "
 "site allows IP spoofing."
 msgstr ""
-"Houd dit uitgeschakeld tenzij u achter een vertrouwde proxy zit. Dit in te "
-"schakelen op een site zonder proxy staat IP-spoofing toe."
 
 #: wldelay-settings-view.php:623
 msgid "Increase delay with each consecutive failed attempt from the same IP."
 msgstr ""
-"Verhoog de vertraging met elke opeenvolgende mislukte poging van hetzelfde "
-"IP-adres."
 
 #: wldelay-settings-view.php:625
 msgid ""
 "Delays grow longer with each failed attempt. First try might be 1s, second "
 "2s, third 3s, etc. Very effective against automated attacks."
 msgstr ""
-"Vertragingen nemen toe met elke mislukte poging. De eerste poging kan 1 "
-"seconde zijn, de tweede 2 seconden, de derde 3 seconden, enzovoort. Zeer "
-"effectief tegen geautomatiseerde aanvallen."
 
 #: wldelay-settings-view.php:638
 msgid ""
 "How much to increase the delay after each failed attempt. Higher values "
 "penalize repeat offenders more aggressively."
 msgstr ""
-"Hoeveel de vertraging na elke mislukte poging moet toenemen. Hogere waarden "
-"bestraffen herhaalde overtreders agressiever."
 
 #: wldelay-settings-view.php:639
 msgid "Additional seconds added per failed attempt (1-10)."
-msgstr "Aanvullende seconden toegevoegd per mislukte poging (1-10)."
+msgstr ""
 
 #: wldelay-settings-view.php:652
 msgid ""
 "The delay stops increasing at this value. Prevents excessively long waits "
 "that could tie up server resources."
 msgstr ""
-"De vertraging stopt bij deze waarde. Voorkomt excessief lange wachttijden "
-"die serverbronnen kunnen binden."
 
 #: wldelay-settings-view.php:653
 msgid "Maximum total delay in seconds (5-60)."
-msgstr "Maximale totale vertraging in seconden (5-60)."
+msgstr ""
 
 #: wldelay-settings-view.php:664
 msgid ""
 "Bypass all protection for trusted IPs. Useful for office networks or VPNs "
 "where delays would be annoying."
 msgstr ""
-"Omzeil alle bescherming voor vertrouwde IP-adressen. Handig voor "
-"kantoornetten of VPN's waar vertragingen hinderlijk zouden zijn."
 
 #: wldelay-settings-view.php:675
 msgid ""
 "Enter trusted IP addresses. CIDR notation (e.g., 192.168.1.0/24) allows "
 "whitelisting entire networks."
 msgstr ""
-"Voer vertrouwde IP-adressen in. CIDR-notatie (bijv. 192.168.1.0/24) stelt u "
-"in staat hele netwerken op de whitelist te zetten."
 
 #: wldelay-settings-view.php:676
 msgid ""
 "One IP address or CIDR range per line (e.g., 192.168.1.1 or 10.0.0.0/8)."
 msgstr ""
-"Eén IP-adres of CIDR-bereik per regel (bijv. 192.168.1.1 of 10.0.0.0/8)."
 
 #: wldelay-settings-view.php:689
 msgid ""
 "Old logs are automatically cleaned up to save database space. Shorter "
 "retention = smaller database."
 msgstr ""
-"Oude logboeken worden automatisch opgeruimd om databaseruimte te besparen. "
-"Kortere bewaartermijn = kleinere database."
 
 #: wldelay-settings-view.php:690
 msgid ""
 "Automatically delete log entries older than this many days. Set to 0 to keep "
 "logs forever."
 msgstr ""
-"Verwijder automatisch logboekvermeldingen die ouder zijn dan zoveel dagen. "
-"Stel in op 0 om logboeken voor altijd te bewaren."
 
 #: wldelay-settings-view.php:701
 msgid ""
 "XML-RPC is often targeted by attackers because it allows multiple login "
 "attempts in a single request. Protecting it is strongly recommended."
 msgstr ""
-"XML-RPC wordt vaak door aanvallers gericht omdat het meerdere inlogpogingen "
-"in één aanvraag toestaat. Bescherming ervan wordt sterk aanbevolen."
 
 #: wldelay-settings-view.php:702
 msgid "Apply delay and lockout protection to XML-RPC authentication requests."
 msgstr ""
-"Pas vertraging en vergrendelingsbescherming toe op XML-RPC-"
-"verificatieverzoeken."
 
 #: wldelay-settings-view.php:713
 msgid ""
 "Completely disables XML-RPC login. Enable this if you manage your site only "
 "via the web interface and don't use Jetpack or the WP mobile app."
 msgstr ""
-"Schakelt XML-RPC-inloggen volledig uit. Schakel dit in als u uw site alleen "
-"via de webinterface beheert en Jetpack of de WP-mobiele app niet gebruikt."
 
 #: wldelay-settings-view.php:714
 msgid ""
 "Completely block XML-RPC authentication. Use this if you don't need remote "
 "publishing or the WordPress mobile app."
 msgstr ""
-"Blokkeer XML-RPC-verificatie volledig. Gebruik dit als u geen extern "
-"publiceren of WordPress-mobiele app nodig hebt."
 
-#~ msgid ""
-#~ "Adds a one second or a custom time delay to the login to avoid brute-"
-#~ "force attack"
-#~ msgstr ""
-#~ "Voegt een vertraging van één seconde of een aangepaste tijdvertraging aan "
-#~ "het inloggen toe om brute-force-aanvallen te voorkomen"
+#: wldelay-settings.php:301
+msgid "Enable fail2ban logging"
+msgstr ""
+
+#: wldelay-settings.php:309
+msgid "Fail2ban log path"
+msgstr ""
+
+#: wldelay-settings.php:317
+msgid "Log lockout events"
+msgstr ""
+
+#: wldelay-settings-view.php:131 wldelay-settings-view.php:187
+msgid "fail2ban Logging"
+msgstr ""
+
+#: wldelay-settings-view.php:952
+msgid ""
+"Write a fail2ban-compatible line when Login Delay Shield records an "
+"authentication failure."
+msgstr ""
+
+#: wldelay-settings-view.php:953
+msgid ""
+"Disabled by default. Enable only after configuring a fail2ban jail to watch "
+"the selected log file."
+msgstr ""
+
+#: wldelay-settings.php:494
+msgid ""
+"fail2ban logging was disabled because the selected log path is not allowed. "
+"Use a .log file in the protected default directory, or leave the path empty "
+"for the protected default log location."
+msgstr ""
+
+#: wldelay-settings-view.php:968
+msgid ""
+"Leave empty to use the protected default log directory. Custom paths are "
+"restricted to the protected default directory by default; use the filter only "
+"for server-protected directories."
+msgstr ""
+
+#: wldelay-settings-view.php:971
+msgid "Leave empty to write to the protected default path:"
+msgstr ""
+
+#: wldelay-settings-view.php:988
+msgid ""
+"Also write a line when Login Delay Shield creates a temporary lockout."
+msgstr ""
+
+#: wldelay-settings-view.php:989
+msgid ""
+"Useful when your jail should ban on plugin lockouts as well as individual "
+"failed-login lines."
+msgstr ""

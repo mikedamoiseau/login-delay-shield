@@ -1015,11 +1015,11 @@ function wldelay_get_audit_action_options( $limit = 50 ) {
 function wldelay_get_audit_action_label( $action ) {
     $action = (string) $action;
     $labels = array(
-        'settings_changed'  => __( 'Settings changed', 'login-delay-shield' ),
-        'lockout_cleared'   => __( 'Lockout cleared', 'login-delay-shield' ),
-        'lockouts_flushed'  => __( 'All lockouts flushed', 'login-delay-shield' ),
-        'whitelist_changed' => __( 'Whitelist changed', 'login-delay-shield' ),
-        'audit_gap_acknowledged' => __( 'Audit gap acknowledged', 'login-delay-shield' ),
+        'settings_changed'  => __( 'Settings changed', 'wp-login-delay' ),
+        'lockout_cleared'   => __( 'Lockout cleared', 'wp-login-delay' ),
+        'lockouts_flushed'  => __( 'All lockouts flushed', 'wp-login-delay' ),
+        'whitelist_changed' => __( 'Whitelist changed', 'wp-login-delay' ),
+        'audit_gap_acknowledged' => __( 'Audit gap acknowledged', 'wp-login-delay' ),
     );
 
     return isset( $labels[ $action ] ) ? $labels[ $action ] : $action;
@@ -1226,10 +1226,10 @@ function wldelay_render_audit_health_notice() {
     }
 
     echo '<div class="notice notice-error"><p><strong>'
-        . esc_html__( 'Login Delay Shield', 'login-delay-shield' ) . '</strong> — '
-        . esc_html__( 'One or more audit-log entries could not be written, so the audit trail below is permanently incomplete. The lost events cannot be recovered. Check your database/error log, then acknowledge the gap to dismiss this warning.', 'login-delay-shield' )
+        . esc_html__( 'Login Delay Shield', 'wp-login-delay' ) . '</strong> — '
+        . esc_html__( 'One or more audit-log entries could not be written, so the audit trail below is permanently incomplete. The lost events cannot be recovered. Check your database/error log, then acknowledge the gap to dismiss this warning.', 'wp-login-delay' )
         . ' <a href="' . esc_url( wldelay_get_audit_ack_gap_url() ) . '">'
-        . esc_html__( 'Acknowledge gap', 'login-delay-shield' ) . '</a>'
+        . esc_html__( 'Acknowledge gap', 'wp-login-delay' ) . '</a>'
         . '</p></div>';
 }
 
@@ -1266,7 +1266,7 @@ function wldelay_get_audit_ack_gap_url() {
  */
 function wldelay_handle_ack_audit_gap() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'wp-login-delay' ) );
     }
 
     check_admin_referer( 'wldelay_ack_audit_gap' );

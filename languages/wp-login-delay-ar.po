@@ -15,7 +15,7 @@ msgstr ""
 "Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
 "&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
 "X-Generator: Claude Code\n"
-"X-Domain: login-delay-shield\n"
+"X-Domain: wp-login-delay\n"
 
 #: wp-login-delay.php:48 wp-login-delay.php:129
 msgid "Settings"

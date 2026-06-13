@@ -114,15 +114,15 @@ class PrivacyTest extends WP_UnitTestCase {
     public function test_exporter_is_registered_on_filter() {
         $exporters = apply_filters( 'wp_privacy_personal_data_exporters', array() );
 
-        $this->assertArrayHasKey( 'login-delay-shield', $exporters );
-        $this->assertSame( 'wldelay_privacy_exporter', $exporters['login-delay-shield']['callback'] );
+        $this->assertArrayHasKey( 'wp-login-delay', $exporters );
+        $this->assertSame( 'wldelay_privacy_exporter', $exporters['wp-login-delay']['callback'] );
     }
 
     public function test_eraser_is_registered_on_filter() {
         $erasers = apply_filters( 'wp_privacy_personal_data_erasers', array() );
 
-        $this->assertArrayHasKey( 'login-delay-shield', $erasers );
-        $this->assertSame( 'wldelay_privacy_eraser', $erasers['login-delay-shield']['callback'] );
+        $this->assertArrayHasKey( 'wp-login-delay', $erasers );
+        $this->assertSame( 'wldelay_privacy_eraser', $erasers['wp-login-delay']['callback'] );
     }
 
     // ----------------------------------------------------------------------

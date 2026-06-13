@@ -13,7 +13,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "X-Generator: Claude Code\n"
-"X-Domain: login-delay-shield\n"
+"X-Domain: wp-login-delay\n"
 
 #: wp-login-delay.php:48 wp-login-delay.php:129
 msgid "Settings"

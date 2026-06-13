@@ -55,7 +55,7 @@ function wldelay_enumeration_hardening_is_active() {
  * @return string
  */
 function wldelay_get_generic_login_error_message() {
-    return __( 'Error: Invalid login credentials.', 'login-delay-shield' );
+    return __( 'Error: Invalid login credentials.', 'wp-login-delay' );
 }
 
 /**

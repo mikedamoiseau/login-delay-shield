@@ -539,7 +539,7 @@
 
 .wldelay-profile-option {
     position: relative;
-    display: block;
+    display: flex;
     min-width: 0;
 }
 
@@ -552,7 +552,7 @@
 
 .wldelay-profile-content {
     display: block;
-    min-height: 100%;
+    flex: 1;
     padding: 14px 14px 14px 42px;
     border: 1px solid #c3c4c7;
     border-radius: 4px;
@@ -578,7 +578,7 @@
 .wldelay-profile-title,
 .wldelay-profile-description,
 .wldelay-profile-effects,
-.wldelay-profile-effects span {
+.wldelay-profile-effects > span {
     display: block;
 }
 
@@ -625,8 +625,18 @@
 .wldelay-profile-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 6px 10px;
     margin: 16px 0 0;
+}
+
+.wldelay-profile-actions .button {
+    flex-shrink: 0;
+}
+
+.wldelay-profile-actions .description {
+    flex: 1 1 240px;
+    margin: 0;
 }
 
 @media (max-width: 960px) {
@@ -932,7 +942,7 @@
 
 @media (min-width: 1200px) {
     .wldelay-grid {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         align-items: start;
     }
 
@@ -943,6 +953,15 @@
     .wldelay-card .form-table th {
         width: 140px;
     }
+}
+
+/* Wide data tables can exceed a half-width card column; let them scroll
+   horizontally inside the card instead of overflowing it. */
+.wldelay-audit-table,
+.wldelay-telemetry-table,
+.wldelay-active-lockouts-table {
+    display: block;
+    overflow-x: auto;
 }
 
 /* Login Log Telemetry */

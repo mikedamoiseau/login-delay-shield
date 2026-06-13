@@ -185,7 +185,21 @@ jQuery(document).ready(function ($) {
     $('.wldelay-apply-profile').on('click', function () {
         var action = $(this).data('profileAction') || 'apply';
         $('#wldelay-profile-action').val(action);
-        $(this).closest('form').trigger('submit');
+        // Submit natively, not via jQuery trigger('submit'). The settings form
+        // contains WordPress's Save Changes button (<input id="submit"
+        // name="submit">), which shadows the form's native submit() method, so
+        // jQuery's trigger('submit') default action silently no-ops.
+        // requestSubmit() is not shadowed and fires the submit event + submits;
+        // fall back to the native prototype method on very old browsers.
+        var form = $(this).closest('form')[0];
+        if (!form) {
+            return;
+        }
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            HTMLFormElement.prototype.submit.call(form);
+        }
     });
 
     $('.wldelay-card-header').on('click', function (e) {

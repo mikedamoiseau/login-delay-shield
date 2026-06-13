@@ -327,7 +327,7 @@ function wldelay_botnet_send_email( $username, $distinct_ips, $window_minutes, a
 
     /* translators: %s: site name */
     $subject = sprintf(
-        __( '[%s] Distributed login attack detected', 'login-delay-shield' ),
+        __( '[%s] Distributed login attack detected', 'wp-login-delay' ),
         $site_name
     );
 
@@ -335,7 +335,7 @@ function wldelay_botnet_send_email( $username, $distinct_ips, $window_minutes, a
     $message = sprintf(
         __(
             "Login Delay Shield detected a distributed attack.\n\nTargeted username: %1\$s\nDistinct source IPs: %2\$d within %3\$d minutes\nSample IPs: %4\$s\n\nThis is an alert only - per-IP delays and lockouts remain active. Review the dashboard widget for details: %5\$s\n",
-            'login-delay-shield'
+            'wp-login-delay'
         ),
         $username,
         $distinct_ips,

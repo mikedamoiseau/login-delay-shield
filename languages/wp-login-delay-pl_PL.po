@@ -5,58 +5,59 @@ msgstr ""
 "Project-Id-Version: Login Delay Shield 1.8.1\n"
 "Report-Msgid-Bugs-To: https://damoiseau.me\n"
 "POT-Creation-Date: 2026-02-14 18:38+0700\n"
-"PO-Revision-Date: 2025-02-01 00:00:00+00:00\n"
-"Last-Translator: Vietnamese Translator <translator@example.com>\n"
-"Language-Team: Vietnamese <vi@li.org>\n"
-"Language: vi\n"
+"PO-Revision-Date: 2025-02-01 12:00+0100\n"
+"Last-Translator: Polish Translation Team\n"
+"Language-Team: Polish <translation@example.com>\n"
+"Language: pl_PL\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2);\n"
 "X-Generator: Claude Code\n"
-"X-Domain: login-delay-shield\n"
+"X-Domain: wp-login-delay\n"
 
 #: wp-login-delay.php:48 wp-login-delay.php:129
 msgid "Settings"
-msgstr "Cài đặt"
+msgstr "Ustawienia"
 
 #: wp-login-delay.php:61
 msgid "Recent Failed Login Attempts"
-msgstr "Các Nỗ Lực Đăng Nhập Không Thành Công Gần Đây"
+msgstr "Ostatnie nieudane próby logowania"
 
 #: wp-login-delay.php:95
 msgid "No failed login attempts recorded."
-msgstr "Không có nỗ lực đăng nhập không thành công nào được ghi lại."
+msgstr "Nie zarejestrowano żadnych nieudanych prób logowania."
 
 #: wp-login-delay.php:100
 msgid "Recent failed login attempts"
-msgstr "Các nỗ lực đăng nhập không thành công gần đây"
+msgstr "Ostatnie nieudane próby logowania"
 
 #: wp-login-delay.php:102
 msgid "Time"
-msgstr "Thời gian"
+msgstr "Czas"
 
 #: wp-login-delay.php:103
 msgid "Username"
-msgstr "Tên người dùng"
+msgstr "Nazwa użytkownika"
 
 #: wp-login-delay.php:104
 msgid "IP Address"
-msgstr "Địa chỉ IP"
+msgstr "Adres IP"
 
 #: wp-login-delay.php:105
 msgid "Source"
-msgstr "Nguồn"
+msgstr "Źródło"
 
 #: wp-login-delay.php:113
 msgid "Login"
-msgstr "Đăng nhập"
+msgstr "Logowanie"
 
 #. translators: %1$s: time ago, %2$s: exact timestamp
 #: wp-login-delay.php:117
 #, php-format
 msgid "%1$s ago"
-msgstr "%1$s trước"
+msgstr "%1$s temu"
 
 #: wp-login-delay.php:276
 msgid "Login Delay Shield"
@@ -67,53 +68,55 @@ msgid ""
 "This plugin was formerly known as \"WP Login Delay\". The name has changed, "
 "but all your settings have been preserved."
 msgstr ""
-"Plugin này trước đây được biết đến với tên \"WP Login Delay\". Tên đã thay "
-"đổi, nhưng tất cả cài đặt của bạn đã được bảo lưu."
+"Ta wtyczka wcześniej nosiła nazwę \"WP Login Delay\". Nazwa została "
+"zmieniona, ale wszystkie Twoje ustawienia zostały zachowane."
 
 #. translators: %s: remaining lockout duration, e.g. "2 minutes"
 #: wp-login-delay.php:563
 #, fuzzy, php-format
 msgid "Too many failed login attempts. Please try again in %s."
-msgstr "Quá nhiều nỗ lực đăng nhập không thành công. Vui lòng thử lại sau."
+msgstr "Zbyt wiele nieudanych prób logowania. Proszę spróbować później."
 
 #: wp-login-delay.php:568
 msgid "Too many failed login attempts. Please try again later."
-msgstr "Quá nhiều nỗ lực đăng nhập không thành công. Vui lòng thử lại sau."
+msgstr "Zbyt wiele nieudanych prób logowania. Proszę spróbować później."
 
 #: wp-login-delay.php:859
 msgid "XML-RPC authentication is disabled on this site."
-msgstr "Xác thực XML-RPC bị vô hiệu hóa trên trang web này."
+msgstr "Uwierzytelnianie XML-RPC jest wyłączone na tej stronie."
 
 #: wp-login-delay.php:1019
 #, php-format
 msgid "Login failed. %d attempt remaining before temporary lockout."
 msgid_plural "Login failed. %d attempts remaining before temporary lockout."
 msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
 
 #: wldelay-settings-view.php:45
 msgid "Help"
-msgstr "Trợ giúp"
+msgstr "Pomoc"
 
 #: wldelay-settings-view.php:68
 msgid "Delay Settings"
-msgstr "Cài Đặt Độ Trễ"
+msgstr "Ustawienia opóźnienia"
 
 #: wldelay-settings-view.php:80 wldelay-settings-view.php:81
 msgid "Email Notifications"
-msgstr "Thông Báo Qua Email"
+msgstr "Powiadomienia e-mail"
 
 #: wldelay-settings-view.php:85
 msgid ""
 "Receive email alerts when multiple failed login attempts are detected from "
 "the same IP address."
 msgstr ""
-"Nhận cảnh báo qua email khi phát hiện nhiều nỗ lực đăng nhập không thành "
-"công từ cùng một địa chỉ IP."
+"Otrzymuj powiadomienia e-mail po wykryciu wielu nieudanych prób logowania z "
+"tego samego adresu IP."
 
 #: wldelay-settings-view.php:93 wldelay-settings-view.php:94
 #: wldelay-settings-view.php:155
 msgid "IP Lockout"
-msgstr "Khóa IP"
+msgstr "Blokada IP"
 
 #: wldelay-settings-view.php:98
 #, fuzzy
@@ -121,86 +124,82 @@ msgid ""
 "Temporarily block repeated failed login attempts by IP address or by IP + "
 "username."
 msgstr ""
-"Tạm thời chặn các địa chỉ IP sau quá nhiều nỗ lực đăng nhập không thành công."
+"Tymczasowo zablokuj adresy IP po zbyt wielu nieudanych próbach logowania."
 
 #: wldelay-settings-view.php:106 wldelay-settings-view.php:107
 #: wldelay-settings-view.php:156
 msgid "IP Whitelist"
-msgstr "Danh Sách Trắng IP"
+msgstr "Lista dozwolonych IP"
 
 #: wldelay-settings-view.php:111
 msgid "Skip delay and lockout for trusted IP addresses (e.g., office, VPN)."
-msgstr ""
-"Bỏ qua độ trễ và khóa đối với các địa chỉ IP đáng tin cậy (ví dụ: văn phòng, "
-"VPN)."
+msgstr "Pomiń opóźnienie i blokadę dla zaufanych adresów IP (np. biuro, VPN)."
 
 #: wldelay-settings-view.php:119
 msgid "Login Log"
-msgstr "Nhật Ký Đăng Nhập"
+msgstr "Dziennik logowania"
 
 #: wldelay-settings-view.php:123
 msgid "Failed login attempts are logged and displayed in the dashboard widget."
 msgstr ""
-"Các nỗ lực đăng nhập không thành công được ghi lại và hiển thị trong tiện "
-"ích bảng điều khiển."
+"Nieudane próby logowania są rejestrowane i wyświetlane w widżecie pulpitu."
 
 #: wldelay-settings-view.php:131 wldelay-settings-view.php:132
 #: wldelay-settings-view.php:158
 msgid "XML-RPC Protection"
-msgstr "Bảo Vệ XML-RPC"
+msgstr "Ochrona XML-RPC"
 
 #: wldelay-settings-view.php:136
 msgid ""
 "Protect against brute-force attacks via XML-RPC (used by the WordPress "
 "mobile app and remote publishing)."
 msgstr ""
-"Bảo vệ chống lại các cuộc tấn công vét cạn qua XML-RPC (được sử dụng bởi ứng "
-"dụng di động WordPress và xuất bản từ xa)."
+"Ochrona przed atakami brute-force za pośrednictwem XML-RPC (używane przez "
+"aplikację mobilną WordPress i publikowanie zdalne)."
 
 #: wldelay-settings-view.php:154
 msgid "Email Alerts"
-msgstr "Cảnh Báo Qua Email"
+msgstr "Alerty e-mail"
 
 #: wldelay-settings-view.php:157
 msgid "Progressive Delay"
-msgstr "Độ Trễ Tăng Dần"
+msgstr "Opóźnienie progresywne"
 
 #: wldelay-settings-view.php:171
 msgid "enabled"
-msgstr "bật"
+msgstr "włączone"
 
 #: wldelay-settings-view.php:171
 msgid "disabled"
-msgstr "tắt"
+msgstr "wyłączone"
 
 #: wldelay-settings-view.php:197
 msgid "Protection status summary"
-msgstr "Tóm tắt trạng thái bảo vệ"
+msgstr "Podsumowanie stanu ochrony"
 
 #: wldelay-settings-view.php:200
 msgid "Protection Features Enabled"
-msgstr "Các Tính Năng Bảo Vệ Được Bật"
+msgstr "Funkcje ochrony włączone"
 
 #: wldelay-settings-view.php:218
 msgid "Performance tip:"
-msgstr "Mẹo hiệu suất:"
+msgstr "Wskazówka wydajności:"
 
 #: wldelay-settings-view.php:219
 msgid ""
 "For high-traffic sites, consider using a persistent object cache (Redis, "
 "Memcached) to reduce database load during attacks."
 msgstr ""
-"Đối với các trang web có lưu lượng cao, hãy cân nhắc sử dụng bộ nhớ cache "
-"đối tượng bền vững (Redis, Memcached) để giảm tải cơ sở dữ liệu trong các "
-"cuộc tấn công."
+"W przypadku stron o dużym ruchu rozważ użycie trwałej pamięci podręcznej "
+"(Redis, Memcached) w celu zmniejszenia obciążenia bazy danych podczas ataków."
 
 #: wldelay-settings-view.php:234
 msgid "Enabled"
-msgstr "Bật"
+msgstr "Włączone"
 
 #: wldelay-settings-view.php:234
 msgid "Disabled"
-msgstr "Tắt"
+msgstr "Wyłączone"
 
 #. translators: 1: feature name, 2: enabled or disabled
 #: wldelay-settings-view.php:240
@@ -213,59 +212,61 @@ msgid ""
 "A fixed delay applied to every login attempt. Higher values slow down brute-"
 "force attacks but may slightly delay legitimate users."
 msgstr ""
-"Độ trễ cố định được áp dụng cho mỗi nỗ lực đăng nhập. Các giá trị cao hơn "
-"làm chậm các cuộc tấn công vét cạn nhưng có thể làm chậm một chút các người "
-"dùng hợp pháp."
+"Stałe opóźnienie stosowane do każdej próby logowania. Wyższe wartości "
+"spowalniają ataki brute-force, ale mogą nieznacznie opóźnić uzasadnionych "
+"użytkowników."
 
 #: wldelay-settings-view.php:462
 msgid ""
 "Randomized delays make it harder for attackers to detect patterns or time "
 "their attempts. Recommended for better security."
 msgstr ""
-"Độ trễ ngẫu nhiên làm cho kẻ tấn công khó phát hiện các mẫu hoặc hẹn giờ các "
-"nỗ lực của họ. Được khuyến nghị để bảo mật tốt hơn."
+"Losowe opóźnienia utrudniają atakującym wykrycie wzorców lub timing ich "
+"prób. Zalecane dla lepszego bezpieczeństwa."
 
 #: wldelay-settings-view.php:473
 msgid ""
 "The shortest possible delay. Each login attempt will wait at least this many "
 "seconds."
 msgstr ""
-"Độ trễ ngắn nhất có thể. Mỗi nỗ lực đăng nhập sẽ chờ ít nhất bấy nhiêu giây."
+"Najkrótsze możliwe opóźnienie. Każda próba logowania będzie czekać co "
+"najmniej tyle sekund."
 
 #: wldelay-settings-view.php:484
 msgid ""
 "The longest possible delay. Each login attempt will wait up to this many "
 "seconds."
 msgstr ""
-"Độ trễ dài nhất có thể. Mỗi nỗ lực đăng nhập sẽ chờ tối đa bấy nhiêu giây."
+"Najdłuższe możliwe opóźnienie. Każda próba logowania będzie czekać do tej "
+"liczby sekund."
 
 #: wldelay-settings-view.php:495
 msgid ""
 "Get notified when someone is trying to break into your site. Alerts are sent "
 "once per IP until the attack stops."
 msgstr ""
-"Nhận thông báo khi ai đó cố gắng phá vỡ trang web của bạn. Cảnh báo được gửi "
-"một lần cho mỗi IP cho đến khi cuộc tấn công dừng lại."
+"Otrzymuj powiadomienia, gdy ktoś próbuje włamać się na Twoją stronę. Alerty "
+"są wysyłane raz na adres IP, aż do zatrzymania ataku."
 
 #: wldelay-settings-view.php:506
 msgid ""
 "Number of failed attempts from one IP before sending an alert. Lower values "
 "mean earlier warnings but more emails."
 msgstr ""
-"Số lượng nỗ lực không thành công từ một IP trước khi gửi cảnh báo. Giá trị "
-"thấp hơn có nghĩa là cảnh báo sớm hơn nhưng có nhiều email hơn."
+"Liczba nieudanych prób z jednego adresu IP przed wysłaniem alertu. Niższe "
+"wartości oznaczają wcześniejsze ostrzeżenia, ale więcej wiadomości e-mail."
 
 #: wldelay-settings-view.php:518
 msgid ""
 "Where to send security alerts. If left blank, emails go to the WordPress "
 "admin address."
 msgstr ""
-"Nơi gửi cảnh báo bảo mật. Nếu để trống, email sẽ gửi đến địa chỉ quản trị "
-"viên WordPress."
+"Gdzie wysyłać alerty bezpieczeństwa. Jeśli pozostawisz puste, e-maile pójdą "
+"na adres administratora WordPress."
 
 #: wldelay-settings-view.php:519
 msgid "Leave empty to use the site admin email."
-msgstr "Để trống để sử dụng email quản trị viên trang web."
+msgstr "Pozostaw puste, aby użyć e-maila administratora strony."
 
 #: wldelay-settings-view.php:530
 msgid "minutes"
@@ -286,8 +287,8 @@ msgid ""
 "Temporarily block IPs after too many failures. Effective at stopping "
 "automated attacks cold."
 msgstr ""
-"Tạm thời chặn IP sau quá nhiều lần thất bại. Hiệu quả trong việc dừng các "
-"cuộc tấn công tự động hoàn toàn."
+"Tymczasowo zablokuj adresy IP po zbyt wielu błędach. Efektywne w "
+"zatrzymywaniu automatycznych ataków."
 
 #: wldelay-settings-view.php:556
 #, fuzzy
@@ -295,8 +296,8 @@ msgid ""
 "How many failed attempts before lockout is triggered for the selected "
 "strategy."
 msgstr ""
-"Có bao nhiêu nỗ lực không thành công trước khi chặn IP. Đặt cao hơn nếu "
-"người dùng thường gõ sai mật khẩu."
+"Ile nieudanych prób przed zablokowaniem adresu IP. Ustaw wyżej, jeśli "
+"użytkownicy często błędnie wpisują hasła."
 
 #: wldelay-settings-view.php:580
 msgid "IP only"
@@ -305,7 +306,7 @@ msgstr ""
 #: wldelay-settings-view.php:582
 #, fuzzy
 msgid "IP + username"
-msgstr "Tên người dùng"
+msgstr "Nazwa użytkownika"
 
 #: wldelay-settings-view.php:585
 msgid ""
@@ -324,18 +325,17 @@ msgid ""
 "How long to block an IP. Longer durations discourage persistent attackers "
 "but may inconvenience legitimate users who forgot their password."
 msgstr ""
-"Chặn IP trong bao lâu. Thời gian dài hơn sẽ khiến những kẻ tấn công kiên trì "
-"nản lòng nhưng có thể gây bất tiện cho những người dùng hợp pháp quên mật "
-"khẩu."
+"Jak długo zablokować adres IP. Dłuższe okresy zniechęcają uporczywych "
+"atakujących, ale mogą utrudnić użytkownikom, którzy zapomnieli hasła."
 
 #: wldelay-settings-view.php:600
 msgid "Maximum: 1440 minutes (24 hours)"
-msgstr "Tối đa: 1440 phút (24 giờ)"
+msgstr "Maksimum: 1440 minut (24 godziny)"
 
 #: wldelay-settings-view.php:610
 msgid "Trust X-Forwarded-For and HTTP_CLIENT_IP headers for IP detection."
 msgstr ""
-"Tin tưởng các tiêu đề X-Forwarded-For và HTTP_CLIENT_IP để phát hiện IP."
+"Ufaj nagłówkom X-Forwarded-For i HTTP_CLIENT_IP do wykrywania adresu IP."
 
 #: wldelay-settings-view.php:612
 msgid ""
@@ -343,127 +343,127 @@ msgid ""
 "(e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct "
 "connection IP is used, preventing attackers from spoofing their IP address."
 msgstr ""
-"Chỉ bật tính năng này nếu trang web của bạn nằm sau máy chủ proxy ngược hoặc "
-"bộ cân bằng tải (ví dụ: Cloudflare, nginx proxy, AWS ELB). Khi bị tắt, chỉ "
-"IP kết nối trực tiếp được sử dụng, ngăn chặn kẻ tấn công giả mạo địa chỉ IP "
-"của họ."
+"Włącz to tylko, jeśli Twoja strona znajduje się za odwrotnym proxy lub "
+"modułem równoważenia obciążenia (np. Cloudflare, nginx proxy, AWS ELB). Po "
+"wyłączeniu używany jest tylko bezpośredni adres IP połączenia, zapobiegając "
+"atakującym w spoofowaniu swojego adresu IP."
 
 #: wldelay-settings-view.php:613
 msgid ""
 "Leave disabled unless behind a trusted proxy. Enabling this on a non-proxied "
 "site allows IP spoofing."
 msgstr ""
-"Để không sử dụng trừ khi đằng sau một proxy đáng tin cậy. Bật tính năng này "
-"trên trang web không được proxy cho phép giả mạo IP."
+"Pozostaw wyłączone, chyba że znajdujesz się za zaufanym proxy. Włączenie "
+"tego na stronie nieprokurowanej umożliwia spoofowanie IP."
 
 #: wldelay-settings-view.php:623
 msgid "Increase delay with each consecutive failed attempt from the same IP."
-msgstr "Tăng độ trễ với mỗi nỗ lực không thành công liên tiếp từ cùng một IP."
+msgstr ""
+"Zwiększ opóźnienie z każdą kolejną nieudaną próbą z tego samego adresu IP."
 
 #: wldelay-settings-view.php:625
 msgid ""
 "Delays grow longer with each failed attempt. First try might be 1s, second "
 "2s, third 3s, etc. Very effective against automated attacks."
 msgstr ""
-"Độ trễ tăng lên với mỗi nỗ lực không thành công. Lần thử đầu tiên có thể là "
-"1 giây, lần thứ hai 2 giây, lần thứ ba 3 giây, v.v. Rất hiệu quả chống lại "
-"các cuộc tấn công tự động."
+"Opóźnienia rosną z każdą nieudaną próbą. Pierwsza próba może być 1s, druga "
+"2s, trzecia 3s itd. Bardzo efektywne przeciwko atakom automatycznym."
 
 #: wldelay-settings-view.php:638
 msgid ""
 "How much to increase the delay after each failed attempt. Higher values "
 "penalize repeat offenders more aggressively."
 msgstr ""
-"Bao nhiêu để tăng độ trễ sau mỗi nỗ lực không thành công. Các giá trị cao "
-"hơn sẽ phạt những kẻ vi phạm lặp lại một cách tích cực hơn."
+"O ile zwiększyć opóźnienie po każdej nieudanej próbie. Wyższe wartości "
+"bardziej agresywnie karają powtarzających się napastników."
 
 #: wldelay-settings-view.php:639
 msgid "Additional seconds added per failed attempt (1-10)."
-msgstr "Các giây bổ sung được thêm vào cho mỗi nỗ lực không thành công (1-10)."
+msgstr "Dodatkowe sekundy dodane na nieudaną próbę (1-10)."
 
 #: wldelay-settings-view.php:652
 msgid ""
 "The delay stops increasing at this value. Prevents excessively long waits "
 "that could tie up server resources."
 msgstr ""
-"Độ trễ dừng tăng ở giá trị này. Ngăn chặn thời gian chờ quá dài có thể chiếm "
-"tài nguyên máy chủ."
+"Opóźnienie przestaje rosnąć przy tej wartości. Zapobiega nadmiernie długim "
+"oczekiwaniom, które mogą zajmować zasoby serwera."
 
 #: wldelay-settings-view.php:653
 msgid "Maximum total delay in seconds (5-60)."
-msgstr "Độ trễ tổng cộng tối đa tính bằng giây (5-60)."
+msgstr "Maksymalne całkowite opóźnienie w sekundach (5-60)."
 
 #: wldelay-settings-view.php:664
 msgid ""
 "Bypass all protection for trusted IPs. Useful for office networks or VPNs "
 "where delays would be annoying."
 msgstr ""
-"Bỏ qua tất cả bảo vệ đối với IP đáng tin cậy. Hữu ích cho các mạng văn phòng "
-"hoặc VPN nơi độ trễ sẽ gây bực mình."
+"Pomiń całą ochronę dla zaufanych adresów IP. Przydatne dla sieci biurowych "
+"lub sieci VPN, gdzie opóźnienia byłyby uciążliwe."
 
 #: wldelay-settings-view.php:675
 msgid ""
 "Enter trusted IP addresses. CIDR notation (e.g., 192.168.1.0/24) allows "
 "whitelisting entire networks."
 msgstr ""
-"Nhập các địa chỉ IP đáng tin cậy. Ký pháp CIDR (ví dụ: 192.168.1.0/24) cho "
-"phép danh sách trắng toàn bộ mạng."
+"Wprowadź zaufane adresy IP. Notacja CIDR (np. 192.168.1.0/24) umożliwia "
+"umieszczenie na białej liście całych sieci."
 
 #: wldelay-settings-view.php:676
 msgid ""
 "One IP address or CIDR range per line (e.g., 192.168.1.1 or 10.0.0.0/8)."
 msgstr ""
-"Một địa chỉ IP hoặc dải CIDR trên mỗi dòng (ví dụ: 192.168.1.1 hoặc "
-"10.0.0.0/8)."
+"Jeden adres IP lub zakres CIDR na linię (np. 192.168.1.1 lub 10.0.0.0/8)."
 
 #: wldelay-settings-view.php:689
 msgid ""
 "Old logs are automatically cleaned up to save database space. Shorter "
 "retention = smaller database."
 msgstr ""
-"Nhật ký cũ được tự động dọn sạch để tiết kiệm không gian cơ sở dữ liệu. Lưu "
-"giữ ngắn hơn = cơ sở dữ liệu nhỏ hơn."
+"Stare dzienniki są automatycznie czyszczane, aby zaoszczędzić miejsce w "
+"bazie danych. Krótsze przechowywanie = mniejsza baza danych."
 
 #: wldelay-settings-view.php:690
 msgid ""
 "Automatically delete log entries older than this many days. Set to 0 to keep "
 "logs forever."
 msgstr ""
-"Tự động xóa các mục nhật ký cũ hơn bấy nhiêu ngày. Đặt thành 0 để giữ nhật "
-"ký mãi mãi."
+"Automatycznie usuwaj wpisy dziennika starsze niż określona liczba dni. Ustaw "
+"na 0, aby przechowywać dzienniki na zawsze."
 
 #: wldelay-settings-view.php:701
 msgid ""
 "XML-RPC is often targeted by attackers because it allows multiple login "
 "attempts in a single request. Protecting it is strongly recommended."
 msgstr ""
-"XML-RPC thường bị nhắm mục tiêu bởi những kẻ tấn công vì nó cho phép nhiều "
-"nỗ lực đăng nhập trong một yêu cầu duy nhất. Bảo vệ nó được khuyên cao."
+"XML-RPC jest często celem ataków, ponieważ umożliwia wiele prób logowania w "
+"ramach jednego żądania. Ochrona jest zdecydowanie zalecana."
 
 #: wldelay-settings-view.php:702
 msgid "Apply delay and lockout protection to XML-RPC authentication requests."
-msgstr "Áp dụng bảo vệ độ trễ và khóa đối với các yêu cầu xác thực XML-RPC."
+msgstr ""
+"Zastosuj ochronę opóźnienia i blokady do żądań uwierzytelniania XML-RPC."
 
 #: wldelay-settings-view.php:713
 msgid ""
 "Completely disables XML-RPC login. Enable this if you manage your site only "
 "via the web interface and don't use Jetpack or the WP mobile app."
 msgstr ""
-"Hoàn toàn vô hiệu hóa đăng nhập XML-RPC. Bật tính năng này nếu bạn chỉ quản "
-"lý trang web của mình qua giao diện web và không sử dụng Jetpack hoặc ứng "
-"dụng di động WP."
+"Całkowicie wyłącza logowanie XML-RPC. Włącz to, jeśli zarządzasz swoją "
+"stroną tylko przez interfejs internetowy i nie używasz Jetpack ani aplikacji "
+"mobilnej WP."
 
 #: wldelay-settings-view.php:714
 msgid ""
 "Completely block XML-RPC authentication. Use this if you don't need remote "
 "publishing or the WordPress mobile app."
 msgstr ""
-"Hoàn toàn chặn xác thực XML-RPC. Sử dụng cái này nếu bạn không cần xuất bản "
-"từ xa hoặc ứng dụng di động WordPress."
+"Całkowicie zablokuj uwierzytelnianie XML-RPC. Użyj tego, jeśli nie "
+"potrzebujesz publikowania zdalnego ani aplikacji mobilnej WordPress."
 
 #~ msgid ""
 #~ "Adds a one second or a custom time delay to the login to avoid brute-"
 #~ "force attack"
 #~ msgstr ""
-#~ "Thêm độ trễ một giây hoặc tùy chỉnh vào quá trình đăng nhập để tránh cuộc "
-#~ "tấn công vét cạn"
+#~ "Dodaje opóźnienie jednej sekundy lub niestandardowy czas opóźnienia do "
+#~ "logowania, aby uniknąć ataku brute-force"

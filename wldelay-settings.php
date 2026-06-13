@@ -298,7 +298,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_fail2ban_enabled',
-            esc_html__( 'Enable fail2ban logging', 'login-delay-shield' ),
+            esc_html__( 'Enable fail2ban logging', 'wp-login-delay' ),
             array( $this->view, 'fail2ban_enabled_callback' ),
             'login-delay-shield-admin',
             'wldelay_log_section_id'
@@ -306,7 +306,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_fail2ban_log_path',
-            esc_html__( 'Fail2ban log path', 'login-delay-shield' ),
+            esc_html__( 'Fail2ban log path', 'wp-login-delay' ),
             array( $this->view, 'fail2ban_log_path_callback' ),
             'login-delay-shield-admin',
             'wldelay_log_section_id'
@@ -314,7 +314,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_fail2ban_include_lockouts',
-            esc_html__( 'Log lockout events', 'login-delay-shield' ),
+            esc_html__( 'Log lockout events', 'wp-login-delay' ),
             array( $this->view, 'fail2ban_include_lockouts_callback' ),
             'login-delay-shield-admin',
             'wldelay_log_section_id'
@@ -322,7 +322,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_fail2ban_config_download',
-            esc_html__( 'fail2ban config', 'login-delay-shield' ),
+            esc_html__( 'fail2ban config', 'wp-login-delay' ),
             array( $this->view, 'fail2ban_config_download_callback' ),
             'login-delay-shield-admin',
             'wldelay_log_section_id'
@@ -370,7 +370,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_password_reset_enabled',
-            esc_html__( 'Enable password reset protection', 'login-delay-shield' ),
+            esc_html__( 'Enable password reset protection', 'wp-login-delay' ),
             array( $this->view, 'password_reset_enabled_callback' ),
             'login-delay-shield-admin',
             'wldelay_xmlrpc_section_id'
@@ -378,7 +378,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_enumeration_hardening_enabled',
-            esc_html__( 'Enable username enumeration hardening', 'login-delay-shield' ),
+            esc_html__( 'Enable username enumeration hardening', 'wp-login-delay' ),
             array( $this->view, 'enumeration_hardening_enabled_callback' ),
             'login-delay-shield-admin',
             'wldelay_xmlrpc_section_id'
@@ -387,14 +387,14 @@ class LDS_Settings {
         // Distributed Attack Detection section
         add_settings_section(
             'wldelay_botnet_section_id',
-            esc_html__( 'Distributed Attack Detection', 'login-delay-shield' ),
+            esc_html__( 'Distributed Attack Detection', 'wp-login-delay' ),
             array( $this->view, 'print_botnet_section_info' ),
             'login-delay-shield-admin'
         );
 
         add_settings_field(
             'wldelay_botnet_enabled',
-            esc_html__( 'Enable distributed attack detection', 'login-delay-shield' ),
+            esc_html__( 'Enable distributed attack detection', 'wp-login-delay' ),
             array( $this->view, 'botnet_enabled_callback' ),
             'login-delay-shield-admin',
             'wldelay_botnet_section_id'
@@ -402,7 +402,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_botnet_ip_threshold',
-            esc_html__( 'Distinct IPs threshold', 'login-delay-shield' ),
+            esc_html__( 'Distinct IPs threshold', 'wp-login-delay' ),
             array( $this->view, 'botnet_ip_threshold_callback' ),
             'login-delay-shield-admin',
             'wldelay_botnet_section_id'
@@ -410,7 +410,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_botnet_window_minutes',
-            esc_html__( 'Detection window (minutes)', 'login-delay-shield' ),
+            esc_html__( 'Detection window (minutes)', 'wp-login-delay' ),
             array( $this->view, 'botnet_window_minutes_callback' ),
             'login-delay-shield-admin',
             'wldelay_botnet_section_id'
@@ -419,14 +419,14 @@ class LDS_Settings {
         // Custom Login URL section
         add_settings_section(
             'wldelay_custom_login_section_id',
-            esc_html__( 'Custom Login URL', 'login-delay-shield' ),
+            esc_html__( 'Custom Login URL', 'wp-login-delay' ),
             array( $this->view, 'print_custom_login_section_info' ),
             'login-delay-shield-admin'
         );
 
         add_settings_field(
             'wldelay_custom_login_enabled',
-            esc_html__( 'Enable custom login URL', 'login-delay-shield' ),
+            esc_html__( 'Enable custom login URL', 'wp-login-delay' ),
             array( $this->view, 'custom_login_enabled_callback' ),
             'login-delay-shield-admin',
             'wldelay_custom_login_section_id'
@@ -434,7 +434,7 @@ class LDS_Settings {
 
         add_settings_field(
             'wldelay_custom_login_slug',
-            esc_html__( 'Custom login slug', 'login-delay-shield' ),
+            esc_html__( 'Custom login slug', 'wp-login-delay' ),
             array( $this->view, 'custom_login_slug_callback' ),
             'login-delay-shield-admin',
             'wldelay_custom_login_section_id'
@@ -568,7 +568,7 @@ class LDS_Settings {
                 add_settings_error(
                     WLDELAY_OPTION_NAME,
                     'wldelay_fail2ban_log_path_invalid',
-                    esc_html__( 'fail2ban logging was disabled because the selected log path is not allowed. Use a .log file in the protected default directory, or leave the path empty for the protected default log location.', 'login-delay-shield' ),
+                    esc_html__( 'fail2ban logging was disabled because the selected log path is not allowed. Use a .log file in the protected default directory, or leave the path empty for the protected default log location.', 'wp-login-delay' ),
                     'error'
                 );
             }
@@ -730,7 +730,7 @@ function wldelay_settings_coherence_warnings( array $options ) {
             : wldelay_fail2ban_resolve_log_path();
         $dir  = dirname( $path );
         if ( '' === $path || ( is_dir( $dir ) && ! is_writable( $dir ) ) ) {
-            $warnings[] = __( 'fail2ban logging is enabled but the log directory is not writable — no lines will be written.', 'login-delay-shield' );
+            $warnings[] = __( 'fail2ban logging is enabled but the log directory is not writable — no lines will be written.', 'wp-login-delay' );
         }
     }
 
@@ -738,13 +738,13 @@ function wldelay_settings_coherence_warnings( array $options ) {
     if ( ! empty( $options['wldelay_whitelist_enabled'] ) ) {
         $ips = isset( $options['wldelay_whitelist_ips'] ) ? trim( (string) $options['wldelay_whitelist_ips'] ) : '';
         if ( '' === $ips ) {
-            $warnings[] = __( 'The IP whitelist is enabled but empty — it currently bypasses nothing.', 'login-delay-shield' );
+            $warnings[] = __( 'The IP whitelist is enabled but empty — it currently bypasses nothing.', 'wp-login-delay' );
         }
     }
 
     // Rule 3: XML-RPC is fully blocked, making the XML-RPC delay redundant.
     if ( ! empty( $options['wldelay_xmlrpc_block'] ) && ! empty( $options['wldelay_xmlrpc_enabled'] ) ) {
-        $warnings[] = __( 'XML-RPC is fully blocked, so the XML-RPC delay setting has no effect.', 'login-delay-shield' );
+        $warnings[] = __( 'XML-RPC is fully blocked, so the XML-RPC delay setting has no effect.', 'wp-login-delay' );
     }
 
     // Rule 4: progressive delay maximum is below the base delay.
@@ -752,7 +752,7 @@ function wldelay_settings_coherence_warnings( array $options ) {
         $base = isset( $options['wldelay_delay'] ) ? (int) $options['wldelay_delay'] : 0;
         $max  = isset( $options['wldelay_progressive_max'] ) ? (int) $options['wldelay_progressive_max'] : 0;
         if ( $max > 0 && $max < $base ) {
-            $warnings[] = __( 'The progressive delay maximum is below the base delay — progression can never increase the delay.', 'login-delay-shield' );
+            $warnings[] = __( 'The progressive delay maximum is below the base delay — progression can never increase the delay.', 'wp-login-delay' );
         }
     }
 
@@ -761,13 +761,13 @@ function wldelay_settings_coherence_warnings( array $options ) {
         $email_t   = isset( $options['wldelay_email_threshold'] ) ? (int) $options['wldelay_email_threshold'] : 0;
         $lockout_t = isset( $options['wldelay_lockout_threshold'] ) ? (int) $options['wldelay_lockout_threshold'] : 0;
         if ( $email_t > $lockout_t && $lockout_t > 0 ) {
-            $warnings[] = __( 'The email alert threshold is above the lockout threshold — the counter freezes during a lockout, so the alert may never be sent.', 'login-delay-shield' );
+            $warnings[] = __( 'The email alert threshold is above the lockout threshold — the counter freezes during a lockout, so the alert may never be sent.', 'wp-login-delay' );
         }
     }
 
     // Rule 6: distributed-attack detection on but email alerts are off.
     if ( ! empty( $options['wldelay_botnet_enabled'] ) && empty( $options['wldelay_email_enabled'] ) ) {
-        $warnings[] = __( 'Distributed-attack detection is on but email alerts are off — detections will appear on the dashboard only.', 'login-delay-shield' );
+        $warnings[] = __( 'Distributed-attack detection is on but email alerts are off — detections will appear on the dashboard only.', 'wp-login-delay' );
     }
 
     return $warnings;

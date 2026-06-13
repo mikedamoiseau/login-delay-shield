@@ -142,7 +142,7 @@ class DashboardOnboardingTest extends WP_UnitTestCase {
         $this->assertStringContainsString( 'href="' . $expected . '"', $output );
 
         // Feature label is esc_html'd (plain ASCII label round-trips unchanged).
-        $this->assertStringContainsString( esc_html__( 'IP Lockout', 'login-delay-shield' ), $output );
+        $this->assertStringContainsString( esc_html__( 'IP Lockout', 'wp-login-delay' ), $output );
     }
 
     /**

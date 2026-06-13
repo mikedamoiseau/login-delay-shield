@@ -697,7 +697,7 @@ function wldelay_fail2ban_generate_jail_config() {
  */
 function wldelay_handle_fail2ban_config_download() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'Insufficient permissions.', 'login-delay-shield' ) );
+        wp_die( esc_html__( 'Insufficient permissions.', 'wp-login-delay' ) );
     }
     check_admin_referer( 'wldelay_fail2ban_config' );
 

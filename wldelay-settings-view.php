@@ -40,7 +40,7 @@ class LDS_Settings_View {
             $learn_more = sprintf(
                 ' <a href="%s" class="wldelay-tooltip-learn-more" target="_blank" rel="noopener noreferrer">%s <span class="dashicons dashicons-external" aria-hidden="true"></span></a>',
                 esc_url( $help_url ),
-                esc_html__( 'Learn more', 'login-delay-shield' )
+                esc_html__( 'Learn more', 'wp-login-delay' )
             );
         }
 
@@ -51,7 +51,7 @@ class LDS_Settings_View {
             '<span id="%s" class="wldelay-tooltip-text" role="tooltip">%s%s</span>' .
             '</span>',
             esc_attr( $tooltip_id ),
-            esc_html__( 'Help', 'login-delay-shield' ),
+            esc_html__( 'Help', 'wp-login-delay' ),
             esc_attr( $tooltip_id ),
             esc_html( $text ),
             $learn_more
@@ -83,7 +83,7 @@ class LDS_Settings_View {
                 <div class="wldelay-card">
                     <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-delay-body">
                         <span class="dashicons dashicons-clock" aria-hidden="true"></span>
-                        <?php esc_html_e( 'Delay Settings', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'Delay Settings', 'wp-login-delay' ); ?>
                         <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                     </h2>
                     <div id="wldelay-delay-body" class="wldelay-card-body">
@@ -95,12 +95,12 @@ class LDS_Settings_View {
                     <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-email-body">
                             <span class="dashicons dashicons-email-alt" aria-hidden="true"></span>
-                            <?php esc_html_e( 'Email Notifications', 'login-delay-shield' ); ?>
-                            <?php echo $this->get_status_badge( 'wldelay_email_enabled', __( 'Email Notifications', 'login-delay-shield' ) ); ?>
+                            <?php esc_html_e( 'Email Notifications', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_email_enabled', __( 'Email Notifications', 'wp-login-delay' ) ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-email-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'Receive email alerts when multiple failed login attempts are detected from the same IP address.', 'login-delay-shield' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Receive email alerts when multiple failed login attempts are detected from the same IP address.', 'wp-login-delay' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_email_section_id' ); ?>
                         </div>
                     </div>
@@ -108,20 +108,20 @@ class LDS_Settings_View {
                     <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-lockout-body">
                             <span class="dashicons dashicons-lock" aria-hidden="true"></span>
-                            <?php esc_html_e( 'IP Lockout', 'login-delay-shield' ); ?>
-                            <?php echo $this->get_status_badge( 'wldelay_lockout_enabled', __( 'IP Lockout', 'login-delay-shield' ) ); ?>
+                            <?php esc_html_e( 'IP Lockout', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_lockout_enabled', __( 'IP Lockout', 'wp-login-delay' ) ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-lockout-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'Temporarily block repeated failed login attempts by IP address or by IP + username.', 'login-delay-shield' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Temporarily block repeated failed login attempts by IP address or by IP + username.', 'wp-login-delay' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_lockout_section_id' ); ?>
                             <p>
                                 <a class="button button-secondary" href="<?php echo esc_url( wldelay_get_unlock_current_ip_url() ); ?>">
-                                    <?php esc_html_e( 'Unlock Current IP', 'login-delay-shield' ); ?>
+                                    <?php esc_html_e( 'Unlock Current IP', 'wp-login-delay' ); ?>
                                 </a>
                             </p>
                             <p class="description" id="wldelay_unlock_current_ip_desc">
-                                <?php esc_html_e( 'Emergency recovery: remove lockout for your current IP address.', 'login-delay-shield' ); ?>
+                                <?php esc_html_e( 'Emergency recovery: remove lockout for your current IP address.', 'wp-login-delay' ); ?>
                             </p>
                         </div>
                     </div>
@@ -129,12 +129,12 @@ class LDS_Settings_View {
                     <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-whitelist-body">
                             <span class="dashicons dashicons-shield-alt" aria-hidden="true"></span>
-                            <?php esc_html_e( 'IP Whitelist', 'login-delay-shield' ); ?>
-                            <?php echo $this->get_status_badge( 'wldelay_whitelist_enabled', __( 'IP Whitelist', 'login-delay-shield' ) ); ?>
+                            <?php esc_html_e( 'IP Whitelist', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_whitelist_enabled', __( 'IP Whitelist', 'wp-login-delay' ) ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-whitelist-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'Skip delay and lockout for trusted IP addresses (e.g., office, VPN).', 'login-delay-shield' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Skip delay and lockout for trusted IP addresses (e.g., office, VPN).', 'wp-login-delay' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_whitelist_section_id' ); ?>
                         </div>
                     </div>
@@ -142,12 +142,12 @@ class LDS_Settings_View {
                     <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-log-body">
                             <span class="dashicons dashicons-list-view" aria-hidden="true"></span>
-                            <?php esc_html_e( 'Login Log', 'login-delay-shield' ); ?>
-                            <?php echo $this->get_status_badge( 'wldelay_fail2ban_enabled', __( 'fail2ban Logging', 'login-delay-shield' ) ); ?>
+                            <?php esc_html_e( 'Login Log', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_fail2ban_enabled', __( 'fail2ban Logging', 'wp-login-delay' ) ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-log-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'Failed login attempts are logged and displayed in the dashboard widget.', 'login-delay-shield' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Failed login attempts are logged and displayed in the dashboard widget.', 'wp-login-delay' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_log_section_id' ); ?>
                             <?php $this->render_login_log_telemetry(); ?>
                         </div>
@@ -156,11 +156,11 @@ class LDS_Settings_View {
                     <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-audit-body">
                             <span class="dashicons dashicons-shield" aria-hidden="true"></span>
-                            <?php esc_html_e( 'Audit Log', 'login-delay-shield' ); ?>
+                            <?php esc_html_e( 'Audit Log', 'wp-login-delay' ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-audit-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'A read-only record of sensitive administrative actions — settings changes, manual unlocks, and whitelist edits — for compliance and forensic review.', 'login-delay-shield' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'A read-only record of sensitive administrative actions — settings changes, manual unlocks, and whitelist edits — for compliance and forensic review.', 'wp-login-delay' ); ?></p>
                             <?php $this->render_audit_log(); ?>
                         </div>
                     </div>
@@ -168,12 +168,12 @@ class LDS_Settings_View {
                     <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-xmlrpc-body">
                             <span class="dashicons dashicons-rss" aria-hidden="true"></span>
-                            <?php esc_html_e( 'XML-RPC Protection', 'login-delay-shield' ); ?>
-                            <?php echo $this->get_status_badge( 'wldelay_xmlrpc_enabled', __( 'XML-RPC Protection', 'login-delay-shield' ) ); ?>
+                            <?php esc_html_e( 'XML-RPC Protection', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_xmlrpc_enabled', __( 'XML-RPC Protection', 'wp-login-delay' ) ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-xmlrpc-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'Protect against brute-force attacks via XML-RPC (used by the WordPress mobile app and remote publishing).', 'login-delay-shield' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Protect against brute-force attacks via XML-RPC (used by the WordPress mobile app and remote publishing).', 'wp-login-delay' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_xmlrpc_section_id' ); ?>
                         </div>
                     </div>
@@ -181,12 +181,12 @@ class LDS_Settings_View {
                     <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-custom-login-body">
                             <span class="dashicons dashicons-admin-links" aria-hidden="true"></span>
-                            <?php esc_html_e( 'Custom Login URL', 'login-delay-shield' ); ?>
-                            <?php echo $this->get_status_badge( 'wldelay_custom_login_enabled', __( 'Custom Login URL', 'login-delay-shield' ) ); ?>
+                            <?php esc_html_e( 'Custom Login URL', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_custom_login_enabled', __( 'Custom Login URL', 'wp-login-delay' ) ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-custom-login-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'Hide wp-login.php behind a custom URL slug to reduce automated attacks targeting the default login path.', 'login-delay-shield' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Hide wp-login.php behind a custom URL slug to reduce automated attacks targeting the default login path.', 'wp-login-delay' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_custom_login_section_id' ); ?>
                         </div>
                     </div>
@@ -194,12 +194,12 @@ class LDS_Settings_View {
                     <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-botnet-body">
                             <span class="dashicons dashicons-networking" aria-hidden="true"></span>
-                            <?php esc_html_e( 'Distributed Attack Detection', 'login-delay-shield' ); ?>
-                            <?php echo $this->get_status_badge( 'wldelay_botnet_enabled', __( 'Distributed Attack Detection', 'login-delay-shield' ) ); ?>
+                            <?php esc_html_e( 'Distributed Attack Detection', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_botnet_enabled', __( 'Distributed Attack Detection', 'wp-login-delay' ) ); ?>
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-botnet-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'Alerts when one username is targeted from many different IP addresses — the pattern per-IP lockouts cannot see. Detection never blocks logins; it informs you via the dashboard, the audit log, and (if email alerts are enabled) email.', 'login-delay-shield' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Alerts when one username is targeted from many different IP addresses — the pattern per-IP lockouts cannot see. Detection never blocks logins; it informs you via the dashboard, the audit log, and (if email alerts are enabled) email.', 'wp-login-delay' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_botnet_section_id' ); ?>
                         </div>
                     </div>
@@ -219,11 +219,11 @@ class LDS_Settings_View {
             <div class="wldelay-card">
                 <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-active-lockouts-body">
                     <span class="dashicons dashicons-unlock" aria-hidden="true"></span>
-                    <?php esc_html_e( 'Active Lockouts', 'login-delay-shield' ); ?>
+                    <?php esc_html_e( 'Active Lockouts', 'wp-login-delay' ); ?>
                     <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                 </h2>
                 <div id="wldelay-active-lockouts-body" class="wldelay-card-body">
-                    <p class="description"><?php esc_html_e( 'IP addresses and accounts currently blocked from logging in. Unlock an individual subject if a legitimate user got caught, or clear them all.', 'login-delay-shield' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'IP addresses and accounts currently blocked from logging in. Unlock an individual subject if a legitimate user got caught, or clear them all.', 'wp-login-delay' ); ?></p>
                     <?php $this->render_active_lockouts(); ?>
                 </div>
             </div>
@@ -240,22 +240,22 @@ class LDS_Settings_View {
         $active_profile  = isset( $this->options['wldelay_protection_profile'] ) ? wldelay_sanitize_protection_profile_id( $this->options['wldelay_protection_profile'] ) : '';
         // Radio pre-selection: fall back to balanced as a suggested starting point.
         $selected        = $active_profile !== '' ? $active_profile : 'balanced';
-        $current_label   = $active_profile !== '' ? $profiles[ $active_profile ]['label'] : __( 'Custom', 'login-delay-shield' );
+        $current_label   = $active_profile !== '' ? $profiles[ $active_profile ]['label'] : __( 'Custom', 'wp-login-delay' );
         $profile_effects = array(
             'conservative' => array(
-                __( 'Lockout after 10 failed attempts', 'login-delay-shield' ),
-                __( 'Progressive delay up to 15 seconds', 'login-delay-shield' ),
-                __( 'Password reset protection', 'login-delay-shield' ),
+                __( 'Lockout after 10 failed attempts', 'wp-login-delay' ),
+                __( 'Progressive delay up to 15 seconds', 'wp-login-delay' ),
+                __( 'Password reset protection', 'wp-login-delay' ),
             ),
             'balanced'     => array(
-                __( 'Lockout after 7 failed attempts', 'login-delay-shield' ),
-                __( 'Protects REST API and application passwords', 'login-delay-shield' ),
-                __( 'Password reset protection', 'login-delay-shield' ),
+                __( 'Lockout after 7 failed attempts', 'wp-login-delay' ),
+                __( 'Protects REST API and application passwords', 'wp-login-delay' ),
+                __( 'Password reset protection', 'wp-login-delay' ),
             ),
             'aggressive'   => array(
-                __( 'Lockout after 5 failed attempts', 'login-delay-shield' ),
-                __( 'Blocks XML-RPC authentication', 'login-delay-shield' ),
-                __( 'Longer progressive delay window', 'login-delay-shield' ),
+                __( 'Lockout after 5 failed attempts', 'wp-login-delay' ),
+                __( 'Blocks XML-RPC authentication', 'wp-login-delay' ),
+                __( 'Longer progressive delay window', 'wp-login-delay' ),
             ),
         );
         ?>
@@ -263,14 +263,14 @@ class LDS_Settings_View {
             <div class="wldelay-setup-wizard-header">
                 <span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
                 <div>
-                    <h2 id="wldelay-setup-wizard-title"><?php esc_html_e( 'Security Setup Wizard', 'login-delay-shield' ); ?></h2>
-                    <p class="description"><?php esc_html_e( 'Choose a protection profile to quickly configure the main security controls. You can still adjust every setting below.', 'login-delay-shield' ); ?></p>
+                    <h2 id="wldelay-setup-wizard-title"><?php esc_html_e( 'Security Setup Wizard', 'wp-login-delay' ); ?></h2>
+                    <p class="description"><?php esc_html_e( 'Choose a protection profile to quickly configure the main security controls. You can still adjust every setting below.', 'wp-login-delay' ); ?></p>
                 </div>
                 <span class="wldelay-current-profile" aria-live="polite">
                     <?php
                     printf(
                         /* translators: %s: selected protection profile label */
-                        esc_html__( 'Current profile: %s', 'login-delay-shield' ),
+                        esc_html__( 'Current profile: %s', 'wp-login-delay' ),
                         esc_html( $current_label )
                     );
                     ?>
@@ -278,8 +278,8 @@ class LDS_Settings_View {
             </div>
 
             <fieldset class="wldelay-profile-fieldset" aria-describedby="wldelay-profile-help">
-                <legend><?php esc_html_e( 'Protection Profiles', 'login-delay-shield' ); ?></legend>
-                <p id="wldelay-profile-help" class="description"><?php esc_html_e( 'Profiles update delay, progressive delay, lockout, email alert, and authentication endpoint settings.', 'login-delay-shield' ); ?></p>
+                <legend><?php esc_html_e( 'Protection Profiles', 'wp-login-delay' ); ?></legend>
+                <p id="wldelay-profile-help" class="description"><?php esc_html_e( 'Profiles update delay, progressive delay, lockout, email alert, and authentication endpoint settings.', 'wp-login-delay' ); ?></p>
 
                 <div class="wldelay-profile-grid">
                     <?php foreach ( $profiles as $profile_id => $profile ) : ?>
@@ -316,9 +316,9 @@ class LDS_Settings_View {
                 <?php // Action carried by a hidden field so an implicit Enter-key submit from any settings field cannot apply a profile; the apply button sets it only on an explicit click. ?>
                 <input type="hidden" name="wldelay_options[wldelay_profile_action]" id="wldelay-profile-action" value="" />
                 <button type="button" class="button button-primary wldelay-apply-profile" data-profile-action="apply">
-                    <?php esc_html_e( 'Apply selected profile', 'login-delay-shield' ); ?>
+                    <?php esc_html_e( 'Apply selected profile', 'wp-login-delay' ); ?>
                 </button>
-                <span class="description"><?php esc_html_e( 'Applying a profile overwrites matching settings below, then saves the page.', 'login-delay-shield' ); ?></span>
+                <span class="description"><?php esc_html_e( 'Applying a profile overwrites matching settings below, then saves the page.', 'wp-login-delay' ); ?></span>
             </p>
         </section>
         <?php
@@ -329,16 +329,16 @@ class LDS_Settings_View {
      */
     private function render_summary_box() {
         $features = array(
-            'wldelay_email_enabled' => __( 'Email Alerts', 'login-delay-shield' ),
-            'wldelay_lockout_enabled' => __( 'IP Lockout', 'login-delay-shield' ),
-            'wldelay_whitelist_enabled' => __( 'IP Whitelist', 'login-delay-shield' ),
-            'wldelay_progressive_enabled' => __( 'Progressive Delay', 'login-delay-shield' ),
-            'wldelay_xmlrpc_enabled' => __( 'XML-RPC Protection', 'login-delay-shield' ),
-            'wldelay_rest_enabled' => __( 'REST API Protection', 'login-delay-shield' ),
-            'wldelay_application_password_enabled' => __( 'Application Password Protection', 'login-delay-shield' ),
-            'wldelay_password_reset_enabled' => __( 'Password Reset Protection', 'login-delay-shield' ),
-            'wldelay_custom_login_enabled' => __( 'Custom Login URL', 'login-delay-shield' ),
-            'wldelay_fail2ban_enabled' => __( 'fail2ban Logging', 'login-delay-shield' ),
+            'wldelay_email_enabled' => __( 'Email Alerts', 'wp-login-delay' ),
+            'wldelay_lockout_enabled' => __( 'IP Lockout', 'wp-login-delay' ),
+            'wldelay_whitelist_enabled' => __( 'IP Whitelist', 'wp-login-delay' ),
+            'wldelay_progressive_enabled' => __( 'Progressive Delay', 'wp-login-delay' ),
+            'wldelay_xmlrpc_enabled' => __( 'XML-RPC Protection', 'wp-login-delay' ),
+            'wldelay_rest_enabled' => __( 'REST API Protection', 'wp-login-delay' ),
+            'wldelay_application_password_enabled' => __( 'Application Password Protection', 'wp-login-delay' ),
+            'wldelay_password_reset_enabled' => __( 'Password Reset Protection', 'wp-login-delay' ),
+            'wldelay_custom_login_enabled' => __( 'Custom Login URL', 'wp-login-delay' ),
+            'wldelay_fail2ban_enabled' => __( 'fail2ban Logging', 'wp-login-delay' ),
         );
 
         $enabled_count = 0;
@@ -351,7 +351,7 @@ class LDS_Settings_View {
             }
             $class = $is_enabled ? 'wldelay-feature-on' : 'wldelay-feature-off';
             $icon = $is_enabled ? 'yes' : 'no-alt';
-            $status = $is_enabled ? __( 'enabled', 'login-delay-shield' ) : __( 'disabled', 'login-delay-shield' );
+            $status = $is_enabled ? __( 'enabled', 'wp-login-delay' ) : __( 'disabled', 'wp-login-delay' );
             $feature_html .= sprintf(
                 '<span class="%s" data-feature="%s">' .
                 '<span class="dashicons dashicons-%s" aria-hidden="true"></span>' .
@@ -380,7 +380,7 @@ class LDS_Settings_View {
                 '<div class="wldelay-summary-recommendation"><span class="dashicons dashicons-lightbulb" aria-hidden="true"></span> %s</div>',
                 sprintf(
                     /* translators: 1: feature name, 2: points value */
-                    esc_html__( 'Next recommended: enable %1$s (+%2$d points)', 'login-delay-shield' ),
+                    esc_html__( 'Next recommended: enable %1$s (+%2$d points)', 'wp-login-delay' ),
                     '<strong>' . esc_html( $health['recommendation']['label'] ) . '</strong>',
                     $health['recommendation']['points']
                 )
@@ -401,11 +401,11 @@ class LDS_Settings_View {
                     %s
                 </div>
             </div>',
-            esc_attr__( 'Protection status summary', 'login-delay-shield' ),
+            esc_attr__( 'Protection status summary', 'wp-login-delay' ),
             $pct,
             $pct,
-            esc_html__( 'Security Score', 'login-delay-shield' ),
-            esc_html__( 'Protection Features Enabled', 'login-delay-shield' ),
+            esc_html__( 'Security Score', 'wp-login-delay' ),
+            esc_html__( 'Protection Features Enabled', 'wp-login-delay' ),
             $enabled_count,
             $total,
             $feature_html,
@@ -431,7 +431,7 @@ class LDS_Settings_View {
                 <div class="wldelay-health-notice" role="note">
                     <span class="dashicons dashicons-yes-alt" aria-hidden="true"></span>
                     <span>
-                        <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
+                        <strong><?php esc_html_e( '2FA plugin check:', 'wp-login-delay' ); ?></strong>
                         <?php
                         echo esc_html(
                             sprintf(
@@ -440,7 +440,7 @@ class LDS_Settings_View {
                                     '%1$s is active and the detected administrator account appears to have 2FA enabled.',
                                     '%1$s is active and all %2$d detected administrator accounts appear to have 2FA enabled.',
                                     $privileged,
-                                    'login-delay-shield'
+                                    'wp-login-delay'
                                 ),
                                 $provider_label,
                                 $privileged
@@ -458,7 +458,7 @@ class LDS_Settings_View {
                 <div class="wldelay-health-notice" role="note">
                     <span class="dashicons dashicons-warning" aria-hidden="true"></span>
                     <span>
-                        <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
+                        <strong><?php esc_html_e( '2FA plugin check:', 'wp-login-delay' ); ?></strong>
                         <?php
                         echo esc_html(
                             sprintf(
@@ -467,7 +467,7 @@ class LDS_Settings_View {
                                     '%1$s is active, but %2$d administrator account out of %3$d detected does not appear to have 2FA enabled yet.',
                                     '%1$s is active, but %2$d administrator accounts out of %3$d detected do not appear to have 2FA enabled yet.',
                                     $unprotected,
-                                    'login-delay-shield'
+                                    'wp-login-delay'
                                 ),
                                 $provider_label,
                                 $unprotected,
@@ -484,11 +484,11 @@ class LDS_Settings_View {
             <div class="wldelay-health-notice" role="note">
                 <span class="dashicons dashicons-shield" aria-hidden="true"></span>
                 <span>
-                    <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
+                    <strong><?php esc_html_e( '2FA plugin check:', 'wp-login-delay' ); ?></strong>
                     <?php
                     printf(
                         /* translators: %s: detected plugin with 2FA capability */
-                        esc_html__( 'Detected installed plugin with 2FA capability: %s. Verify 2FA is configured for your administrator accounts.', 'login-delay-shield' ),
+                        esc_html__( 'Detected installed plugin with 2FA capability: %s. Verify 2FA is configured for your administrator accounts.', 'wp-login-delay' ),
                         esc_html( $provider_label )
                     );
                     ?>
@@ -502,8 +502,8 @@ class LDS_Settings_View {
         <div class="wldelay-health-notice" role="note">
             <span class="dashicons dashicons-warning" aria-hidden="true"></span>
             <span>
-                <strong><?php esc_html_e( '2FA plugin check:', 'login-delay-shield' ); ?></strong>
-                <?php esc_html_e( 'No detected common 2FA plugin. If you use a custom or must-use solution, verify administrator 2FA coverage manually.', 'login-delay-shield' ); ?>
+                <strong><?php esc_html_e( '2FA plugin check:', 'wp-login-delay' ); ?></strong>
+                <?php esc_html_e( 'No detected common 2FA plugin. If you use a custom or must-use solution, verify administrator 2FA coverage manually.', 'wp-login-delay' ); ?>
             </span>
         </div>
         <?php
@@ -525,11 +525,11 @@ class LDS_Settings_View {
             <div class="wldelay-health-notice" role="note">
                 <span class="dashicons dashicons-warning" aria-hidden="true"></span>
                 <span>
-                    <strong><?php esc_html_e( 'Proxy check:', 'login-delay-shield' ); ?></strong>
+                    <strong><?php esc_html_e( 'Proxy check:', 'wp-login-delay' ); ?></strong>
                     <?php
                     printf(
                         /* translators: %s: comma-separated list of detected proxy headers, e.g. "CF-Connecting-IP, X-Forwarded-For". */
-                        esc_html__( 'This site appears to be behind a proxy or CDN (detected: %s), but "Trust proxy headers" is disabled. Visitors currently share the proxy\'s IP address, so a single attacker could lock out all users. Enable "Trust proxy headers" under Advanced settings.', 'login-delay-shield' ),
+                        esc_html__( 'This site appears to be behind a proxy or CDN (detected: %s), but "Trust proxy headers" is disabled. Visitors currently share the proxy\'s IP address, so a single attacker could lock out all users. Enable "Trust proxy headers" under Advanced settings.', 'wp-login-delay' ),
                         esc_html( implode( ', ', $health['headers'] ) )
                     );
                     ?>
@@ -544,8 +544,8 @@ class LDS_Settings_View {
             <div class="wldelay-health-notice" role="note">
                 <span class="dashicons dashicons-warning" aria-hidden="true"></span>
                 <span>
-                    <strong><?php esc_html_e( 'Proxy check:', 'login-delay-shield' ); ?></strong>
-                    <?php esc_html_e( '"Trust proxy headers" is enabled, but no proxy headers were detected on this request. If this site is not behind a proxy or CDN, attackers can spoof their IP address to bypass lockouts — disable "Trust proxy headers" under Advanced settings.', 'login-delay-shield' ); ?>
+                    <strong><?php esc_html_e( 'Proxy check:', 'wp-login-delay' ); ?></strong>
+                    <?php esc_html_e( '"Trust proxy headers" is enabled, but no proxy headers were detected on this request. If this site is not behind a proxy or CDN, attackers can spoof their IP address to bypass lockouts — disable "Trust proxy headers" under Advanced settings.', 'wp-login-delay' ); ?>
                 </span>
             </div>
             <?php
@@ -565,8 +565,8 @@ class LDS_Settings_View {
         <div class="wldelay-health-notice" role="note">
             <span class="dashicons dashicons-shield" aria-hidden="true"></span>
             <span>
-                <strong><?php esc_html_e( 'Enumeration hardening active:', 'login-delay-shield' ); ?></strong>
-                <?php esc_html_e( 'Login failures now show one generic error, and author-archive and public REST user listings are blocked. Verify your support guidance reflects this before relying on it.', 'login-delay-shield' ); ?>
+                <strong><?php esc_html_e( 'Enumeration hardening active:', 'wp-login-delay' ); ?></strong>
+                <?php esc_html_e( 'Login failures now show one generic error, and author-archive and public REST user listings are blocked. Verify your support guidance reflects this before relying on it.', 'wp-login-delay' ); ?>
             </span>
         </div>
         <?php
@@ -585,8 +585,8 @@ class LDS_Settings_View {
         <div class="wldelay-cache-tip" role="note">
             <span class="dashicons dashicons-info-outline" aria-hidden="true"></span>
             <span>
-                <strong><?php esc_html_e( 'Performance tip:', 'login-delay-shield' ); ?></strong>
-                <?php esc_html_e( 'For high-traffic sites, consider using a persistent object cache (Redis, Memcached) to reduce database load during attacks.', 'login-delay-shield' ); ?>
+                <strong><?php esc_html_e( 'Performance tip:', 'wp-login-delay' ); ?></strong>
+                <?php esc_html_e( 'For high-traffic sites, consider using a persistent object cache (Redis, Memcached) to reduce database load during attacks.', 'wp-login-delay' ); ?>
             </span>
         </div>
         <?php
@@ -625,47 +625,47 @@ class LDS_Settings_View {
         <hr />
         <?php if ( $data_has_drifted ) : ?>
             <div class="notice notice-warning inline"><p>
-                <?php esc_html_e( 'New login attempts were recorded since you started browsing. Totals and page numbers may have shifted.', 'login-delay-shield' ); ?>
-                <a href="<?php echo esc_url( add_query_arg( array_merge( array( 'page' => 'login-delay-shield-admin' ), wldelay_login_log_filters_to_query_args( $filters ) ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Refresh', 'login-delay-shield' ); ?></a>
+                <?php esc_html_e( 'New login attempts were recorded since you started browsing. Totals and page numbers may have shifted.', 'wp-login-delay' ); ?>
+                <a href="<?php echo esc_url( add_query_arg( array_merge( array( 'page' => 'login-delay-shield-admin' ), wldelay_login_log_filters_to_query_args( $filters ) ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Refresh', 'wp-login-delay' ); ?></a>
             </p></div>
         <?php endif; ?>
         <div class="wldelay-telemetry" aria-labelledby="wldelay-telemetry-title">
-            <h3 id="wldelay-telemetry-title"><?php esc_html_e( 'Failed Login Telemetry', 'login-delay-shield' ); ?></h3>
-            <p class="description"><?php esc_html_e( 'Filter failed login attempts, inspect recent patterns, and export the matching rows as CSV.', 'login-delay-shield' ); ?></p>
+            <h3 id="wldelay-telemetry-title"><?php esc_html_e( 'Failed Login Telemetry', 'wp-login-delay' ); ?></h3>
+            <p class="description"><?php esc_html_e( 'Filter failed login attempts, inspect recent patterns, and export the matching rows as CSV.', 'wp-login-delay' ); ?></p>
 
             <div class="wldelay-telemetry-filters">
                 <input form="wldelay-telemetry-filter-form" type="hidden" name="page" value="login-delay-shield-admin" />
                 <div class="wldelay-filter-grid">
                     <label for="wldelay_log_source">
-                        <?php esc_html_e( 'Source', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'Source', 'wp-login-delay' ); ?>
                         <select id="wldelay_log_source" name="wldelay_log_source" form="wldelay-telemetry-filter-form">
-                            <option value=""><?php esc_html_e( 'All sources', 'login-delay-shield' ); ?></option>
+                            <option value=""><?php esc_html_e( 'All sources', 'wp-login-delay' ); ?></option>
                             <?php foreach ( $this->get_login_log_source_options( $summary, $filters ) as $source ) : ?>
                                 <option value="<?php echo esc_attr( $source ); ?>" <?php selected( $filters['source'], $source ); ?>><?php echo esc_html( wldelay_get_login_source_label( $source ) ); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </label>
                     <label for="wldelay_log_ip">
-                        <?php esc_html_e( 'IP address', 'login-delay-shield' ); ?>
-                        <input id="wldelay_log_ip" name="wldelay_log_ip" form="wldelay-telemetry-filter-form" type="text" value="<?php echo esc_attr( $filters['ip'] ); ?>" placeholder="<?php echo esc_attr__( 'Any IP', 'login-delay-shield' ); ?>" />
+                        <?php esc_html_e( 'IP address', 'wp-login-delay' ); ?>
+                        <input id="wldelay_log_ip" name="wldelay_log_ip" form="wldelay-telemetry-filter-form" type="text" value="<?php echo esc_attr( $filters['ip'] ); ?>" placeholder="<?php echo esc_attr__( 'Any IP', 'wp-login-delay' ); ?>" />
                     </label>
                     <label for="wldelay_log_username">
-                        <?php esc_html_e( 'Username', 'login-delay-shield' ); ?>
-                        <input id="wldelay_log_username" name="wldelay_log_username" form="wldelay-telemetry-filter-form" type="text" value="<?php echo esc_attr( $filters['username'] ); ?>" placeholder="<?php echo esc_attr__( 'Partial match', 'login-delay-shield' ); ?>" />
+                        <?php esc_html_e( 'Username', 'wp-login-delay' ); ?>
+                        <input id="wldelay_log_username" name="wldelay_log_username" form="wldelay-telemetry-filter-form" type="text" value="<?php echo esc_attr( $filters['username'] ); ?>" placeholder="<?php echo esc_attr__( 'Partial match', 'wp-login-delay' ); ?>" />
                     </label>
                     <label for="wldelay_log_from">
-                        <?php esc_html_e( 'From', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'From', 'wp-login-delay' ); ?>
                         <input id="wldelay_log_from" name="wldelay_log_from" form="wldelay-telemetry-filter-form" type="date" value="<?php echo esc_attr( $filters['from'] ); ?>" />
                     </label>
                     <label for="wldelay_log_to">
-                        <?php esc_html_e( 'To', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'To', 'wp-login-delay' ); ?>
                         <input id="wldelay_log_to" name="wldelay_log_to" form="wldelay-telemetry-filter-form" type="date" value="<?php echo esc_attr( $filters['to'] ); ?>" />
                     </label>
                 </div>
                 <p class="wldelay-telemetry-actions">
-                    <button type="submit" form="wldelay-telemetry-filter-form" class="button button-primary"><?php esc_html_e( 'Apply filters', 'login-delay-shield' ); ?></button>
-                    <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=login-delay-shield-admin' ) ); ?>"><?php esc_html_e( 'Reset', 'login-delay-shield' ); ?></a>
-                    <a class="button button-secondary" href="<?php echo esc_url( wldelay_get_export_login_log_url( $filters ) ); ?>"><?php esc_html_e( 'Export filtered CSV', 'login-delay-shield' ); ?></a>
+                    <button type="submit" form="wldelay-telemetry-filter-form" class="button button-primary"><?php esc_html_e( 'Apply filters', 'wp-login-delay' ); ?></button>
+                    <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=login-delay-shield-admin' ) ); ?>"><?php esc_html_e( 'Reset', 'wp-login-delay' ); ?></a>
+                    <a class="button button-secondary" href="<?php echo esc_url( wldelay_get_export_login_log_url( $filters ) ); ?>"><?php esc_html_e( 'Export filtered CSV', 'wp-login-delay' ); ?></a>
                 </p>
             </div>
 
@@ -710,29 +710,29 @@ class LDS_Settings_View {
         ?>
         <div class="wldelay-telemetry-summary">
             <section class="wldelay-trend-card">
-                <h4><?php esc_html_e( 'Total attempts', 'login-delay-shield' ); ?></h4>
+                <h4><?php esc_html_e( 'Total attempts', 'wp-login-delay' ); ?></h4>
                 <p class="wldelay-telemetry-total"><?php echo esc_html( number_format_i18n( (int) $summary['total_attempts'] ) ); ?></p>
             </section>
             <section class="wldelay-trend-card">
-                <h4><?php esc_html_e( 'Daily activity', 'login-delay-shield' ); ?></h4>
+                <h4><?php esc_html_e( 'Daily activity', 'wp-login-delay' ); ?></h4>
                 <?php $this->render_count_list( $summary['daily_counts'], 'date' ); ?>
             </section>
             <section class="wldelay-trend-card">
-                <h4><?php esc_html_e( 'Top sources', 'login-delay-shield' ); ?></h4>
+                <h4><?php esc_html_e( 'Top sources', 'wp-login-delay' ); ?></h4>
                 <?php $this->render_count_list( $summary['source_counts'], 'source' ); ?>
             </section>
             <section class="wldelay-trend-card">
-                <h4><?php esc_html_e( 'Top IPs', 'login-delay-shield' ); ?></h4>
+                <h4><?php esc_html_e( 'Top IPs', 'wp-login-delay' ); ?></h4>
                 <?php $this->render_count_list( $summary['top_ips'], 'ip_address' ); ?>
             </section>
             <section class="wldelay-trend-card">
-                <h4><?php esc_html_e( 'Top usernames', 'login-delay-shield' ); ?></h4>
-                <p class="description"><?php esc_html_e( 'Usernames most targeted by failed login attempts.', 'login-delay-shield' ); ?></p>
+                <h4><?php esc_html_e( 'Top usernames', 'wp-login-delay' ); ?></h4>
+                <p class="description"><?php esc_html_e( 'Usernames most targeted by failed login attempts.', 'wp-login-delay' ); ?></p>
                 <?php $this->render_count_list( $summary['top_usernames'], 'username' ); ?>
             </section>
             <section class="wldelay-trend-card">
-                <h4><?php esc_html_e( 'Top target pairs', 'login-delay-shield' ); ?></h4>
-                <p class="description"><?php esc_html_e( 'Most common IP and username combinations from failed login attempts.', 'login-delay-shield' ); ?></p>
+                <h4><?php esc_html_e( 'Top target pairs', 'wp-login-delay' ); ?></h4>
+                <p class="description"><?php esc_html_e( 'Most common IP and username combinations from failed login attempts.', 'wp-login-delay' ); ?></p>
                 <?php $this->render_count_list( $summary['top_target_pairs'], 'target_pair' ); ?>
             </section>
         </div>
@@ -748,7 +748,7 @@ class LDS_Settings_View {
     private function render_count_list( $rows, $label_key ) {
         echo '<ul class="wldelay-trend-list">';
         if ( empty( $rows ) ) {
-            echo '<li><span>' . esc_html__( 'No matching data', 'login-delay-shield' ) . '</span><strong>0</strong></li>';
+            echo '<li><span>' . esc_html__( 'No matching data', 'wp-login-delay' ) . '</span><strong>0</strong></li>';
             echo '</ul>';
             return;
         }
@@ -758,11 +758,11 @@ class LDS_Settings_View {
             if ( $label_key === 'source' ) {
                 $label = wldelay_get_login_source_label( $label );
             } elseif ( $label_key === 'date' ) {
-                $label = date_i18n( _x( 'M j, Y', 'date format for login log telemetry', 'login-delay-shield' ), strtotime( $label . ' 00:00:00' ) );
+                $label = date_i18n( _x( 'M j, Y', 'date format for login log telemetry', 'wp-login-delay' ), strtotime( $label . ' 00:00:00' ) );
             } elseif ( $label_key === 'target_pair' ) {
                 $label = sprintf(
                     /* translators: 1: IP address, 2: username. */
-                    __( '%1$s / %2$s', 'login-delay-shield' ),
+                    __( '%1$s / %2$s', 'wp-login-delay' ),
                     isset( $row['ip_address'] ) ? (string) $row['ip_address'] : '',
                     isset( $row['username'] ) ? (string) $row['username'] : ''
                 );
@@ -784,27 +784,27 @@ class LDS_Settings_View {
     private function render_login_log_table( $attempts, $total, $current_page, $total_pages, $filters, $snapshot_hash = '' ) {
         ?>
         <div class="wldelay-telemetry-results">
-            <h4><?php esc_html_e( 'Matching attempts', 'login-delay-shield' ); ?></h4>
+            <h4><?php esc_html_e( 'Matching attempts', 'wp-login-delay' ); ?></h4>
             <p class="description">
                 <?php
                 printf(
                     /* translators: %s: number of matching failed login attempts */
-                    esc_html__( '%s matching failed login attempts.', 'login-delay-shield' ),
+                    esc_html__( '%s matching failed login attempts.', 'wp-login-delay' ),
                     esc_html( number_format_i18n( $total ) )
                 );
                 ?>
             </p>
             <?php if ( empty( $attempts ) ) : ?>
-                <p class="wldelay-empty-state"><?php esc_html_e( 'No failed login attempts match the current filters.', 'login-delay-shield' ); ?></p>
+                <p class="wldelay-empty-state"><?php esc_html_e( 'No failed login attempts match the current filters.', 'wp-login-delay' ); ?></p>
             <?php else : ?>
                 <table class="widefat striped wldelay-telemetry-table">
-                    <caption class="screen-reader-text"><?php esc_html_e( 'Filtered failed login attempts', 'login-delay-shield' ); ?></caption>
+                    <caption class="screen-reader-text"><?php esc_html_e( 'Filtered failed login attempts', 'wp-login-delay' ); ?></caption>
                     <thead>
                         <tr>
-                            <th scope="col"><?php esc_html_e( 'Time', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'Username', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'IP address', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'Source', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Time', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Username', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'IP address', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Source', 'wp-login-delay' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -846,23 +846,23 @@ class LDS_Settings_View {
             $base_args['wldelay_log_snap'] = $snapshot_hash;
         }
 
-        echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Login log pagination', 'login-delay-shield' ) . '">';
+        echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Login log pagination', 'wp-login-delay' ) . '">';
         if ( $current_page > 1 ) {
-            echo '<a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_log_page' => $current_page - 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Previous', 'login-delay-shield' ) . '</a> ';
+            echo '<a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_log_page' => $current_page - 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Previous', 'wp-login-delay' ) . '</a> ';
         }
         printf(
             '<span class="wldelay-pagination-status">%s</span>',
             esc_html(
                 sprintf(
                     /* translators: 1: current page, 2: total pages */
-                    __( 'Page %1$d of %2$d', 'login-delay-shield' ),
+                    __( 'Page %1$d of %2$d', 'wp-login-delay' ),
                     $current_page,
                     $total_pages
                 )
             )
         );
         if ( $current_page < $total_pages ) {
-            echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_log_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'login-delay-shield' ) . '</a>';
+            echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_log_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'wp-login-delay' ) . '</a>';
         }
         echo '</nav>';
     }
@@ -896,26 +896,26 @@ class LDS_Settings_View {
         }
         ?>
         <div class="wldelay-active-lockouts" aria-labelledby="wldelay-active-lockouts-title">
-            <h3 id="wldelay-active-lockouts-title" class="screen-reader-text"><?php esc_html_e( 'Active lockouts', 'login-delay-shield' ); ?></h3>
+            <h3 id="wldelay-active-lockouts-title" class="screen-reader-text"><?php esc_html_e( 'Active lockouts', 'wp-login-delay' ); ?></h3>
 
             <?php if ( $read_failed ) : ?>
                 <div class="notice notice-error inline" role="alert">
-                    <p><?php esc_html_e( 'The list of active lockouts could not be read from the database. Active lockouts may still be in force — this is not a confirmation that nothing is blocked.', 'login-delay-shield' ); ?></p>
+                    <p><?php esc_html_e( 'The list of active lockouts could not be read from the database. Active lockouts may still be in force — this is not a confirmation that nothing is blocked.', 'wp-login-delay' ); ?></p>
                 </div>
             <?php elseif ( empty( $lockouts ) ) : ?>
-                <p class="wldelay-empty-state" role="status" aria-live="polite"><?php esc_html_e( 'No active lockouts. Nothing is currently blocked.', 'login-delay-shield' ); ?></p>
+                <p class="wldelay-empty-state" role="status" aria-live="polite"><?php esc_html_e( 'No active lockouts. Nothing is currently blocked.', 'wp-login-delay' ); ?></p>
             <?php else : ?>
                 <table class="widefat striped wldelay-active-lockouts-table">
-                    <caption class="screen-reader-text"><?php esc_html_e( 'Currently active login lockouts', 'login-delay-shield' ); ?></caption>
+                    <caption class="screen-reader-text"><?php esc_html_e( 'Currently active login lockouts', 'wp-login-delay' ); ?></caption>
                     <thead>
                         <tr>
-                            <th scope="col"><?php esc_html_e( 'IP address', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'Username', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'Type', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'Source', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'Time remaining', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'Locked since', 'login-delay-shield' ); ?></th>
-                            <th scope="col"><?php esc_html_e( 'Actions', 'login-delay-shield' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'IP address', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Username', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Type', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Source', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Time remaining', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Locked since', 'wp-login-delay' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Actions', 'wp-login-delay' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -931,17 +931,17 @@ class LDS_Settings_View {
                             $remaining = $expires > $now
                                 ? sprintf(
                                     /* translators: %s: human-readable duration, e.g. "5 mins" */
-                                    __( '%s left', 'login-delay-shield' ),
+                                    __( '%s left', 'wp-login-delay' ),
                                     human_time_diff( $now, $expires )
                                 )
-                                : __( 'Expiring', 'login-delay-shield' );
+                                : __( 'Expiring', 'wp-login-delay' );
                             $since = $created > 0
                                 ? sprintf(
                                     /* translators: %s: human-readable duration, e.g. "5 mins" */
-                                    __( '%s ago', 'login-delay-shield' ),
+                                    __( '%s ago', 'wp-login-delay' ),
                                     human_time_diff( $created, $now )
                                 )
-                                : __( 'Unknown', 'login-delay-shield' );
+                                : __( 'Unknown', 'wp-login-delay' );
                             ?>
                             <tr>
                                 <td><?php echo esc_html( $ip ); ?></td>
@@ -949,12 +949,12 @@ class LDS_Settings_View {
                                 if ( '' !== $username ) {
                                     echo esc_html( $username );
                                 } else {
-                                    echo esc_html__( '(any)', 'login-delay-shield' );
+                                    echo esc_html__( '(any)', 'wp-login-delay' );
                                     // "(any)" is an IP-level lockout: it covers every
                                     // username attempted from this IP, not a single
                                     // account. Spell that out for admins unfamiliar
                                     // with the IP-only strategy (R4-7).
-                                    echo ' ' . $this->tooltip( __( 'IP-level lockout: it applies to every username attempted from this IP address, not one specific account.', 'login-delay-shield' ) );
+                                    echo ' ' . $this->tooltip( __( 'IP-level lockout: it applies to every username attempted from this IP address, not one specific account.', 'wp-login-delay' ) );
                                 }
                                 ?></td>
                                 <td><?php echo esc_html( $type ); ?></td>
@@ -964,9 +964,9 @@ class LDS_Settings_View {
                                 <td>
                                     <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-unlock-form" data-wldelay-confirm="<?php echo esc_attr( '' !== $username
                                         /* translators: 1: username, 2: IP address */
-                                        ? sprintf( __( 'Unlock %1$s on IP %2$s? They will be able to attempt logins again immediately.', 'login-delay-shield' ), $username, $ip )
+                                        ? sprintf( __( 'Unlock %1$s on IP %2$s? They will be able to attempt logins again immediately.', 'wp-login-delay' ), $username, $ip )
                                         /* translators: %s: IP address */
-                                        : sprintf( __( 'Unlock IP %s? It will be able to attempt logins again immediately.', 'login-delay-shield' ), $ip ) ); ?>">
+                                        : sprintf( __( 'Unlock IP %s? It will be able to attempt logins again immediately.', 'wp-login-delay' ), $ip ) ); ?>">
                                         <input type="hidden" name="action" value="wldelay_unlock_lockout" />
                                         <input type="hidden" name="wldelay_lockout_ip" value="<?php echo esc_attr( $ip ); ?>" />
                                         <input type="hidden" name="wldelay_lockout_key" value="<?php echo esc_attr( $lockout_key ); ?>" />
@@ -975,20 +975,20 @@ class LDS_Settings_View {
                                         <input type="hidden" name="wldelay_lockout_type" value="<?php echo esc_attr( $type ); ?>" />
                                         <?php wp_nonce_field( 'wldelay_unlock_lockout' ); ?>
                                         <button type="submit" class="button button-secondary button-small">
-                                            <?php esc_html_e( 'Unlock', 'login-delay-shield' ); ?>
+                                            <?php esc_html_e( 'Unlock', 'wp-login-delay' ); ?>
                                             <span class="screen-reader-text">
                                                 <?php
                                                 if ( '' !== $username ) {
                                                     printf(
                                                         /* translators: 1: username, 2: IP address */
-                                                        esc_html__( 'Unlock %1$s on IP %2$s', 'login-delay-shield' ),
+                                                        esc_html__( 'Unlock %1$s on IP %2$s', 'wp-login-delay' ),
                                                         esc_html( $username ),
                                                         esc_html( $ip )
                                                     );
                                                 } else {
                                                     printf(
                                                         /* translators: %s: IP address */
-                                                        esc_html__( 'Unlock IP %s', 'login-delay-shield' ),
+                                                        esc_html__( 'Unlock IP %s', 'wp-login-delay' ),
                                                         esc_html( $ip )
                                                     );
                                                 }
@@ -1007,7 +1007,7 @@ class LDS_Settings_View {
                         <?php
                         printf(
                             /* translators: %s: maximum number of lockouts shown */
-                            esc_html__( 'Showing the most recent %s lockouts; older active lockouts are not listed.', 'login-delay-shield' ),
+                            esc_html__( 'Showing the most recent %s lockouts; older active lockouts are not listed.', 'wp-login-delay' ),
                             esc_html( number_format_i18n( $limit ) )
                         );
                         ?>
@@ -1015,10 +1015,10 @@ class LDS_Settings_View {
                 <?php endif; ?>
 
                 <div class="wldelay-clear-all">
-                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-clear-all-form" data-wldelay-confirm="<?php echo esc_attr__( 'Clear ALL active lockouts? Every currently blocked IP and account will be able to attempt logins again immediately. This cannot be undone.', 'login-delay-shield' ); ?>">
+                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wldelay-clear-all-form" data-wldelay-confirm="<?php echo esc_attr__( 'Clear ALL active lockouts? Every currently blocked IP and account will be able to attempt logins again immediately. This cannot be undone.', 'wp-login-delay' ); ?>">
                         <input type="hidden" name="action" value="wldelay_clear_all_lockouts" />
                         <?php wp_nonce_field( 'wldelay_clear_all_lockouts' ); ?>
-                        <button type="submit" class="button button-secondary"><?php esc_html_e( 'Clear all active lockouts', 'login-delay-shield' ); ?></button>
+                        <button type="submit" class="button button-secondary"><?php esc_html_e( 'Clear all active lockouts', 'wp-login-delay' ); ?></button>
                     </form>
                 </div>
             <?php endif; ?>
@@ -1041,14 +1041,14 @@ class LDS_Settings_View {
         $action_options = wldelay_get_audit_action_options();
         ?>
         <div class="wldelay-audit" aria-labelledby="wldelay-audit-title">
-            <h3 id="wldelay-audit-title" class="screen-reader-text"><?php esc_html_e( 'Audit log entries', 'login-delay-shield' ); ?></h3>
+            <h3 id="wldelay-audit-title" class="screen-reader-text"><?php esc_html_e( 'Audit log entries', 'wp-login-delay' ); ?></h3>
 
             <?php if ( function_exists( 'wldelay_audit_log_is_degraded' ) && wldelay_audit_log_is_degraded() ) : ?>
                 <div class="notice notice-error inline" role="alert">
                     <p>
-                        <?php esc_html_e( 'One or more audit-log entries could not be written, so this trail is permanently incomplete — the lost events cannot be recovered. This warning persists until an administrator acknowledges the gap.', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'One or more audit-log entries could not be written, so this trail is permanently incomplete — the lost events cannot be recovered. This warning persists until an administrator acknowledges the gap.', 'wp-login-delay' ); ?>
                         <?php if ( function_exists( 'wldelay_get_audit_ack_gap_url' ) ) : ?>
-                            <a href="<?php echo esc_url( wldelay_get_audit_ack_gap_url() ); ?>"><?php esc_html_e( 'Acknowledge gap', 'login-delay-shield' ); ?></a>
+                            <a href="<?php echo esc_url( wldelay_get_audit_ack_gap_url() ); ?>"><?php esc_html_e( 'Acknowledge gap', 'wp-login-delay' ); ?></a>
                         <?php endif; ?>
                     </p>
                 </div>
@@ -1058,30 +1058,30 @@ class LDS_Settings_View {
                 <input form="wldelay-audit-filter-form" type="hidden" name="page" value="login-delay-shield-admin" />
                 <div class="wldelay-filter-grid">
                     <label for="wldelay_audit_action">
-                        <?php esc_html_e( 'Action', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'Action', 'wp-login-delay' ); ?>
                         <select id="wldelay_audit_action" name="wldelay_audit_action" form="wldelay-audit-filter-form">
-                            <option value=""><?php esc_html_e( 'All actions', 'login-delay-shield' ); ?></option>
+                            <option value=""><?php esc_html_e( 'All actions', 'wp-login-delay' ); ?></option>
                             <?php foreach ( $action_options as $action_key ) : ?>
                                 <option value="<?php echo esc_attr( $action_key ); ?>" <?php selected( $filters['action'], $action_key ); ?>><?php echo esc_html( wldelay_get_audit_action_label( $action_key ) ); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </label>
                     <label for="wldelay_audit_actor">
-                        <?php esc_html_e( 'Actor', 'login-delay-shield' ); ?>
-                        <input id="wldelay_audit_actor" name="wldelay_audit_actor" form="wldelay-audit-filter-form" type="text" value="<?php echo esc_attr( $filters['actor'] ); ?>" placeholder="<?php echo esc_attr__( 'Login or user ID', 'login-delay-shield' ); ?>" />
+                        <?php esc_html_e( 'Actor', 'wp-login-delay' ); ?>
+                        <input id="wldelay_audit_actor" name="wldelay_audit_actor" form="wldelay-audit-filter-form" type="text" value="<?php echo esc_attr( $filters['actor'] ); ?>" placeholder="<?php echo esc_attr__( 'Login or user ID', 'wp-login-delay' ); ?>" />
                     </label>
                     <label for="wldelay_audit_from">
-                        <?php esc_html_e( 'From', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'From', 'wp-login-delay' ); ?>
                         <input id="wldelay_audit_from" name="wldelay_audit_from" form="wldelay-audit-filter-form" type="date" value="<?php echo esc_attr( $filters['from'] ); ?>" />
                     </label>
                     <label for="wldelay_audit_to">
-                        <?php esc_html_e( 'To', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'To', 'wp-login-delay' ); ?>
                         <input id="wldelay_audit_to" name="wldelay_audit_to" form="wldelay-audit-filter-form" type="date" value="<?php echo esc_attr( $filters['to'] ); ?>" />
                     </label>
                 </div>
                 <p class="wldelay-telemetry-actions">
-                    <button type="submit" form="wldelay-audit-filter-form" class="button button-primary"><?php esc_html_e( 'Apply filters', 'login-delay-shield' ); ?></button>
-                    <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=login-delay-shield-admin' ) ); ?>"><?php esc_html_e( 'Reset', 'login-delay-shield' ); ?></a>
+                    <button type="submit" form="wldelay-audit-filter-form" class="button button-primary"><?php esc_html_e( 'Apply filters', 'wp-login-delay' ); ?></button>
+                    <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=login-delay-shield-admin' ) ); ?>"><?php esc_html_e( 'Reset', 'wp-login-delay' ); ?></a>
                 </p>
             </div>
 
@@ -1098,7 +1098,7 @@ class LDS_Settings_View {
                 ?>
                 <?php if ( $range_invalid ) : ?>
                     <p class="wldelay-empty-state" role="alert">
-                        <?php esc_html_e( 'The “From” date is after the “To” date, so nothing can match. Swap the dates or clear one of them.', 'login-delay-shield' ); ?>
+                        <?php esc_html_e( 'The “From” date is after the “To” date, so nothing can match. Swap the dates or clear one of them.', 'wp-login-delay' ); ?>
                     </p>
                 <?php endif; ?>
                 <p class="description" aria-live="polite">
@@ -1106,29 +1106,29 @@ class LDS_Settings_View {
                     if ( $total > 0 ) {
                         printf(
                             /* translators: 1: first entry shown on this page, 2: last entry shown, 3: total matching entries */
-                            esc_html__( 'Showing %1$s–%2$s of %3$s matching audit entries.', 'login-delay-shield' ),
+                            esc_html__( 'Showing %1$s–%2$s of %3$s matching audit entries.', 'wp-login-delay' ),
                             esc_html( number_format_i18n( $range_start ) ),
                             esc_html( number_format_i18n( $range_end ) ),
                             esc_html( number_format_i18n( $total ) )
                         );
                     } else {
-                        esc_html_e( 'No audit entries match the current filters.', 'login-delay-shield' );
+                        esc_html_e( 'No audit entries match the current filters.', 'wp-login-delay' );
                     }
                     ?>
                 </p>
                 <?php if ( empty( $entries ) ) : ?>
-                    <p class="wldelay-empty-state"><?php esc_html_e( 'No audit entries match the current filters.', 'login-delay-shield' ); ?></p>
+                    <p class="wldelay-empty-state"><?php esc_html_e( 'No audit entries match the current filters.', 'wp-login-delay' ); ?></p>
                 <?php else : ?>
                     <table class="widefat striped wldelay-audit-table">
-                        <caption class="screen-reader-text"><?php esc_html_e( 'Audit log of administrative and security actions', 'login-delay-shield' ); ?></caption>
+                        <caption class="screen-reader-text"><?php esc_html_e( 'Audit log of administrative and security actions', 'wp-login-delay' ); ?></caption>
                         <thead>
                             <tr>
-                                <th scope="col"><?php esc_html_e( 'Time', 'login-delay-shield' ); ?></th>
-                                <th scope="col"><?php esc_html_e( 'Actor', 'login-delay-shield' ); ?></th>
-                                <th scope="col"><?php esc_html_e( 'Action', 'login-delay-shield' ); ?></th>
-                                <th scope="col"><?php esc_html_e( 'Object', 'login-delay-shield' ); ?></th>
-                                <th scope="col"><?php esc_html_e( 'Details', 'login-delay-shield' ); ?></th>
-                                <th scope="col"><?php esc_html_e( 'IP address', 'login-delay-shield' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Time', 'wp-login-delay' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Actor', 'wp-login-delay' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Action', 'wp-login-delay' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Object', 'wp-login-delay' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Details', 'wp-login-delay' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'IP address', 'wp-login-delay' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1137,8 +1137,8 @@ class LDS_Settings_View {
                                 $actor = '' !== (string) $entry->actor_login
                                     ? (string) $entry->actor_login
                                     : ( (int) $entry->actor_id > 0
-                                        ? sprintf( /* translators: %d: user ID */ __( 'User #%d', 'login-delay-shield' ), (int) $entry->actor_id )
-                                        : __( 'System', 'login-delay-shield' ) );
+                                        ? sprintf( /* translators: %d: user ID */ __( 'User #%d', 'wp-login-delay' ), (int) $entry->actor_id )
+                                        : __( 'System', 'wp-login-delay' ) );
                                 ?>
                                 <tr>
                                     <td><?php echo esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), get_date_from_gmt( (string) $entry->created_at ) ) ); ?></td>
@@ -1244,23 +1244,23 @@ class LDS_Settings_View {
             $query_args
         );
 
-        echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Audit log pagination', 'login-delay-shield' ) . '">';
+        echo '<nav class="wldelay-pagination" aria-label="' . esc_attr__( 'Audit log pagination', 'wp-login-delay' ) . '">';
         if ( $current_page > 1 ) {
-            echo '<a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_audit_page' => $current_page - 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Previous', 'login-delay-shield' ) . '</a> ';
+            echo '<a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_audit_page' => $current_page - 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Previous', 'wp-login-delay' ) . '</a> ';
         }
         printf(
             '<span class="wldelay-pagination-status">%s</span>',
             esc_html(
                 sprintf(
                     /* translators: 1: current page, 2: total pages */
-                    __( 'Page %1$d of %2$d', 'login-delay-shield' ),
+                    __( 'Page %1$d of %2$d', 'wp-login-delay' ),
                     $current_page,
                     $total_pages
                 )
             )
         );
         if ( $current_page < $total_pages ) {
-            echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_audit_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'login-delay-shield' ) . '</a>';
+            echo ' <a class="button button-secondary" href="' . esc_url( add_query_arg( array_merge( $base_args, array( 'wldelay_audit_page' => $current_page + 1 ) ), admin_url( 'options-general.php' ) ) ) . '">' . esc_html__( 'Next', 'wp-login-delay' ) . '</a>';
         }
         echo '</nav>';
     }
@@ -1274,13 +1274,13 @@ class LDS_Settings_View {
     private function get_status_badge( $option_key, $feature_name = '' ) {
         $is_enabled = ! empty( $this->options[ $option_key ] );
         $class = $is_enabled ? 'wldelay-badge-enabled' : 'wldelay-badge-disabled';
-        $text = $is_enabled ? __( 'Enabled', 'login-delay-shield' ) : __( 'Disabled', 'login-delay-shield' );
+        $text = $is_enabled ? __( 'Enabled', 'wp-login-delay' ) : __( 'Disabled', 'wp-login-delay' );
 
         // Screen reader text provides context
         $sr_text = $feature_name
             ? sprintf(
                 /* translators: 1: feature name, 2: enabled or disabled */
-                __( '%1$s: %2$s', 'login-delay-shield' ),
+                __( '%1$s: %2$s', 'wp-login-delay' ),
                 $feature_name,
                 $text
             )
@@ -1375,7 +1375,7 @@ class LDS_Settings_View {
             '<input type="text" id="wldelay_delay" name="wldelay_options[wldelay_delay]" value="%d" />',
             isset( $this->options['wldelay_delay'] ) ? esc_attr( $this->options['wldelay_delay']) : esc_attr( LDS_Settings::_DEFAULT_DELAY_IN_SECONDS )
         );
-        echo $this->tooltip( __( 'A fixed delay applied to every login attempt. Higher values slow down brute-force attacks but may slightly delay legitimate users.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'A fixed delay applied to every login attempt. Higher values slow down brute-force attacks but may slightly delay legitimate users.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1386,7 +1386,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_delay_random" name="wldelay_options[wldelay_delay_random]" value="1" %s />',
             ! empty( $this->options['wldelay_delay_random'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Randomized delays make it harder for attackers to detect patterns or time their attempts. Recommended for better security.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'Randomized delays make it harder for attackers to detect patterns or time their attempts. Recommended for better security.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1397,7 +1397,7 @@ class LDS_Settings_View {
             '<input type="number" id="wldelay_delay_random_min" name="wldelay_options[wldelay_delay_random_min]" value="%d" min="1" max="10" />',
             isset( $this->options['wldelay_delay_random_min'] ) ? esc_attr( $this->options['wldelay_delay_random_min'] ) : esc_attr( LDS_Settings::_DEFAULT_RANDOM_MIN )
         );
-        echo $this->tooltip( __( 'The shortest possible delay. Each login attempt will wait at least this many seconds.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'The shortest possible delay. Each login attempt will wait at least this many seconds.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1408,7 +1408,7 @@ class LDS_Settings_View {
             '<input type="number" id="wldelay_delay_random_max" name="wldelay_options[wldelay_delay_random_max]" value="%d" min="1" max="10" />',
             isset( $this->options['wldelay_delay_random_max'] ) ? esc_attr( $this->options['wldelay_delay_random_max'] ) : esc_attr( LDS_Settings::_DEFAULT_RANDOM_MAX )
         );
-        echo $this->tooltip( __( 'The longest possible delay. Each login attempt will wait up to this many seconds.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'The longest possible delay. Each login attempt will wait up to this many seconds.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1419,7 +1419,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_email_enabled" name="wldelay_options[wldelay_email_enabled]" value="1" %s />',
             ! empty( $this->options['wldelay_email_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Get notified when someone is trying to break into your site. Alerts are sent once per IP until the attack stops.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'Get notified when someone is trying to break into your site. Alerts are sent once per IP until the attack stops.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1430,7 +1430,7 @@ class LDS_Settings_View {
             '<input type="number" id="wldelay_email_threshold" name="wldelay_options[wldelay_email_threshold]" value="%d" min="1" max="100" />',
             isset( $this->options['wldelay_email_threshold'] ) ? esc_attr( $this->options['wldelay_email_threshold'] ) : esc_attr( LDS_Settings::_DEFAULT_EMAIL_THRESHOLD )
         );
-        echo $this->tooltip( __( 'Number of failed attempts from one IP before sending an alert. Lower values mean earlier warnings but more emails.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'Number of failed attempts from one IP before sending an alert. Lower values mean earlier warnings but more emails.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1442,8 +1442,8 @@ class LDS_Settings_View {
             isset( $this->options['wldelay_email_address'] ) ? esc_attr( $this->options['wldelay_email_address'] ) : '',
             esc_attr( get_option( 'admin_email' ) )
         );
-        echo $this->tooltip( __( 'Where to send security alerts. If left blank, emails go to the WordPress admin address.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_email_address_desc" class="description">' . esc_html__( 'Leave empty to use the site admin email.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Where to send security alerts. If left blank, emails go to the WordPress admin address.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_email_address_desc" class="description">' . esc_html__( 'Leave empty to use the site admin email.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1454,9 +1454,9 @@ class LDS_Settings_View {
             '<input type="number" id="wldelay_email_cooldown" name="wldelay_options[wldelay_email_cooldown]" value="%d" min="0" max="60" aria-describedby="wldelay_email_cooldown_desc" />',
             isset( $this->options['wldelay_email_cooldown'] ) ? esc_attr( $this->options['wldelay_email_cooldown'] ) : esc_attr( LDS_Settings::_DEFAULT_EMAIL_COOLDOWN )
         );
-        echo ' <span class="description">' . esc_html__( 'minutes', 'login-delay-shield' ) . '</span>';
-        echo $this->tooltip( __( 'Minimum time between alert emails site-wide. Prevents inbox flooding during coordinated attacks from multiple IPs. Set to 0 to disable.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_email_cooldown_desc" class="description">' . esc_html__( 'Set to 0 to send an email for every IP that hits the threshold.', 'login-delay-shield' ) . '</p>';
+        echo ' <span class="description">' . esc_html__( 'minutes', 'wp-login-delay' ) . '</span>';
+        echo $this->tooltip( __( 'Minimum time between alert emails site-wide. Prevents inbox flooding during coordinated attacks from multiple IPs. Set to 0 to disable.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_email_cooldown_desc" class="description">' . esc_html__( 'Set to 0 to send an email for every IP that hits the threshold.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1467,7 +1467,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_lockout_enabled" name="wldelay_options[wldelay_lockout_enabled]" value="1" %s />',
             ! empty( $this->options['wldelay_lockout_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Temporarily block IPs after too many failures. Effective at stopping automated attacks cold.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'Temporarily block IPs after too many failures. Effective at stopping automated attacks cold.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1480,7 +1480,7 @@ class LDS_Settings_View {
                 ? esc_attr( $this->options['wldelay_lockout_threshold'] )
                 : esc_attr( LDS_Settings::_DEFAULT_LOCKOUT_THRESHOLD )
         );
-        echo $this->tooltip( __( 'How many failed attempts before lockout is triggered for the selected strategy.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'How many failed attempts before lockout is triggered for the selected strategy.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1504,13 +1504,13 @@ class LDS_Settings_View {
                 <option value="ip_username" %s>%s</option>
             </select>',
             $ip_selected,
-            esc_html__( 'IP only', 'login-delay-shield' ),
+            esc_html__( 'IP only', 'wp-login-delay' ),
             $pair_selected,
-            esc_html__( 'IP + username', 'login-delay-shield' )
+            esc_html__( 'IP + username', 'wp-login-delay' )
         );
 
-        echo $this->tooltip( __( 'Choose how failed attempts are grouped for progressive delay and lockout. "IP + username" is better for shared networks.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_lockout_attempt_strategy_desc" class="description">' . esc_html__( 'IP only = one counter per IP. IP + username = separate counters per username on the same IP.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Choose how failed attempts are grouped for progressive delay and lockout. "IP + username" is better for shared networks.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_lockout_attempt_strategy_desc" class="description">' . esc_html__( 'IP only = one counter per IP. IP + username = separate counters per username on the same IP.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1523,8 +1523,8 @@ class LDS_Settings_View {
                 ? esc_attr( $this->options['wldelay_lockout_duration'] )
                 : esc_attr( LDS_Settings::_DEFAULT_LOCKOUT_DURATION )
         );
-        echo $this->tooltip( __( 'How long to block an IP. Longer durations discourage persistent attackers but may inconvenience legitimate users who forgot their password.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_lockout_duration_desc" class="description">' . esc_html__( 'Maximum: 1440 minutes (24 hours)', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'How long to block an IP. Longer durations discourage persistent attackers but may inconvenience legitimate users who forgot their password.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_lockout_duration_desc" class="description">' . esc_html__( 'Maximum: 1440 minutes (24 hours)', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1535,8 +1535,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_trust_proxy_headers" name="wldelay_options[wldelay_trust_proxy_headers]" value="1" %s aria-describedby="wldelay_trust_proxy_desc" />',
             ! empty( $this->options['wldelay_trust_proxy_headers'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Enable this only if your site is behind a reverse proxy or load balancer (e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct connection IP is used, preventing attackers from spoofing their IP address.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_trust_proxy_desc" class="description">' . esc_html__( 'Required when behind a proxy or CDN (Cloudflare, Sucuri, nginx) so visitors are identified by their real IP. Supported headers: CF-Connecting-IP (validated against Cloudflare\'s published IP ranges), X-Sucuri-ClientIP, Client-IP, X-Real-IP, X-Forwarded-For. Leave disabled on direct-connection sites — enabling it there allows IP spoofing.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Enable this only if your site is behind a reverse proxy or load balancer (e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct connection IP is used, preventing attackers from spoofing their IP address.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_trust_proxy_desc" class="description">' . esc_html__( 'Required when behind a proxy or CDN (Cloudflare, Sucuri, nginx) so visitors are identified by their real IP. Supported headers: CF-Connecting-IP (validated against Cloudflare\'s published IP ranges), X-Sucuri-ClientIP, Client-IP, X-Real-IP, X-Forwarded-For. Leave disabled on direct-connection sites — enabling it there allows IP spoofing.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1547,8 +1547,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_progressive_enabled" name="wldelay_options[wldelay_progressive_enabled]" value="1" %s aria-describedby="wldelay_progressive_enabled_desc" />',
             ! empty( $this->options['wldelay_progressive_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Delays grow longer with each failed attempt. First try might be 1s, second 2s, third 3s, etc. Very effective against automated attacks.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_progressive_enabled_desc" class="description">' . esc_html__( 'Increase delay with each consecutive failed attempt from the same IP.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Delays grow longer with each failed attempt. First try might be 1s, second 2s, third 3s, etc. Very effective against automated attacks.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_progressive_enabled_desc" class="description">' . esc_html__( 'Increase delay with each consecutive failed attempt from the same IP.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1561,8 +1561,8 @@ class LDS_Settings_View {
                 ? esc_attr( $this->options['wldelay_progressive_increment'] )
                 : esc_attr( LDS_Settings::_DEFAULT_PROGRESSIVE_INCREMENT )
         );
-        echo $this->tooltip( __( 'How much to increase the delay after each failed attempt. Higher values penalize repeat offenders more aggressively.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_progressive_increment_desc" class="description">' . esc_html__( 'Additional seconds added per failed attempt (1-10).', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'How much to increase the delay after each failed attempt. Higher values penalize repeat offenders more aggressively.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_progressive_increment_desc" class="description">' . esc_html__( 'Additional seconds added per failed attempt (1-10).', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1575,8 +1575,8 @@ class LDS_Settings_View {
                 ? esc_attr( $this->options['wldelay_progressive_max'] )
                 : esc_attr( LDS_Settings::_DEFAULT_PROGRESSIVE_MAX )
         );
-        echo $this->tooltip( __( 'The delay stops increasing at this value. Prevents excessively long waits that could tie up server resources.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_progressive_max_desc" class="description">' . esc_html__( 'Maximum total delay in seconds (5-60).', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'The delay stops increasing at this value. Prevents excessively long waits that could tie up server resources.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_progressive_max_desc" class="description">' . esc_html__( 'Maximum total delay in seconds (5-60).', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1587,7 +1587,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_whitelist_enabled" name="wldelay_options[wldelay_whitelist_enabled]" value="1" %s />',
             ! empty( $this->options['wldelay_whitelist_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Bypass all protection for trusted IPs. Useful for office networks or VPNs where delays would be annoying.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'Bypass all protection for trusted IPs. Useful for office networks or VPNs where delays would be annoying.', 'wp-login-delay' ) );
     }
 
     /**
@@ -1598,8 +1598,8 @@ class LDS_Settings_View {
             '<textarea id="wldelay_whitelist_ips" name="wldelay_options[wldelay_whitelist_ips]" rows="5" cols="40" class="large-text code" aria-describedby="wldelay_whitelist_ips_desc">%s</textarea>',
             isset( $this->options['wldelay_whitelist_ips'] ) ? esc_textarea( $this->options['wldelay_whitelist_ips'] ) : ''
         );
-        echo $this->tooltip( __( 'Enter trusted IP addresses. CIDR notation (e.g., 192.168.1.0/24) allows whitelisting entire networks.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_whitelist_ips_desc" class="description">' . esc_html__( 'One IP address or CIDR range per line (e.g., 192.168.1.1 or 10.0.0.0/8).', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Enter trusted IP addresses. CIDR notation (e.g., 192.168.1.0/24) allows whitelisting entire networks.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_whitelist_ips_desc" class="description">' . esc_html__( 'One IP address or CIDR range per line (e.g., 192.168.1.1 or 10.0.0.0/8).', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1612,8 +1612,8 @@ class LDS_Settings_View {
                 ? esc_attr( $this->options['wldelay_log_retention_days'] )
                 : esc_attr( LDS_Settings::_DEFAULT_LOG_RETENTION_DAYS )
         );
-        echo $this->tooltip( __( 'Old logs are automatically cleaned up to save database space. Shorter retention = smaller database.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_log_retention_desc" class="description">' . esc_html__( 'Automatically delete log entries older than this many days. Set to 0 to keep logs forever.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Old logs are automatically cleaned up to save database space. Shorter retention = smaller database.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_log_retention_desc" class="description">' . esc_html__( 'Automatically delete log entries older than this many days. Set to 0 to keep logs forever.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1624,8 +1624,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_fail2ban_enabled" name="wldelay_options[wldelay_fail2ban_enabled]" value="1" %s aria-describedby="wldelay_fail2ban_enabled_desc" />',
             ! empty( $this->options['wldelay_fail2ban_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Write a fail2ban-compatible line when Login Delay Shield records an authentication failure.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_fail2ban_enabled_desc" class="description">' . esc_html__( 'Disabled by default. Enable only after configuring a fail2ban jail to watch the selected log file.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Write a fail2ban-compatible line when Login Delay Shield records an authentication failure.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_fail2ban_enabled_desc" class="description">' . esc_html__( 'Disabled by default. Enable only after configuring a fail2ban jail to watch the selected log file.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1640,10 +1640,10 @@ class LDS_Settings_View {
             esc_attr( $path ),
             esc_attr( $default_path )
         );
-        echo $this->tooltip( __( 'Leave empty to use the protected default log directory. Custom paths are restricted to the protected default directory by default; use the filter only for server-protected directories.', 'login-delay-shield' ) );
+        echo $this->tooltip( __( 'Leave empty to use the protected default log directory. Custom paths are restricted to the protected default directory by default; use the filter only for server-protected directories.', 'wp-login-delay' ) );
         printf(
             '<p id="wldelay_fail2ban_log_path_desc" class="description">%s <code>%s</code></p>',
-            esc_html__( 'Leave empty to write to the protected default path:', 'login-delay-shield' ),
+            esc_html__( 'Leave empty to write to the protected default path:', 'wp-login-delay' ),
             esc_html( $default_path )
         );
     }
@@ -1660,8 +1660,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_fail2ban_include_lockouts" name="wldelay_options[wldelay_fail2ban_include_lockouts]" value="1" %s aria-describedby="wldelay_fail2ban_include_lockouts_desc" />',
             $include_lockouts ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Also write a line when Login Delay Shield creates a temporary lockout.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_fail2ban_include_lockouts_desc" class="description">' . esc_html__( 'Useful when your jail should ban on plugin lockouts as well as individual failed-login lines.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Also write a line when Login Delay Shield creates a temporary lockout.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_fail2ban_include_lockouts_desc" class="description">' . esc_html__( 'Useful when your jail should ban on plugin lockouts as well as individual failed-login lines.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1670,9 +1670,9 @@ class LDS_Settings_View {
     public function fail2ban_config_download_callback() {
         ?>
         <a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wldelay_download_fail2ban_config' ), 'wldelay_fail2ban_config' ) ); ?>" aria-describedby="wldelay-f2b-config-desc">
-            <?php esc_html_e( 'Download fail2ban config', 'login-delay-shield' ); ?>
+            <?php esc_html_e( 'Download fail2ban config', 'wp-login-delay' ); ?>
         </a>
-        <p class="description" id="wldelay-f2b-config-desc"><?php esc_html_e( 'Generates filter.d/wldelay.conf and a jail.local snippet matching your current log path and format.', 'login-delay-shield' ); ?></p>
+        <p class="description" id="wldelay-f2b-config-desc"><?php esc_html_e( 'Generates filter.d/wldelay.conf and a jail.local snippet matching your current log path and format.', 'wp-login-delay' ); ?></p>
         <?php
     }
 
@@ -1684,8 +1684,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_xmlrpc_enabled" name="wldelay_options[wldelay_xmlrpc_enabled]" value="1" %s aria-describedby="wldelay_xmlrpc_enabled_desc" />',
             ! empty( $this->options['wldelay_xmlrpc_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'XML-RPC is often targeted by attackers because it allows multiple login attempts in a single request. Protecting it is strongly recommended.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_xmlrpc_enabled_desc" class="description">' . esc_html__( 'Apply delay and lockout protection to XML-RPC authentication requests.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'XML-RPC is often targeted by attackers because it allows multiple login attempts in a single request. Protecting it is strongly recommended.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_xmlrpc_enabled_desc" class="description">' . esc_html__( 'Apply delay and lockout protection to XML-RPC authentication requests.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1696,8 +1696,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_xmlrpc_block" name="wldelay_options[wldelay_xmlrpc_block]" value="1" %s aria-describedby="wldelay_xmlrpc_block_desc" />',
             ! empty( $this->options['wldelay_xmlrpc_block'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Completely disables XML-RPC login. Enable this if you manage your site only via the web interface and don\'t use Jetpack or the WP mobile app.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_xmlrpc_block_desc" class="description">' . esc_html__( 'Completely block XML-RPC authentication. Use this if you don\'t need remote publishing or the WordPress mobile app.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Completely disables XML-RPC login. Enable this if you manage your site only via the web interface and don\'t use Jetpack or the WP mobile app.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_xmlrpc_block_desc" class="description">' . esc_html__( 'Completely block XML-RPC authentication. Use this if you don\'t need remote publishing or the WordPress mobile app.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1708,8 +1708,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_rest_enabled" name="wldelay_options[wldelay_rest_enabled]" value="1" %s aria-describedby="wldelay_rest_enabled_desc" />',
             ! empty( $this->options['wldelay_rest_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Apply delay and lockout checks to failed REST API authentication requests.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_rest_enabled_desc" class="description">' . esc_html__( 'Protect failed REST authentication attempts with the same delay/lockout behavior.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Apply delay and lockout checks to failed REST API authentication requests.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_rest_enabled_desc" class="description">' . esc_html__( 'Protect failed REST authentication attempts with the same delay/lockout behavior.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1719,12 +1719,12 @@ class LDS_Settings_View {
         // Bookmark warning + recovery instructions. Competing login-URL
         // plugins are notorious for stranding admins behind a 404; surfacing
         // the recovery path BEFORE enabling is deliberate.
-        echo '<p class="description">' . esc_html__( 'After enabling, bookmark your new login URL immediately — the standard wp-login.php will return a 404. The new URL is also emailed to the site admin, and the plugin verifies the URL works before leaving the feature enabled.', 'login-delay-shield' ) . '</p>';
+        echo '<p class="description">' . esc_html__( 'After enabling, bookmark your new login URL immediately — the standard wp-login.php will return a 404. The new URL is also emailed to the site admin, and the plugin verifies the URL works before leaving the feature enabled.', 'wp-login-delay' ) . '</p>';
         printf(
             '<p class="description">%s</p>',
             sprintf(
                 /* translators: 1: WLDELAY_DISABLE_CUSTOM_LOGIN constant code snippet, 2: wp-config.php file name. */
-                esc_html__( 'Emergency recovery: add %1$s to %2$s to restore wp-login.php at any time, without disabling the plugin.', 'login-delay-shield' ),
+                esc_html__( 'Emergency recovery: add %1$s to %2$s to restore wp-login.php at any time, without disabling the plugin.', 'wp-login-delay' ),
                 '<code>define( \'WLDELAY_DISABLE_CUSTOM_LOGIN\', true );</code>',
                 '<code>wp-config.php</code>'
             )
@@ -1739,8 +1739,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_custom_login_enabled" name="wldelay_options[wldelay_custom_login_enabled]" value="1" %s aria-describedby="wldelay_custom_login_enabled_desc" />',
             ! empty( $this->options['wldelay_custom_login_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'When enabled, the default wp-login.php URL will return a 404, and only the custom slug will load the login page.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_custom_login_enabled_desc" class="description">' . esc_html__( 'Replace wp-login.php with a custom URL slug.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'When enabled, the default wp-login.php URL will return a 404, and only the custom slug will load the login page.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_custom_login_enabled_desc" class="description">' . esc_html__( 'Replace wp-login.php with a custom URL slug.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1753,8 +1753,8 @@ class LDS_Settings_View {
             esc_html( home_url() ),
             esc_attr( $slug )
         );
-        echo $this->tooltip( __( 'Choose a unique, hard-to-guess slug. Only lowercase letters, numbers, and hyphens are allowed.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_custom_login_slug_desc" class="description">' . esc_html__( 'Lowercase letters, numbers, and hyphens only. Reserved slugs (wp-admin, login, etc.) are rejected.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Choose a unique, hard-to-guess slug. Only lowercase letters, numbers, and hyphens are allowed.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_custom_login_slug_desc" class="description">' . esc_html__( 'Lowercase letters, numbers, and hyphens only. Reserved slugs (wp-admin, login, etc.) are rejected.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1765,8 +1765,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_application_password_enabled" name="wldelay_options[wldelay_application_password_enabled]" value="1" %s aria-describedby="wldelay_application_password_enabled_desc" />',
             ! empty( $this->options['wldelay_application_password_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Apply delay and lockout checks to application-password authentication attempts.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_application_password_enabled_desc" class="description">' . esc_html__( 'Protect failed application-password attempts and log them separately.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Apply delay and lockout checks to application-password authentication attempts.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_application_password_enabled_desc" class="description">' . esc_html__( 'Protect failed application-password attempts and log them separately.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1777,8 +1777,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_password_reset_enabled" name="wldelay_options[wldelay_password_reset_enabled]" value="1" %s aria-describedby="wldelay_password_reset_enabled_desc" />',
             ! empty( $this->options['wldelay_password_reset_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Apply delay, lockout checks, and logging to password reset submissions without revealing whether an account exists.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_password_reset_enabled_desc" class="description">' . esc_html__( 'Protect password reset requests with the same delay and lockout behavior.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Apply delay, lockout checks, and logging to password reset submissions without revealing whether an account exists.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_password_reset_enabled_desc" class="description">' . esc_html__( 'Protect password reset requests with the same delay and lockout behavior.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1796,8 +1796,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_botnet_enabled" name="wldelay_options[wldelay_botnet_enabled]" value="1" %s aria-describedby="wldelay_botnet_enabled_desc" />',
             ! empty( $this->options['wldelay_botnet_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Watches whether a single username is targeted from many different IP addresses inside a short window — the pattern per-IP lockouts cannot see. Generates dashboard banner alerts, audit log entries, and optional emails. Never blocks logins.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_botnet_enabled_desc" class="description">' . esc_html__( 'Enable cross-IP botnet / credential-stuffing detection (alert only, never blocks).', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Watches whether a single username is targeted from many different IP addresses inside a short window — the pattern per-IP lockouts cannot see. Generates dashboard banner alerts, audit log entries, and optional emails. Never blocks logins.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_botnet_enabled_desc" class="description">' . esc_html__( 'Enable cross-IP botnet / credential-stuffing detection (alert only, never blocks).', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1810,8 +1810,8 @@ class LDS_Settings_View {
                 ? esc_attr( $this->options['wldelay_botnet_ip_threshold'] )
                 : 5
         );
-        echo $this->tooltip( __( 'How many distinct source IP addresses targeting the same username within the detection window triggers an alert. Lower values catch slower attacks; higher values reduce false positives on shared networks.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_botnet_ip_threshold_desc" class="description">' . esc_html__( 'Number of distinct source IPs (2–100) that trigger an alert.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'How many distinct source IP addresses targeting the same username within the detection window triggers an alert. Lower values catch slower attacks; higher values reduce false positives on shared networks.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_botnet_ip_threshold_desc" class="description">' . esc_html__( 'Number of distinct source IPs (2–100) that trigger an alert.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1824,9 +1824,9 @@ class LDS_Settings_View {
                 ? esc_attr( $this->options['wldelay_botnet_window_minutes'] )
                 : 15
         );
-        echo ' <span class="description">' . esc_html__( 'minutes', 'login-delay-shield' ) . '</span>';
-        echo $this->tooltip( __( 'Sliding time window over which distinct source IPs are counted. Shorter windows catch faster attacks; longer windows catch slow-and-slow distributed campaigns.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_botnet_window_minutes_desc" class="description">' . esc_html__( 'Detection window in minutes (5–60).', 'login-delay-shield' ) . '</p>';
+        echo ' <span class="description">' . esc_html__( 'minutes', 'wp-login-delay' ) . '</span>';
+        echo $this->tooltip( __( 'Sliding time window over which distinct source IPs are counted. Shorter windows catch faster attacks; longer windows catch slow-and-slow distributed campaigns.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_botnet_window_minutes_desc" class="description">' . esc_html__( 'Detection window in minutes (5–60).', 'wp-login-delay' ) . '</p>';
     }
 
     /**
@@ -1837,8 +1837,8 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_enumeration_hardening_enabled" name="wldelay_options[wldelay_enumeration_hardening_enabled]" value="1" %s aria-describedby="wldelay_enumeration_hardening_enabled_desc wldelay_enumeration_hardening_enabled_note" />',
             ! empty( $this->options['wldelay_enumeration_hardening_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Reduces common username-enumeration paths: failed logins all show one generic error, ?author=N enumeration is blocked, unauthenticated REST user listings are restricted, and the public users sitemap is removed. Note: this does not cover the password-reset (lost password) flow, which can still reveal whether an account exists.', 'login-delay-shield' ) );
-        echo '<p id="wldelay_enumeration_hardening_enabled_desc" class="description">' . esc_html__( 'Return a single generic login error for both unknown usernames and wrong passwords, block author-archive enumeration, restrict unauthenticated REST user listings, and remove the public users sitemap. Does not change the password-reset flow.', 'login-delay-shield' ) . '</p>';
-        echo '<p id="wldelay_enumeration_hardening_enabled_note" class="description wldelay-enumeration-note"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> ' . esc_html__( 'Heads up: legitimate users will no longer be told whether they mistyped their username or their password on the login screen, and the password-reset form can still disclose whether an account exists. Make sure your support flow accounts for this before enabling.', 'login-delay-shield' ) . '</p>';
+        echo $this->tooltip( __( 'Reduces common username-enumeration paths: failed logins all show one generic error, ?author=N enumeration is blocked, unauthenticated REST user listings are restricted, and the public users sitemap is removed. Note: this does not cover the password-reset (lost password) flow, which can still reveal whether an account exists.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_enumeration_hardening_enabled_desc" class="description">' . esc_html__( 'Return a single generic login error for both unknown usernames and wrong passwords, block author-archive enumeration, restrict unauthenticated REST user listings, and remove the public users sitemap. Does not change the password-reset flow.', 'wp-login-delay' ) . '</p>';
+        echo '<p id="wldelay_enumeration_hardening_enabled_note" class="description wldelay-enumeration-note"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> ' . esc_html__( 'Heads up: legitimate users will no longer be told whether they mistyped their username or their password on the login screen, and the password-reset form can still disclose whether an account exists. Make sure your support flow accounts for this before enabling.', 'wp-login-delay' ) . '</p>';
     }
 }

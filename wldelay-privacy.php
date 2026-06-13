@@ -124,19 +124,19 @@ function wldelay_privacy_login_log_row_to_data( $row ) {
 
     return array(
         array(
-            'name'  => __( 'IP address', 'login-delay-shield' ),
+            'name'  => __( 'IP address', 'wp-login-delay' ),
             'value' => isset( $row['ip_address'] ) ? $row['ip_address'] : '',
         ),
         array(
-            'name'  => __( 'Username', 'login-delay-shield' ),
+            'name'  => __( 'Username', 'wp-login-delay' ),
             'value' => isset( $row['username'] ) ? $row['username'] : '',
         ),
         array(
-            'name'  => __( 'Attempted at', 'login-delay-shield' ),
+            'name'  => __( 'Attempted at', 'wp-login-delay' ),
             'value' => isset( $row['attempted_at'] ) ? $row['attempted_at'] : '',
         ),
         array(
-            'name'  => __( 'Source', 'login-delay-shield' ),
+            'name'  => __( 'Source', 'wp-login-delay' ),
             'value' => isset( $row['source'] ) ? $row['source'] : '',
         ),
     );
@@ -153,19 +153,19 @@ function wldelay_privacy_audit_log_row_to_data( $row ) {
 
     return array(
         array(
-            'name'  => __( 'Action', 'login-delay-shield' ),
+            'name'  => __( 'Action', 'wp-login-delay' ),
             'value' => isset( $row['action'] ) ? $row['action'] : '',
         ),
         array(
-            'name'  => __( 'Object', 'login-delay-shield' ),
+            'name'  => __( 'Object', 'wp-login-delay' ),
             'value' => isset( $row['object'] ) ? $row['object'] : '',
         ),
         array(
-            'name'  => __( 'IP address', 'login-delay-shield' ),
+            'name'  => __( 'IP address', 'wp-login-delay' ),
             'value' => isset( $row['ip_address'] ) ? $row['ip_address'] : '',
         ),
         array(
-            'name'  => __( 'Recorded at', 'login-delay-shield' ),
+            'name'  => __( 'Recorded at', 'wp-login-delay' ),
             'value' => isset( $row['created_at'] ) ? $row['created_at'] : '',
         ),
     );
@@ -182,15 +182,15 @@ function wldelay_privacy_lockout_row_to_data( $row ) {
 
     return array(
         array(
-            'name'  => __( 'IP address', 'login-delay-shield' ),
+            'name'  => __( 'IP address', 'wp-login-delay' ),
             'value' => isset( $row['ip_address'] ) ? $row['ip_address'] : '',
         ),
         array(
-            'name'  => __( 'Lockout type', 'login-delay-shield' ),
+            'name'  => __( 'Lockout type', 'wp-login-delay' ),
             'value' => isset( $row['lockout_type'] ) ? $row['lockout_type'] : '',
         ),
         array(
-            'name'  => __( 'Expires at', 'login-delay-shield' ),
+            'name'  => __( 'Expires at', 'wp-login-delay' ),
             'value' => isset( $row['expires_at'] )
                 ? gmdate( 'Y-m-d H:i:s', (int) $row['expires_at'] )
                 : '',
@@ -205,8 +205,8 @@ function wldelay_privacy_lockout_row_to_data( $row ) {
  * @return array
  */
 function wldelay_register_privacy_exporter( $exporters ) {
-    $exporters['login-delay-shield'] = array(
-        'exporter_friendly_name' => __( 'Login Delay Shield', 'login-delay-shield' ),
+    $exporters['wp-login-delay'] = array(
+        'exporter_friendly_name' => __( 'Login Delay Shield', 'wp-login-delay' ),
         'callback'               => 'wldelay_privacy_exporter',
     );
 
@@ -220,8 +220,8 @@ function wldelay_register_privacy_exporter( $exporters ) {
  * @return array
  */
 function wldelay_register_privacy_eraser( $erasers ) {
-    $erasers['login-delay-shield'] = array(
-        'eraser_friendly_name' => __( 'Login Delay Shield', 'login-delay-shield' ),
+    $erasers['wp-login-delay'] = array(
+        'eraser_friendly_name' => __( 'Login Delay Shield', 'wp-login-delay' ),
         'callback'             => 'wldelay_privacy_eraser',
     );
 
@@ -436,7 +436,7 @@ function wldelay_privacy_build_export_state( $login ) {
 function wldelay_privacy_state_error() {
     return new WP_Error(
         'wldelay_privacy_export_state',
-        __( 'Login Delay Shield could not continue this data export because its run state could not be read. No partial archive was produced; please retry the export.', 'login-delay-shield' )
+        __( 'Login Delay Shield could not continue this data export because its run state could not be read. No partial archive was produced; please retry the export.', 'wp-login-delay' )
     );
 }
 
@@ -469,7 +469,7 @@ function wldelay_privacy_lockout_row_to_item( array $row ) {
 
     return array(
         'group_id'    => 'wldelay-lockouts',
-        'group_label' => __( 'Login Delay Shield — active lockouts', 'login-delay-shield' ),
+        'group_label' => __( 'Login Delay Shield — active lockouts', 'wp-login-delay' ),
         'item_id'     => 'wldelay-lockout-' . $key,
         'data'        => wldelay_privacy_lockout_row_to_data( $row ),
     );
@@ -562,7 +562,7 @@ function wldelay_privacy_release_lock( $request_id ) {
 function wldelay_privacy_busy_error() {
     return new WP_Error(
         'wldelay_privacy_export_busy',
-        __( 'Login Delay Shield is still processing a previous page of this data export. Please retry the export.', 'login-delay-shield' )
+        __( 'Login Delay Shield is still processing a previous page of this data export. Please retry the export.', 'wp-login-delay' )
     );
 }
 
@@ -679,7 +679,7 @@ function wldelay_privacy_exporter( $email_address, $page = 1 ) {
             $row_id = isset( $row['id'] ) ? (int) $row['id'] : 0;
             $export_items[] = array(
                 'group_id'    => 'wldelay-login-log',
-                'group_label' => __( 'Login Delay Shield — failed login attempts', 'login-delay-shield' ),
+                'group_label' => __( 'Login Delay Shield — failed login attempts', 'wp-login-delay' ),
                 // item_id from the immutable DB row id, not a positional index, so
                 // it never collides or shifts across pages.
                 'item_id'     => 'wldelay-login-log-' . $row_id,
@@ -714,7 +714,7 @@ function wldelay_privacy_exporter( $email_address, $page = 1 ) {
             $row_id = isset( $row['id'] ) ? (int) $row['id'] : 0;
             $export_items[] = array(
                 'group_id'    => 'wldelay-audit-log',
-                'group_label' => __( 'Login Delay Shield — security audit log', 'login-delay-shield' ),
+                'group_label' => __( 'Login Delay Shield — security audit log', 'wp-login-delay' ),
                 'item_id'     => 'wldelay-audit-log-' . $row_id,
                 'data'        => wldelay_privacy_audit_log_row_to_data( $row ),
             );
@@ -852,7 +852,7 @@ function wldelay_privacy_eraser( $email_address, $page = 1 ) {
     );
     if ( false === $log_deleted ) {
         $result['items_retained'] = true;
-        $result['messages'][]     = __( 'Login Delay Shield could not delete the failed-login records for this user; they were retained. Check the database and retry the erasure.', 'login-delay-shield' );
+        $result['messages'][]     = __( 'Login Delay Shield could not delete the failed-login records for this user; they were retained. Check the database and retry the erasure.', 'wp-login-delay' );
     } elseif ( $log_deleted > 0 ) {
         $removed = true;
     }
@@ -867,7 +867,7 @@ function wldelay_privacy_eraser( $email_address, $page = 1 ) {
     );
     if ( false === $audit_deleted ) {
         $result['items_retained'] = true;
-        $result['messages'][]     = __( 'Login Delay Shield could not delete the security audit records for this user; they were retained. Check the database and retry the erasure.', 'login-delay-shield' );
+        $result['messages'][]     = __( 'Login Delay Shield could not delete the security audit records for this user; they were retained. Check the database and retry the erasure.', 'wp-login-delay' );
     } elseif ( $audit_deleted > 0 ) {
         $removed = true;
     }
@@ -889,7 +889,7 @@ function wldelay_privacy_eraser( $email_address, $page = 1 ) {
     $lockouts_removed = wldelay_delete_lockouts_for_user( $login );
     if ( false === $lockouts_removed ) {
         $result['items_retained'] = true;
-        $result['messages'][]     = __( 'Login Delay Shield could not delete the lockout records for this user; they were retained. Check the database and retry the erasure.', 'login-delay-shield' );
+        $result['messages'][]     = __( 'Login Delay Shield could not delete the lockout records for this user; they were retained. Check the database and retry the erasure.', 'wp-login-delay' );
     } elseif ( $lockouts_removed > 0 ) {
         $removed = true;
     }

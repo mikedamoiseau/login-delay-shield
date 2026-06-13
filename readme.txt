@@ -1,7 +1,7 @@
 === Login Delay Shield ===
 Contributors: michael.damoiseau
 Donate link: http://damoiseau.me/
-Tags: security,login,brute-force,lockout,authentication
+Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 7.0
@@ -49,7 +49,7 @@ A security plugin that locks out its own administrator is worse than no security
 
 * Whitelisted IPs (including CIDR ranges) bypass every delay and lockout
 * The Active Lockouts manager on the settings page lists current lockouts with a one-click Unlock for each, plus an "Unlock Current IP" action
-* WP-CLI recovery commands: `wp login-delay-shield unlock-ip <ip>` and `wp login-delay-shield flush-lockouts`
+* WP-CLI recovery commands: `wp wp-login-delay unlock-ip <ip>` and `wp wp-login-delay flush-lockouts`
 * Lockouts are always temporary (24 hours maximum) — there are no permanent bans
 
 *This plugin is not a complete security solution — dedicated security plugins offer more comprehensive protection.* However, Login Delay Shield adds an effective layer of defense that works alongside your existing security measures without conflict.
@@ -97,7 +97,7 @@ Enable the IP whitelist feature and add your IP address (or a range using CIDR n
 You can always get back in. Lockouts are temporary by design (24 hours maximum — there are no permanent bans), so waiting always works. To recover immediately:
 
 * If another administrator can log in, the Active Lockouts manager on the settings page shows every current lockout with a one-click Unlock, and an "Unlock Current IP" action.
-* With shell access, use WP-CLI: `wp login-delay-shield unlock-ip <ip>` or `wp login-delay-shield flush-lockouts`.
+* With shell access, use WP-CLI: `wp wp-login-delay unlock-ip <ip>` or `wp wp-login-delay flush-lockouts`.
 * With only FTP access, add `define( 'WLDELAY_SAFE_MODE', true );` to `wp-config.php` — this safe mode disables all delays and lockouts until you remove the line (a warning shows in the admin while it is active).
 * To avoid lockouts entirely, whitelist your own IP (CIDR ranges supported) — whitelisted IPs bypass all delays and lockouts.
 
@@ -198,9 +198,9 @@ The plugin automatically uses your site's language setting. Want to help transla
 
 == Contribute ==
 
-Found a bug or want to suggest an improvement? Open a thread in the [support forum](https://wordpress.org/support/plugin/login-delay-shield/) on WordPress.org.
+Found a bug or want to suggest an improvement? Open a thread in the [support forum](https://wordpress.org/support/plugin/wp-login-delay/) on WordPress.org.
 
-Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/login-delay-shield/).
+Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/wp-login-delay/).
 
 == Changelog ==
 
@@ -435,8 +435,8 @@ Patch release focused on lockout recovery tooling.
 **New Features:**
 * Added an admin recovery action: **Unlock Current IP** button in settings (nonce + capability protected).
 * Added WP-CLI recovery commands:
-  * `wp login-delay-shield unlock-ip <ip>`
-  * `wp login-delay-shield flush-lockouts`
+  * `wp wp-login-delay unlock-ip <ip>`
+  * `wp wp-login-delay flush-lockouts`
 * Added optional protection toggles for REST API and application-password authentication paths.
 
 **Improvements:**

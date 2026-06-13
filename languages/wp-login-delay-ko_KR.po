@@ -5,206 +5,197 @@ msgstr ""
 "Project-Id-Version: Login Delay Shield 1.8.1\n"
 "Report-Msgid-Bugs-To: https://damoiseau.me\n"
 "POT-Creation-Date: 2026-02-14 18:38+0700\n"
-"PO-Revision-Date: 2026-02-01 00:00:00+00:00\n"
-"Last-Translator: Italian Translation\n"
-"Language-Team: Italian\n"
-"Language: it_IT\n"
+"PO-Revision-Date: 2025-02-01\n"
+"Last-Translator: Korean Translator <translator@example.com>\n"
+"Language-Team: Korean <ko@li.org>\n"
+"Language: ko_KR\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "X-Generator: Claude Code\n"
-"X-Domain: login-delay-shield\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Domain: wp-login-delay\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 
 #: wp-login-delay.php:48 wp-login-delay.php:129
 msgid "Settings"
-msgstr "Impostazioni"
+msgstr "설정"
 
 #: wp-login-delay.php:61
 msgid "Recent Failed Login Attempts"
-msgstr "Tentativi di accesso non riusciti recenti"
+msgstr "최근 로그인 실패 시도"
 
 #: wp-login-delay.php:95
 msgid "No failed login attempts recorded."
-msgstr "Nessun tentativo di accesso non riuscito registrato."
+msgstr "기록된 로그인 실패 시도가 없습니다."
 
 #: wp-login-delay.php:100
 msgid "Recent failed login attempts"
-msgstr "Tentativi di accesso non riusciti recenti"
+msgstr "최근 로그인 실패 시도"
 
 #: wp-login-delay.php:102
 msgid "Time"
-msgstr "Ora"
+msgstr "시간"
 
 #: wp-login-delay.php:103
 msgid "Username"
-msgstr "Nome utente"
+msgstr "사용자명"
 
 #: wp-login-delay.php:104
 msgid "IP Address"
-msgstr "Indirizzo IP"
+msgstr "IP 주소"
 
 #: wp-login-delay.php:105
 msgid "Source"
-msgstr "Fonte"
+msgstr "출처"
 
 #: wp-login-delay.php:113
 msgid "Login"
-msgstr "Accesso"
+msgstr "로그인"
 
 #. translators: %1$s: time ago, %2$s: exact timestamp
 #: wp-login-delay.php:117
 #, php-format
 msgid "%1$s ago"
-msgstr "%1$s fa"
+msgstr "%1$s 전"
 
 #: wp-login-delay.php:276
 msgid "Login Delay Shield"
-msgstr "Login Delay Shield"
+msgstr "로그인 지연 차단"
 
 #: wp-login-delay.php:277
 msgid ""
 "This plugin was formerly known as \"WP Login Delay\". The name has changed, "
 "but all your settings have been preserved."
 msgstr ""
-"Questo plugin era precedentemente noto come \"WP Login Delay\". Il nome è "
-"cambiato, ma tutte le Sue impostazioni sono state conservate."
+"이 플러그인은 이전에 \"WP Login Delay\"로 알려져 있었습니다. 이름은 변경되었"
+"지만 모든 설정이 유지되었습니다."
 
 #. translators: %s: remaining lockout duration, e.g. "2 minutes"
 #: wp-login-delay.php:563
 #, fuzzy, php-format
 msgid "Too many failed login attempts. Please try again in %s."
-msgstr ""
-"Troppi tentativi di accesso non riusciti. Si prega di riprovare più tardi."
+msgstr "로그인 시도 실패가 너무 많습니다. 나중에 다시 시도하세요."
 
 #: wp-login-delay.php:568
 msgid "Too many failed login attempts. Please try again later."
-msgstr ""
-"Troppi tentativi di accesso non riusciti. Si prega di riprovare più tardi."
+msgstr "로그인 시도 실패가 너무 많습니다. 나중에 다시 시도하세요."
 
 #: wp-login-delay.php:859
 msgid "XML-RPC authentication is disabled on this site."
-msgstr "L'autenticazione XML-RPC è disabilitata su questo sito."
+msgstr "이 사이트에서는 XML-RPC 인증이 비활성화되어 있습니다."
 
 #: wp-login-delay.php:1019
 #, php-format
 msgid "Login failed. %d attempt remaining before temporary lockout."
 msgid_plural "Login failed. %d attempts remaining before temporary lockout."
 msgstr[0] ""
-msgstr[1] ""
 
 #: wldelay-settings-view.php:45
 msgid "Help"
-msgstr "Aiuto"
+msgstr "도움말"
 
 #: wldelay-settings-view.php:68
 msgid "Delay Settings"
-msgstr "Impostazioni di ritardo"
+msgstr "지연 설정"
 
 #: wldelay-settings-view.php:80 wldelay-settings-view.php:81
 msgid "Email Notifications"
-msgstr "Notifiche email"
+msgstr "이메일 알림"
 
 #: wldelay-settings-view.php:85
 msgid ""
 "Receive email alerts when multiple failed login attempts are detected from "
 "the same IP address."
 msgstr ""
-"Ricevi avvisi email quando vengono rilevati più tentativi di accesso non "
-"riusciti dallo stesso indirizzo IP."
+"같은 IP 주소에서 여러 번의 로그인 실패 시도가 감지되면 이메일 알림을 받습니"
+"다."
 
 #: wldelay-settings-view.php:93 wldelay-settings-view.php:94
 #: wldelay-settings-view.php:155
 msgid "IP Lockout"
-msgstr "Blocco IP"
+msgstr "IP 차단"
 
 #: wldelay-settings-view.php:98
 #, fuzzy
 msgid ""
 "Temporarily block repeated failed login attempts by IP address or by IP + "
 "username."
-msgstr ""
-"Blocca temporaneamente gli indirizzi IP dopo troppi tentativi di accesso non "
-"riusciti."
+msgstr "로그인 실패 시도가 너무 많으면 IP 주소를 일시적으로 차단합니다."
 
 #: wldelay-settings-view.php:106 wldelay-settings-view.php:107
 #: wldelay-settings-view.php:156
 msgid "IP Whitelist"
-msgstr "Lista bianca IP"
+msgstr "IP 화이트리스트"
 
 #: wldelay-settings-view.php:111
 msgid "Skip delay and lockout for trusted IP addresses (e.g., office, VPN)."
 msgstr ""
-"Salta il ritardo e il blocco per gli indirizzi IP attendibili (ad es., "
-"ufficio, VPN)."
+"신뢰할 수 있는 IP 주소(예: 사무실, VPN)에 대해 지연 및 차단을 건너뜁니다."
 
 #: wldelay-settings-view.php:119
 msgid "Login Log"
-msgstr "Registro di accesso"
+msgstr "로그인 로그"
 
 #: wldelay-settings-view.php:123
 msgid "Failed login attempts are logged and displayed in the dashboard widget."
-msgstr ""
-"I tentativi di accesso non riusciti vengono registrati e visualizzati nel "
-"widget del pannello di controllo."
+msgstr "로그인 실패 시도가 로깅되어 대시보드 위젯에 표시됩니다."
 
 #: wldelay-settings-view.php:131 wldelay-settings-view.php:132
 #: wldelay-settings-view.php:158
 msgid "XML-RPC Protection"
-msgstr "Protezione XML-RPC"
+msgstr "XML-RPC 보호"
 
 #: wldelay-settings-view.php:136
 msgid ""
 "Protect against brute-force attacks via XML-RPC (used by the WordPress "
 "mobile app and remote publishing)."
 msgstr ""
-"Proteggi da attacchi brute-force tramite XML-RPC (utilizzato dall'app mobile "
-"WordPress e dalla pubblicazione remota)."
+"XML-RPC를 통한 무차별 대입 공격으로부터 보호합니다(WordPress 모바일 앱 및 원"
+"격 게시에 사용됨)."
 
 #: wldelay-settings-view.php:154
 msgid "Email Alerts"
-msgstr "Avvisi email"
+msgstr "이메일 경고"
 
 #: wldelay-settings-view.php:157
 msgid "Progressive Delay"
-msgstr "Ritardo progressivo"
+msgstr "점진적 지연"
 
 #: wldelay-settings-view.php:171
 msgid "enabled"
-msgstr "abilitato"
+msgstr "활성화됨"
 
 #: wldelay-settings-view.php:171
 msgid "disabled"
-msgstr "disabilitato"
+msgstr "비활성화됨"
 
 #: wldelay-settings-view.php:197
 msgid "Protection status summary"
-msgstr "Riepilogo dello stato di protezione"
+msgstr "보호 상태 요약"
 
 #: wldelay-settings-view.php:200
 msgid "Protection Features Enabled"
-msgstr "Funzioni di protezione abilitate"
+msgstr "활성화된 보호 기능"
 
 #: wldelay-settings-view.php:218
 msgid "Performance tip:"
-msgstr "Consiglio sulla prestazione:"
+msgstr "성능 팁:"
 
 #: wldelay-settings-view.php:219
 msgid ""
 "For high-traffic sites, consider using a persistent object cache (Redis, "
 "Memcached) to reduce database load during attacks."
 msgstr ""
-"Per siti ad alto traffico, si consiglia di utilizzare una cache di oggetti "
-"persistente (Redis, Memcached) per ridurre il carico del database durante "
-"gli attacchi."
+"높은 트래픽 사이트의 경우, 공격 중 데이터베이스 부하를 줄이기 위해 지속적인 "
+"객체 캐시(Redis, Memcached)를 사용하는 것을 고려하세요."
 
 #: wldelay-settings-view.php:234
 msgid "Enabled"
-msgstr "Abilitato"
+msgstr "활성화"
 
 #: wldelay-settings-view.php:234
 msgid "Disabled"
-msgstr "Disabilitato"
+msgstr "비활성화"
 
 #. translators: 1: feature name, 2: enabled or disabled
 #: wldelay-settings-view.php:240
@@ -217,61 +208,59 @@ msgid ""
 "A fixed delay applied to every login attempt. Higher values slow down brute-"
 "force attacks but may slightly delay legitimate users."
 msgstr ""
-"Un ritardo fisso applicato a ogni tentativo di accesso. Valori più alti "
-"rallentano gli attacchi brute-force ma potrebbero ritardare leggermente gli "
-"utenti legittimi."
+"모든 로그인 시도에 적용되는 고정 지연입니다. 높은 값은 무차별 대입 공격을 느"
+"리게 하지만 합법적인 사용자를 약간 지연시킬 수 있습니다."
 
 #: wldelay-settings-view.php:462
 msgid ""
 "Randomized delays make it harder for attackers to detect patterns or time "
 "their attempts. Recommended for better security."
 msgstr ""
-"I ritardi casuali rendono più difficile per gli attaccanti rilevare modelli "
-"o sincronizzare i loro tentativi. Consigliato per una migliore sicurezza."
+"무작위화된 지연은 공격자가 패턴을 감지하거나 시도를 계획하기 어렵게 만듭니"
+"다. 더 나은 보안을 위해 권장됩니다."
 
 #: wldelay-settings-view.php:473
 msgid ""
 "The shortest possible delay. Each login attempt will wait at least this many "
 "seconds."
 msgstr ""
-"Il ritardo più breve possibile. Ogni tentativo di accesso attenderà almeno "
-"questo numero di secondi."
+"가능한 가장 짧은 지연입니다. 각 로그인 시도는 최소한 이 시간(초)만큼 대기합니"
+"다."
 
 #: wldelay-settings-view.php:484
 msgid ""
 "The longest possible delay. Each login attempt will wait up to this many "
 "seconds."
 msgstr ""
-"Il ritardo più lungo possibile. Ogni tentativo di accesso attenderà fino a "
-"questo numero di secondi."
+"가능한 가장 긴 지연입니다. 각 로그인 시도는 최대 이 시간(초)만큼 대기합니다."
 
 #: wldelay-settings-view.php:495
 msgid ""
 "Get notified when someone is trying to break into your site. Alerts are sent "
 "once per IP until the attack stops."
 msgstr ""
-"Ricevi notifiche quando qualcuno sta tentando di penetrare il Suo sito. Gli "
-"avvisi vengono inviati una volta per IP fino a quando l'attacco non si ferma."
+"누군가 사이트에 침입하려고 할 때 알림을 받습니다. 공격이 중지될 때까지 IP당 "
+"한 번씩 경고가 전송됩니다."
 
 #: wldelay-settings-view.php:506
 msgid ""
 "Number of failed attempts from one IP before sending an alert. Lower values "
 "mean earlier warnings but more emails."
 msgstr ""
-"Numero di tentativi non riusciti da un IP prima di inviare un avviso. Valori "
-"più bassi significano avvisi più precoci ma più email."
+"경고를 보내기 전에 한 IP에서의 로그인 실패 횟수입니다. 낮은 값은 더 빨른 경고"
+"를 의미하지만 더 많은 이메일을 받습니다."
 
 #: wldelay-settings-view.php:518
 msgid ""
 "Where to send security alerts. If left blank, emails go to the WordPress "
 "admin address."
 msgstr ""
-"Dove inviare gli avvisi di sicurezza. Se lasciato vuoto, le email vanno "
-"all'indirizzo amministratore WordPress."
+"보안 경고를 보낼 위치입니다. 비워두면 WordPress 관리자 주소로 이메일이 전송됩"
+"니다."
 
 #: wldelay-settings-view.php:519
 msgid "Leave empty to use the site admin email."
-msgstr "Lasciare vuoto per utilizzare l'email dell'amministratore del sito."
+msgstr "사이트 관리자 이메일을 사용하려면 비워두세요."
 
 #: wldelay-settings-view.php:530
 msgid "minutes"
@@ -292,8 +281,8 @@ msgid ""
 "Temporarily block IPs after too many failures. Effective at stopping "
 "automated attacks cold."
 msgstr ""
-"Blocca temporaneamente gli IP dopo troppi errori. Efficace nel fermare gli "
-"attacchi automatizzati immediatamente."
+"실패가 너무 많으면 IP를 일시적으로 차단합니다. 자동 공격을 확실히 막는 데 효"
+"과적입니다."
 
 #: wldelay-settings-view.php:556
 #, fuzzy
@@ -301,8 +290,8 @@ msgid ""
 "How many failed attempts before lockout is triggered for the selected "
 "strategy."
 msgstr ""
-"Quanti tentativi falliti prima di bloccare l'IP. Impostare su un valore più "
-"alto se gli utenti spesso digitano male le password."
+"IP를 차단하기 전의 로그인 실패 횟수입니다. 사용자가 자주 비밀번호를 잘못 입력"
+"하면 높게 설정하세요."
 
 #: wldelay-settings-view.php:580
 msgid "IP only"
@@ -311,7 +300,7 @@ msgstr ""
 #: wldelay-settings-view.php:582
 #, fuzzy
 msgid "IP + username"
-msgstr "Nome utente"
+msgstr "사용자명"
 
 #: wldelay-settings-view.php:585
 msgid ""
@@ -330,19 +319,16 @@ msgid ""
 "How long to block an IP. Longer durations discourage persistent attackers "
 "but may inconvenience legitimate users who forgot their password."
 msgstr ""
-"Per quanto tempo bloccare un IP. Durate più lunghe scoraggiano gli "
-"attaccanti persistenti ma potrebbero causare problemi agli utenti legittimi "
-"che hanno dimenticato la password."
+"IP를 차단할 시간입니다. 더 긴 기간은 지속적인 공격자를 억제하지만 비밀번호를 "
+"잊은 합법적인 사용자에게 불편을 줄 수 있습니다."
 
 #: wldelay-settings-view.php:600
 msgid "Maximum: 1440 minutes (24 hours)"
-msgstr "Massimo: 1440 minuti (24 ore)"
+msgstr "최대: 1440분(24시간)"
 
 #: wldelay-settings-view.php:610
 msgid "Trust X-Forwarded-For and HTTP_CLIENT_IP headers for IP detection."
-msgstr ""
-"Fidati delle intestazioni X-Forwarded-For e HTTP_CLIENT_IP per il "
-"rilevamento dell'IP."
+msgstr "IP 감지를 위해 X-Forwarded-For 및 HTTP_CLIENT_IP 헤더를 신뢰합니다."
 
 #: wldelay-settings-view.php:612
 msgid ""
@@ -350,132 +336,123 @@ msgid ""
 "(e.g., Cloudflare, nginx proxy, AWS ELB). When disabled, only the direct "
 "connection IP is used, preventing attackers from spoofing their IP address."
 msgstr ""
-"Abilita questo solo se il Suo sito è dietro un proxy inverso o un "
-"bilanciatore di carico (ad es., Cloudflare, proxy nginx, AWS ELB). Quando "
-"disabilitato, viene utilizzato solo l'IP della connessione diretta, "
-"impedendo agli attaccanti di falsificare il loro indirizzo IP."
+"사이트가 역방향 프록시 또는 로드 밸런서(예: Cloudflare, nginx 프록시, AWS "
+"ELB) 뒤에 있을 때만 활성화하세요. 비활성화되면 직접 연결 IP만 사용되어 공격자"
+"가 IP 주소를 위조하는 것을 방지합니다."
 
 #: wldelay-settings-view.php:613
 msgid ""
 "Leave disabled unless behind a trusted proxy. Enabling this on a non-proxied "
 "site allows IP spoofing."
 msgstr ""
-"Lasciare disabilitato a meno che non sia dietro un proxy affidabile. "
-"L'abilitazione di questa opzione su un sito non proxy consente lo spoofing "
-"dell'IP."
+"신뢰할 수 있는 프록시 뒤에 있지 않은 경우 비활성화된 상태로 두세요. 프록시되"
+"지 않은 사이트에서 이를 활성화하면 IP 위조가 가능합니다."
 
 #: wldelay-settings-view.php:623
 msgid "Increase delay with each consecutive failed attempt from the same IP."
-msgstr ""
-"Aumenta il ritardo con ogni tentativo fallito consecutivo dallo stesso IP."
+msgstr "같은 IP에서의 연속적인 로그인 실패 시도마다 지연을 증가시킵니다."
 
 #: wldelay-settings-view.php:625
 msgid ""
 "Delays grow longer with each failed attempt. First try might be 1s, second "
 "2s, third 3s, etc. Very effective against automated attacks."
 msgstr ""
-"I ritardi si allungano con ogni tentativo fallito. Il primo tentativo "
-"potrebbe essere 1s, il secondo 2s, il terzo 3s, ecc. Molto efficace contro "
-"gli attacchi automatizzati."
+"각 로그인 실패 시도마다 지연이 길어집니다. 첫 번째 시도는 1초, 두 번째는 2"
+"초, 세 번째는 3초 등입니다. 자동 공격에 매우 효과적입니다."
 
 #: wldelay-settings-view.php:638
 msgid ""
 "How much to increase the delay after each failed attempt. Higher values "
 "penalize repeat offenders more aggressively."
 msgstr ""
-"Di quanto aumentare il ritardo dopo ogni tentativo fallito. Valori più alti "
-"penalizzano i recidivi più aggressivamente."
+"각 로그인 실패 시도 후 지연을 얼마나 증가시킬지입니다. 높은 값은 반복 위반자"
+"를 더 공격적으로 처벌합니다."
 
 #: wldelay-settings-view.php:639
 msgid "Additional seconds added per failed attempt (1-10)."
-msgstr "Secondi aggiuntivi aggiunti per tentativo fallito (1-10)."
+msgstr "로그인 실패 시도당 추가되는 초(1-10)입니다."
 
 #: wldelay-settings-view.php:652
 msgid ""
 "The delay stops increasing at this value. Prevents excessively long waits "
 "that could tie up server resources."
 msgstr ""
-"Il ritardo smette di aumentare a questo valore. Previene attese "
-"eccessivamente lunghe che potrebbero legare le risorse del server."
+"지연이 이 값에서 증가를 멈춥니다. 서버 리소스를 점유할 수 있는 과도한 대기를 "
+"방지합니다."
 
 #: wldelay-settings-view.php:653
 msgid "Maximum total delay in seconds (5-60)."
-msgstr "Ritardo totale massimo in secondi (5-60)."
+msgstr "최대 총 지연(초)(5-60)입니다."
 
 #: wldelay-settings-view.php:664
 msgid ""
 "Bypass all protection for trusted IPs. Useful for office networks or VPNs "
 "where delays would be annoying."
 msgstr ""
-"Bypassa tutta la protezione per gli IP attendibili. Utile per reti aziendali "
-"o VPN dove i ritardi sarebbero fastidiosi."
+"신뢰할 수 있는 IP에 대해 모든 보호를 무시합니다. 지연이 거슬리는 사무실 네트"
+"워크 또는 VPN에 유용합니다."
 
 #: wldelay-settings-view.php:675
 msgid ""
 "Enter trusted IP addresses. CIDR notation (e.g., 192.168.1.0/24) allows "
 "whitelisting entire networks."
 msgstr ""
-"Inserisci indirizzi IP attendibili. La notazione CIDR (ad es., "
-"192.168.1.0/24) consente di aggiungere alla lista bianca intere reti."
+"신뢰할 수 있는 IP 주소를 입력하세요. CIDR 표기법(예: 192.168.1.0/24)은 전체 "
+"네트워크를 화이트리스트에 추가할 수 있습니다."
 
 #: wldelay-settings-view.php:676
 msgid ""
 "One IP address or CIDR range per line (e.g., 192.168.1.1 or 10.0.0.0/8)."
 msgstr ""
-"Un indirizzo IP o intervallo CIDR per riga (ad es., 192.168.1.1 o "
-"10.0.0.0/8)."
+"한 줄에 하나의 IP 주소 또는 CIDR 범위(예: 192.168.1.1 또는 10.0.0.0/8)입니다."
 
 #: wldelay-settings-view.php:689
 msgid ""
 "Old logs are automatically cleaned up to save database space. Shorter "
 "retention = smaller database."
 msgstr ""
-"I registri precedenti vengono automaticamente puliti per risparmiare spazio "
-"nel database. Conservazione più breve = database più piccolo."
+"오래된 로그는 데이터베이스 공간을 절약하기 위해 자동으로 정리됩니다. 더 짧은 "
+"보존 = 더 작은 데이터베이스입니다."
 
 #: wldelay-settings-view.php:690
 msgid ""
 "Automatically delete log entries older than this many days. Set to 0 to keep "
 "logs forever."
 msgstr ""
-"Elimina automaticamente i registri più vecchi di questo numero di giorni. "
-"Impostare a 0 per conservare i registri indefinitamente."
+"이 며칠보다 오래된 로그 항목을 자동으로 삭제합니다. 로그를 계속 보관하려면 0"
+"으로 설정하세요."
 
 #: wldelay-settings-view.php:701
 msgid ""
 "XML-RPC is often targeted by attackers because it allows multiple login "
 "attempts in a single request. Protecting it is strongly recommended."
 msgstr ""
-"XML-RPC è spesso preso di mira dagli attaccanti perché consente più "
-"tentativi di accesso in una singola richiesta. Si consiglia vivamente di "
-"proteggerlo."
+"XML-RPC는 단일 요청에서 여러 로그인 시도를 허용하므로 공격자에게 자주 표적이 "
+"됩니다. 보호하기를 강력히 권장합니다."
 
 #: wldelay-settings-view.php:702
 msgid "Apply delay and lockout protection to XML-RPC authentication requests."
-msgstr ""
-"Applica protezione con ritardo e blocco alle richieste di autenticazione XML-"
-"RPC."
+msgstr "XML-RPC 인증 요청에 지연 및 차단 보호를 적용합니다."
 
 #: wldelay-settings-view.php:713
 msgid ""
 "Completely disables XML-RPC login. Enable this if you manage your site only "
 "via the web interface and don't use Jetpack or the WP mobile app."
 msgstr ""
-"Disabilita completamente l'accesso XML-RPC. Abilita questa opzione se "
-"gestisci il Suo sito solo tramite l'interfaccia web e non usi Jetpack o "
-"l'app mobile WordPress."
+"XML-RPC 로그인을 완전히 비활성화합니다. 웹 인터페이스를 통해서만 사이트를 관"
+"리하고 Jetpack이나 WordPress 모바일 앱을 사용하지 않는 경우 활성화하세요."
 
 #: wldelay-settings-view.php:714
 msgid ""
 "Completely block XML-RPC authentication. Use this if you don't need remote "
 "publishing or the WordPress mobile app."
 msgstr ""
-"Blocca completamente l'autenticazione XML-RPC. Usa questa opzione se non hai "
-"bisogno della pubblicazione remota o dell'app mobile WordPress."
+"XML-RPC 인증을 완전히 차단합니다. 원격 게시나 WordPress 모바일 앱이 필요하지 "
+"않은 경우 사용하세요."
 
 #~ msgid ""
 #~ "Adds a one second or a custom time delay to the login to avoid brute-"
 #~ "force attack"
 #~ msgstr ""
-#~ "Aggiunge un ritardo di un secondo o un ritardo personalizzato al login "
-#~ "per evitare attacchi brute-force"
+#~ "로그인에 1초 또는 사용자 지정 시간 지연을 추가하여 무차별 대입 공격을 방지"
+#~ "합니다."

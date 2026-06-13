@@ -43,7 +43,7 @@ Version: 2.5.0
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
-Text Domain: login-delay-shield
+Text Domain: wp-login-delay
 */
 
 /**
@@ -51,7 +51,7 @@ Text Domain: login-delay-shield
  */
 function wldelay_load_textdomain() {
     load_plugin_textdomain(
-        'login-delay-shield',
+        'wp-login-delay',
         false,
         dirname( plugin_basename( WLDELAY_PLUGIN_FILE ) ) . '/languages'
     );
@@ -85,7 +85,7 @@ function wldelay_plugin_action_links( $links ) {
     $settings_link = sprintf(
         '<a href="%s">%s</a>',
         admin_url( 'options-general.php?page=login-delay-shield-admin' ),
-        __( 'Settings', 'login-delay-shield' )
+        __( 'Settings', 'wp-login-delay' )
     );
     array_unshift( $links, $settings_link );
     return $links;
@@ -102,7 +102,7 @@ function wldelay_add_dashboard_widget() {
 
     wp_add_dashboard_widget(
         'wldelay_failed_logins_widget',
-        __( 'Recent Failed Login Attempts', 'login-delay-shield' ),
+        __( 'Recent Failed Login Attempts', 'wp-login-delay' ),
         'wldelay_dashboard_widget_content'
     );
 }
@@ -140,12 +140,12 @@ function wldelay_enqueue_admin_assets( $hook ) {
         array(
             'ajaxUrl'            => admin_url( 'admin-ajax.php' ),
             'dismissNoticeNonce' => wp_create_nonce( 'wldelay_dismiss_notice' ),
-            'badgeEnabled'       => __( 'Enabled', 'login-delay-shield' ),
-            'badgeDisabled'      => __( 'Disabled', 'login-delay-shield' ),
+            'badgeEnabled'       => __( 'Enabled', 'wp-login-delay' ),
+            'badgeDisabled'      => __( 'Disabled', 'wp-login-delay' ),
             'scoreWeights'       => $score_weights,
-            'recommendPrefix'    => __( 'Next recommended: enable', 'login-delay-shield' ),
+            'recommendPrefix'    => __( 'Next recommended: enable', 'wp-login-delay' ),
             /* translators: %d: points value */
-            'recommendSuffix'    => __( '(+%d points)', 'login-delay-shield' ),
+            'recommendSuffix'    => __( '(+%d points)', 'wp-login-delay' ),
         )
     );
 
@@ -1159,7 +1159,7 @@ function wldelay_flush_lockout_transients() {
  */
 function wldelay_handle_unlock_current_ip() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'wp-login-delay' ) );
     }
 
     check_admin_referer( 'wldelay_unlock_current_ip' );
@@ -1225,7 +1225,7 @@ add_action( 'admin_post_wldelay_unlock_current_ip', 'wldelay_handle_unlock_curre
  */
 function wldelay_handle_unlock_lockout() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'wp-login-delay' ) );
     }
 
     check_admin_referer( 'wldelay_unlock_lockout' );
@@ -1351,7 +1351,7 @@ function wldelay_sweep_registered_lockout_transients() {
  */
 function wldelay_handle_clear_all_lockouts() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'wp-login-delay' ) );
     }
 
     check_admin_referer( 'wldelay_clear_all_lockouts' );
@@ -1421,7 +1421,7 @@ function wldelay_handle_clear_all_lockouts() {
         wldelay_audit_log(
             'lockout_cleared',
             array(
-                'object'    => __( 'All active lockouts', 'login-delay-shield' ),
+                'object'    => __( 'All active lockouts', 'wp-login-delay' ),
                 'new_value' => array(
                     'removed_rows' => $removed,
                     'source'       => 'clear-all',
@@ -1905,7 +1905,7 @@ function wldelay_check_export_throttle() {
     if ( false !== get_transient( $key ) ) {
         return new WP_Error(
             'wldelay_export_throttled',
-            __( 'The log was exported less than a minute ago. Please wait before exporting again.', 'login-delay-shield' )
+            __( 'The log was exported less than a minute ago. Please wait before exporting again.', 'wp-login-delay' )
         );
     }
 
@@ -2083,7 +2083,7 @@ function wldelay_get_login_log_summary( $filters = array(), $limit = 5 ) {
  */
 function wldelay_handle_export_login_log() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'You are not allowed to perform this action.', 'login-delay-shield' ) );
+        wp_die( esc_html__( 'You are not allowed to perform this action.', 'wp-login-delay' ) );
     }
 
     check_admin_referer( 'wldelay_export_login_log' );
@@ -2180,16 +2180,16 @@ function wldelay_render_unlock_notice() {
 
     if ( 'success' === $status ) {
         $class   = 'notice-success';
-        $message = __( 'Current IP lockout removed.', 'login-delay-shield' );
+        $message = __( 'Current IP lockout removed.', 'wp-login-delay' );
     } elseif ( 'failed' === $status ) {
         // A durable delete failed at the DB layer; the lockout may still be in
         // force. Report an error (not a benign "none") so the admin retries
         // rather than assuming the IP was cleared (F-3-1).
         $class   = 'notice-error';
-        $message = __( 'Login Delay Shield could not clear the lockout for your current IP — a database error occurred and the lockout may still be in force. Check the database and try again.', 'login-delay-shield' );
+        $message = __( 'Login Delay Shield could not clear the lockout for your current IP — a database error occurred and the lockout may still be in force. Check the database and try again.', 'wp-login-delay' );
     } else {
         $class   = 'notice-warning';
-        $message = __( 'No active lockout was found for your current IP.', 'login-delay-shield' );
+        $message = __( 'No active lockout was found for your current IP.', 'wp-login-delay' );
     }
 
     echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible" role="status" aria-live="polite"><p>' . esc_html( $message ) . '</p></div>';
@@ -2219,13 +2219,13 @@ function wldelay_render_lockout_manager_notice() {
 
         if ( 'success' === $status ) {
             $class   = 'notice-success';
-            $message = __( 'Lockout removed.', 'login-delay-shield' );
+            $message = __( 'Lockout removed.', 'wp-login-delay' );
         } elseif ( 'failed' === $status ) {
             $class   = 'notice-error';
-            $message = __( 'Login Delay Shield could not remove this lockout — a database error occurred and it may still be in force. Check the database and try again.', 'login-delay-shield' );
+            $message = __( 'Login Delay Shield could not remove this lockout — a database error occurred and it may still be in force. Check the database and try again.', 'wp-login-delay' );
         } else {
             $class   = 'notice-warning';
-            $message = __( 'No active lockout was found for that subject.', 'login-delay-shield' );
+            $message = __( 'No active lockout was found for that subject.', 'wp-login-delay' );
         }
     } elseif ( isset( $_GET['wldelay_clear_all'] ) ) {
         $status = sanitize_text_field( wp_unslash( $_GET['wldelay_clear_all'] ) );
@@ -2235,19 +2235,19 @@ function wldelay_render_lockout_manager_notice() {
             $class = 'notice-error';
             $message = sprintf(
                 /* translators: %s: number of lockouts that were removed before the error */
-                __( 'Login Delay Shield cleared %s lockout(s), but a database error stopped it from clearing the rest — some lockouts may still be in force. Check the database and try again.', 'login-delay-shield' ),
+                __( 'Login Delay Shield cleared %s lockout(s), but a database error stopped it from clearing the rest — some lockouts may still be in force. Check the database and try again.', 'wp-login-delay' ),
                 number_format_i18n( $count )
             );
         } elseif ( 'success' === $status ) {
             $class = 'notice-success';
             $message = sprintf(
                 /* translators: %s: number of lockouts removed */
-                _n( '%s active lockout cleared.', '%s active lockouts cleared.', $count, 'login-delay-shield' ),
+                _n( '%s active lockout cleared.', '%s active lockouts cleared.', $count, 'wp-login-delay' ),
                 number_format_i18n( $count )
             );
         } else {
             $class   = 'notice-warning';
-            $message = __( 'There were no active lockouts to clear.', 'login-delay-shield' );
+            $message = __( 'There were no active lockouts to clear.', 'wp-login-delay' );
         }
     }
 
@@ -2279,7 +2279,7 @@ function wldelay_render_export_throttle_notice() {
     }
 
     echo '<div class="notice notice-warning is-dismissible" role="status" aria-live="polite"><p>'
-        . esc_html__( 'The log was exported less than a minute ago. Please wait before exporting again.', 'login-delay-shield' )
+        . esc_html__( 'The log was exported less than a minute ago. Please wait before exporting again.', 'wp-login-delay' )
         . '</p></div>';
 }
 add_action( 'admin_notices', 'wldelay_render_export_throttle_notice' );
@@ -2299,7 +2299,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
          *
          * ## EXAMPLES
          *
-         *     wp login-delay-shield unlock-ip 203.0.113.10
+         *     wp wp-login-delay unlock-ip 203.0.113.10
          *
          * @when after_wp_load
          */
@@ -2307,7 +2307,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
             list( $ip ) = $args;
 
             if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-                WP_CLI::error( __( 'Invalid IP address provided.', 'login-delay-shield' ) );
+                WP_CLI::error( __( 'Invalid IP address provided.', 'wp-login-delay' ) );
             }
 
             $deleted = wldelay_delete_lockout_for_ip( $ip );
@@ -2334,7 +2334,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
                 WP_CLI::error(
                     sprintf(
                         /* translators: %s: IP address */
-                        __( 'A database error occurred while clearing the lockout for %s; it may still be in force. Check the database and retry.', 'login-delay-shield' ),
+                        __( 'A database error occurred while clearing the lockout for %s; it may still be in force. Check the database and retry.', 'wp-login-delay' ),
                         $ip
                     )
                 );
@@ -2365,7 +2365,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
                             'Removed lockout/failure data for %1$s (%2$d entry).',
                             'Removed lockout/failure data for %1$s (%2$d entries).',
                             $deleted,
-                            'login-delay-shield'
+                            'wp-login-delay'
                         ),
                         $ip,
                         $deleted
@@ -2377,7 +2377,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
             WP_CLI::warning(
                 sprintf(
                     /* translators: %s: IP address */
-                    __( 'No active lockout found for %s.', 'login-delay-shield' ),
+                    __( 'No active lockout found for %s.', 'wp-login-delay' ),
                     $ip
                 )
             );
@@ -2388,7 +2388,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
          *
          * ## EXAMPLES
          *
-         *     wp login-delay-shield flush-lockouts
+         *     wp wp-login-delay flush-lockouts
          *
          * @when after_wp_load
          */
@@ -2413,7 +2413,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
                     );
                 }
                 WP_CLI::error(
-                    __( 'A database error occurred while flushing lockouts; some may still be in force. Check the database and retry.', 'login-delay-shield' )
+                    __( 'A database error occurred while flushing lockouts; some may still be in force. Check the database and retry.', 'wp-login-delay' )
                 );
             }
 
@@ -2440,7 +2440,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
                         'Removed %d lockout/failure entry.',
                         'Removed %d lockout/failure entries.',
                         $deleted,
-                        'login-delay-shield'
+                        'wp-login-delay'
                     ),
                     $deleted
                 )
@@ -2448,12 +2448,12 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
         }
     }
 
-    WP_CLI::add_command( 'login-delay-shield', 'WLDelay_CLI_Command' );
+    WP_CLI::add_command( 'wp-login-delay', 'WLDelay_CLI_Command' );
 }
 
 function wldelay_dashboard_widget_content() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        echo '<p>' . esc_html__( 'You do not have permission to view Login Delay Shield telemetry.', 'login-delay-shield' ) . '</p>';
+        echo '<p>' . esc_html__( 'You do not have permission to view Login Delay Shield telemetry.', 'wp-login-delay' ) . '</p>';
         return;
     }
 
@@ -2471,11 +2471,11 @@ function wldelay_dashboard_widget_content() {
     if ( ! empty( $botnet_detections ) ) {
         echo '<div class="wldelay-botnet-alert notice notice-warning inline" aria-live="polite">';
         echo '<p><span class="dashicons dashicons-warning" aria-hidden="true"></span> <strong>'
-            . esc_html__( 'Distributed attack detected', 'login-delay-shield' ) . '</strong></p><ul>';
+            . esc_html__( 'Distributed attack detected', 'wp-login-delay' ) . '</strong></p><ul>';
         foreach ( array_slice( $botnet_detections, 0, 3 ) as $d ) {
             echo '<li>' . esc_html( sprintf(
                 /* translators: 1: username targeted by the attack, 2: number of distinct source IPs, 3: detection window in minutes, 4: human-readable time since detection */
-                __( '%1$s targeted from %2$d IPs within %3$d min — %4$s ago', 'login-delay-shield' ),
+                __( '%1$s targeted from %2$d IPs within %3$d min — %4$s ago', 'wp-login-delay' ),
                 $d['username'],
                 $d['distinct_ips'],
                 $d['window_minutes'],
@@ -2502,19 +2502,19 @@ function wldelay_dashboard_widget_content() {
     }
 
     if ( empty( $attempts ) ) {
-        echo '<p>' . esc_html__( 'No failed login attempts recorded.', 'login-delay-shield' ) . '</p>';
+        echo '<p>' . esc_html__( 'No failed login attempts recorded.', 'wp-login-delay' ) . '</p>';
         return;
     }
 
     wldelay_render_dashboard_trends( $trends );
 
     echo '<table class="widefat striped">';
-    echo '<caption class="screen-reader-text">' . esc_html__( 'Recent failed login attempts', 'login-delay-shield' ) . '</caption>';
+    echo '<caption class="screen-reader-text">' . esc_html__( 'Recent failed login attempts', 'wp-login-delay' ) . '</caption>';
     echo '<thead><tr>';
-    echo '<th scope="col">' . esc_html__( 'Time', 'login-delay-shield' ) . '</th>';
-    echo '<th scope="col">' . esc_html__( 'Username', 'login-delay-shield' ) . '</th>';
-    echo '<th scope="col">' . esc_html__( 'IP Address', 'login-delay-shield' ) . '</th>';
-    echo '<th scope="col">' . esc_html__( 'Source', 'login-delay-shield' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Time', 'wp-login-delay' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Username', 'wp-login-delay' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'IP Address', 'wp-login-delay' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Source', 'wp-login-delay' ) . '</th>';
     echo '</tr></thead>';
     echo '<tbody>';
 
@@ -2526,7 +2526,7 @@ function wldelay_dashboard_widget_content() {
 
         echo '<tr>';
         /* translators: %1$s: time ago, %2$s: exact timestamp */
-        $time_text = sprintf( __( '%1$s ago', 'login-delay-shield' ), $time_ago );
+        $time_text = sprintf( __( '%1$s ago', 'wp-login-delay' ), $time_ago );
         echo '<td><time datetime="' . esc_attr( $attempt->attempted_at ) . '" title="' . esc_attr( $attempt->attempted_at ) . '">' . esc_html( $time_text ) . '</time></td>';
         echo '<td>' . esc_html( $attempt->username ) . '</td>';
         echo '<td>' . esc_html( $attempt->ip_address ) . '</td>';
@@ -2538,7 +2538,7 @@ function wldelay_dashboard_widget_content() {
 
     $settings_url = admin_url( 'options-general.php?page=login-delay-shield-admin' );
     echo '<p class="wldelay-widget-footer" style="margin-top: 10px; text-align: right;">';
-    echo '<a href="' . esc_url( $settings_url ) . '">' . esc_html__( 'Settings', 'login-delay-shield' ) . '</a>';
+    echo '<a href="' . esc_url( $settings_url ) . '">' . esc_html__( 'Settings', 'wp-login-delay' ) . '</a>';
     echo '</p>';
 
     wldelay_render_referral_card();
@@ -2548,22 +2548,22 @@ function wldelay_dashboard_widget_content() {
  * Render a lightweight "recommend this plugin" card in the dashboard widget.
  */
 function wldelay_render_referral_card() {
-    $plugin_url  = 'https://wordpress.org/plugins/login-delay-shield/';
-    $review_url  = 'https://wordpress.org/support/plugin/login-delay-shield/reviews/#new-post';
-    $support_url = 'https://wordpress.org/support/plugin/login-delay-shield/';
+    $plugin_url  = 'https://wordpress.org/plugins/wp-login-delay/';
+    $review_url  = 'https://wordpress.org/support/plugin/wp-login-delay/reviews/#new-post';
+    $support_url = 'https://wordpress.org/support/plugin/wp-login-delay/';
 
     echo '<div class="wldelay-referral-card">';
     echo '<p class="wldelay-referral-text">';
-    echo esc_html__( 'Find Login Delay Shield useful?', 'login-delay-shield' );
+    echo esc_html__( 'Find Login Delay Shield useful?', 'wp-login-delay' );
     echo '</p>';
     echo '<p class="wldelay-referral-links">';
     echo '<a href="' . esc_url( $review_url ) . '" target="_blank" rel="noopener noreferrer">';
     echo '<span class="dashicons dashicons-star-filled" aria-hidden="true"></span> ';
-    echo esc_html__( 'Leave a review', 'login-delay-shield' );
+    echo esc_html__( 'Leave a review', 'wp-login-delay' );
     echo '</a>';
     echo '<a href="' . esc_url( $support_url ) . '" target="_blank" rel="noopener noreferrer">';
     echo '<span class="dashicons dashicons-sos" aria-hidden="true"></span> ';
-    echo esc_html__( 'Get support', 'login-delay-shield' );
+    echo esc_html__( 'Get support', 'wp-login-delay' );
     echo '</a>';
     echo '</p>';
     echo '</div>';
@@ -2637,7 +2637,7 @@ function wldelay_render_dashboard_onboarding_cta() {
 
     echo '<h3 class="wldelay-onboarding-cta-title" id="wldelay-onboarding-cta-title">';
     echo '<span class="dashicons dashicons-shield-alt" aria-hidden="true"></span> ';
-    echo esc_html__( 'Finish setting up your login protection', 'login-delay-shield' );
+    echo esc_html__( 'Finish setting up your login protection', 'wp-login-delay' );
     echo '</h3>';
 
     echo '<p class="wldelay-onboarding-cta-score">';
@@ -2649,7 +2649,7 @@ function wldelay_render_dashboard_onboarding_cta() {
                     'You\'re at %1$d%%. Enable the protection below to reach a strong setup.',
                     'You\'re at %1$d%%. Enable the %2$d protections below to reach a strong setup.',
                     $steps,
-                    'login-delay-shield'
+                    'wp-login-delay'
                 ),
                 $pct,
                 $steps
@@ -2659,7 +2659,7 @@ function wldelay_render_dashboard_onboarding_cta() {
         echo esc_html(
             sprintf(
                 /* translators: %d: current security score percentage */
-                __( 'You\'re at %d%%. Turn on a few more protections to harden your login.', 'login-delay-shield' ),
+                __( 'You\'re at %d%%. Turn on a few more protections to harden your login.', 'wp-login-delay' ),
                 $pct
             )
         );
@@ -2667,7 +2667,7 @@ function wldelay_render_dashboard_onboarding_cta() {
     echo '</p>';
 
     if ( ! empty( $recommended ) ) {
-        echo '<p class="wldelay-onboarding-cta-subhead">' . esc_html__( 'Recommended next steps:', 'login-delay-shield' ) . '</p>';
+        echo '<p class="wldelay-onboarding-cta-subhead">' . esc_html__( 'Recommended next steps:', 'wp-login-delay' ) . '</p>';
         echo '<ul class="wldelay-onboarding-cta-list">';
         foreach ( $recommended as $feature ) {
             $label  = isset( $feature['label'] ) ? $feature['label'] : '';
@@ -2679,7 +2679,7 @@ function wldelay_render_dashboard_onboarding_cta() {
             echo esc_html(
                 sprintf(
                     /* translators: %d: number of security-score points the feature is worth */
-                    _n( '+%d point', '+%d points', $points, 'login-delay-shield' ),
+                    _n( '+%d point', '+%d points', $points, 'wp-login-delay' ),
                     $points
                 )
             );
@@ -2691,8 +2691,8 @@ function wldelay_render_dashboard_onboarding_cta() {
 
     echo '<p class="wldelay-onboarding-cta-action">';
     echo '<a class="button button-primary" href="' . esc_url( $wizard_url ) . '">';
-    echo esc_html__( 'Run the Setup Wizard', 'login-delay-shield' );
-    echo '<span class="screen-reader-text"> ' . esc_html__( '(opens the Login Delay Shield settings page)', 'login-delay-shield' ) . '</span>';
+    echo esc_html__( 'Run the Setup Wizard', 'wp-login-delay' );
+    echo '<span class="screen-reader-text"> ' . esc_html__( '(opens the Login Delay Shield settings page)', 'wp-login-delay' ) . '</span>';
     echo '</a>';
     echo '</p>';
 
@@ -2860,7 +2860,7 @@ function wldelay_render_dashboard_trends( $trends ) {
     echo '<h3 id="wldelay-widget-trends-title" class="wldelay-widget-trends-title">';
     printf(
         /* translators: %d: number of days in the dashboard trends window */
-        esc_html__( 'Failed login trends: last %d days', 'login-delay-shield' ),
+        esc_html__( 'Failed login trends: last %d days', 'wp-login-delay' ),
         esc_html( $window_days )
     );
     echo '</h3>';
@@ -2868,20 +2868,20 @@ function wldelay_render_dashboard_trends( $trends ) {
     echo '<p class="wldelay-widget-trends-summary">';
     printf(
         /* translators: %s: number of failed login attempts */
-        esc_html__( '%s failed attempts recorded in the selected window.', 'login-delay-shield' ),
+        esc_html__( '%s failed attempts recorded in the selected window.', 'wp-login-delay' ),
         '<strong>' . esc_html( number_format_i18n( $total ) ) . '</strong>'
     );
 
     if ( ! empty( $peak_day['date'] ) && ! empty( $peak_day['count'] ) ) {
         $peak_label = date_i18n(
-            _x( 'M j', 'date format for failed login trend labels', 'login-delay-shield' ),
+            _x( 'M j', 'date format for failed login trend labels', 'wp-login-delay' ),
             strtotime( $peak_day['date'] . ' 00:00:00' )
         );
 
         echo ' ';
         printf(
             /* translators: 1: date label, 2: number of failed attempts */
-            esc_html__( 'Busiest day: %1$s (%2$s).', 'login-delay-shield' ),
+            esc_html__( 'Busiest day: %1$s (%2$s).', 'wp-login-delay' ),
             esc_html( $peak_label ),
             esc_html( number_format_i18n( (int) $peak_day['count'] ) )
         );
@@ -2891,11 +2891,11 @@ function wldelay_render_dashboard_trends( $trends ) {
     echo '<div class="wldelay-widget-trends-grid">';
 
     echo '<section class="wldelay-trend-card" aria-labelledby="wldelay-trend-daily-title">';
-    echo '<h4 id="wldelay-trend-daily-title">' . esc_html__( 'Daily activity', 'login-delay-shield' ) . '</h4>';
+    echo '<h4 id="wldelay-trend-daily-title">' . esc_html__( 'Daily activity', 'wp-login-delay' ) . '</h4>';
     echo '<ul class="wldelay-trend-list">';
     foreach ( $daily_counts as $day ) {
         $day_label = date_i18n(
-            _x( 'M j', 'date format for failed login trend labels', 'login-delay-shield' ),
+            _x( 'M j', 'date format for failed login trend labels', 'wp-login-delay' ),
             strtotime( $day['date'] . ' 00:00:00' )
         );
         echo '<li><span>' . esc_html( $day_label ) . '</span><strong>' . esc_html( number_format_i18n( (int) $day['count'] ) ) . '</strong></li>';
@@ -2904,10 +2904,10 @@ function wldelay_render_dashboard_trends( $trends ) {
     echo '</section>';
 
     echo '<section class="wldelay-trend-card" aria-labelledby="wldelay-trend-sources-title">';
-    echo '<h4 id="wldelay-trend-sources-title">' . esc_html__( 'Top sources', 'login-delay-shield' ) . '</h4>';
+    echo '<h4 id="wldelay-trend-sources-title">' . esc_html__( 'Top sources', 'wp-login-delay' ) . '</h4>';
     echo '<ul class="wldelay-trend-list">';
     if ( empty( $source_counts ) ) {
-        echo '<li><span>' . esc_html__( 'No recent data', 'login-delay-shield' ) . '</span><strong>0</strong></li>';
+        echo '<li><span>' . esc_html__( 'No recent data', 'wp-login-delay' ) . '</span><strong>0</strong></li>';
     } else {
         foreach ( $source_counts as $source_count ) {
             echo '<li><span>' . esc_html( wldelay_get_login_source_label( $source_count['source'] ) ) . '</span><strong>' . esc_html( number_format_i18n( (int) $source_count['count'] ) ) . '</strong></li>';
@@ -2917,10 +2917,10 @@ function wldelay_render_dashboard_trends( $trends ) {
     echo '</section>';
 
     echo '<section class="wldelay-trend-card" aria-labelledby="wldelay-trend-ips-title">';
-    echo '<h4 id="wldelay-trend-ips-title">' . esc_html__( 'Top IPs', 'login-delay-shield' ) . '</h4>';
+    echo '<h4 id="wldelay-trend-ips-title">' . esc_html__( 'Top IPs', 'wp-login-delay' ) . '</h4>';
     echo '<ol class="wldelay-trend-list wldelay-trend-list-ordered">';
     if ( empty( $top_ips ) ) {
-        echo '<li><span>' . esc_html__( 'No recent data', 'login-delay-shield' ) . '</span><strong>0</strong></li>';
+        echo '<li><span>' . esc_html__( 'No recent data', 'wp-login-delay' ) . '</span><strong>0</strong></li>';
     } else {
         foreach ( $top_ips as $ip_count ) {
             echo '<li><span>' . esc_html( $ip_count['ip_address'] ) . '</span><strong>' . esc_html( number_format_i18n( (int) $ip_count['count'] ) ) . '</strong></li>';
@@ -2930,10 +2930,10 @@ function wldelay_render_dashboard_trends( $trends ) {
     echo '</section>';
 
     echo '<section class="wldelay-trend-card" aria-labelledby="wldelay-trend-usernames-title">';
-    echo '<h4 id="wldelay-trend-usernames-title">' . esc_html__( 'Top usernames', 'login-delay-shield' ) . '</h4>';
+    echo '<h4 id="wldelay-trend-usernames-title">' . esc_html__( 'Top usernames', 'wp-login-delay' ) . '</h4>';
     echo '<ol class="wldelay-trend-list wldelay-trend-list-ordered">';
     if ( empty( $top_usernames ) ) {
-        echo '<li><span>' . esc_html__( 'No recent data', 'login-delay-shield' ) . '</span><strong>0</strong></li>';
+        echo '<li><span>' . esc_html__( 'No recent data', 'wp-login-delay' ) . '</span><strong>0</strong></li>';
     } else {
         foreach ( $top_usernames as $username_count ) {
             echo '<li><span>' . esc_html( $username_count['username'] ) . '</span><strong>' . esc_html( number_format_i18n( (int) $username_count['count'] ) ) . '</strong></li>';
@@ -3283,8 +3283,8 @@ function wldelay_show_upgrade_notice() {
     ?>
     <div class="notice notice-info is-dismissible wldelay-name-change-notice">
         <p>
-            <strong><?php esc_html_e( 'Login Delay Shield', 'login-delay-shield' ); ?></strong> —
-            <?php esc_html_e( 'This plugin was formerly known as "WP Login Delay". The name has changed, but all your settings have been preserved.', 'login-delay-shield' ); ?>
+            <strong><?php esc_html_e( 'Login Delay Shield', 'wp-login-delay' ); ?></strong> —
+            <?php esc_html_e( 'This plugin was formerly known as "WP Login Delay". The name has changed, but all your settings have been preserved.', 'wp-login-delay' ); ?>
         </p>
     </div>
     <?php
@@ -3334,7 +3334,7 @@ function wldelay_show_whats_new_notice() {
             <strong><?php
                 printf(
                     /* translators: %s: plugin version number */
-                    esc_html__( "What's new in Login Delay Shield %s", 'login-delay-shield' ),
+                    esc_html__( "What's new in Login Delay Shield %s", 'wp-login-delay' ),
                     esc_html( WLDELAY_VERSION )
                 );
             ?></strong>
@@ -3360,31 +3360,31 @@ add_action( 'admin_notices', 'wldelay_show_whats_new_notice' );
 function wldelay_get_version_highlights( $version ) {
     $highlights = array(
         '2.5.0' => array(
-            __( 'Distributed attack detection — alerts when one username is hit from many IPs, the credential-stuffing pattern per-IP lockouts miss. On by default; alert-only, never blocks.', 'login-delay-shield' ),
-            __( 'Downloadable fail2ban filter and jail config that matches your current log format in one click.', 'login-delay-shield' ),
-            __( 'Settings coherence warnings flag contradictory option combinations before they bite.', 'login-delay-shield' ),
+            __( 'Distributed attack detection — alerts when one username is hit from many IPs, the credential-stuffing pattern per-IP lockouts miss. On by default; alert-only, never blocks.', 'wp-login-delay' ),
+            __( 'Downloadable fail2ban filter and jail config that matches your current log format in one click.', 'wp-login-delay' ),
+            __( 'Settings coherence warnings flag contradictory option combinations before they bite.', 'wp-login-delay' ),
         ),
         '2.4.0' => array(
-            __( 'Proxy/CDN-aware IP detection — Cloudflare, Sucuri, and nginx headers are now supported, with spoof-proof validation of CF-Connecting-IP.', 'login-delay-shield' ),
-            __( 'A proxy health check warns about the misconfigurations that cause mass lockouts or IP spoofing.', 'login-delay-shield' ),
-            __( 'New safety nets: the WLDELAY_SAFE_MODE emergency constant, and a Custom Login URL self-check that auto-disables instead of locking everyone out.', 'login-delay-shield' ),
+            __( 'Proxy/CDN-aware IP detection — Cloudflare, Sucuri, and nginx headers are now supported, with spoof-proof validation of CF-Connecting-IP.', 'wp-login-delay' ),
+            __( 'A proxy health check warns about the misconfigurations that cause mass lockouts or IP spoofing.', 'wp-login-delay' ),
+            __( 'New safety nets: the WLDELAY_SAFE_MODE emergency constant, and a Custom Login URL self-check that auto-disables instead of locking everyone out.', 'wp-login-delay' ),
         ),
         '2.3.3' => array(
-            __( 'Security Setup Wizard — apply Conservative, Balanced, or Aggressive protection profiles in one step.', 'login-delay-shield' ),
-            __( 'Profiles configure delay, lockout, alerts, and authentication endpoints while keeping every control editable.', 'login-delay-shield' ),
+            __( 'Security Setup Wizard — apply Conservative, Balanced, or Aggressive protection profiles in one step.', 'wp-login-delay' ),
+            __( 'Profiles configure delay, lockout, alerts, and authentication endpoints while keeping every control editable.', 'wp-login-delay' ),
         ),
         '2.3.2' => array(
-            __( 'Password reset protection — apply delay, lockout, and logging to reset requests.', 'login-delay-shield' ),
-            __( 'Password reset throttling uses isolated counters to avoid locking users out of normal login.', 'login-delay-shield' ),
+            __( 'Password reset protection — apply delay, lockout, and logging to reset requests.', 'wp-login-delay' ),
+            __( 'Password reset throttling uses isolated counters to avoid locking users out of normal login.', 'wp-login-delay' ),
         ),
         '2.3.0' => array(
-            __( 'Security Health Score — see your protection posture at a glance.', 'login-delay-shield' ),
-            __( 'Whitelist IP lookups are now cached for faster login checks.', 'login-delay-shield' ),
-            __( 'CI/CD pipeline — tests run automatically on every code change.', 'login-delay-shield' ),
+            __( 'Security Health Score — see your protection posture at a glance.', 'wp-login-delay' ),
+            __( 'Whitelist IP lookups are now cached for faster login checks.', 'wp-login-delay' ),
+            __( 'CI/CD pipeline — tests run automatically on every code change.', 'wp-login-delay' ),
         ),
         '2.2.4' => array(
-            __( 'Top targeted usernames in login telemetry.', 'login-delay-shield' ),
-            __( 'Faster database queries with username index.', 'login-delay-shield' ),
+            __( 'Top targeted usernames in login telemetry.', 'wp-login-delay' ),
+            __( 'Faster database queries with username index.', 'wp-login-delay' ),
         ),
     );
 
@@ -3426,9 +3426,9 @@ add_action( 'plugins_loaded', 'wldelay_track_version' );
 function wldelay_get_protection_profiles() {
     return array(
         'conservative' => array(
-            'label'       => __( 'Conservative', 'login-delay-shield' ),
-            'tagline'     => __( 'Low friction', 'login-delay-shield' ),
-            'description' => __( 'Adds core throttling with gentler thresholds for sites that prioritize fewer support requests.', 'login-delay-shield' ),
+            'label'       => __( 'Conservative', 'wp-login-delay' ),
+            'tagline'     => __( 'Low friction', 'wp-login-delay' ),
+            'description' => __( 'Adds core throttling with gentler thresholds for sites that prioritize fewer support requests.', 'wp-login-delay' ),
             'settings'    => array(
                 'wldelay_delay'                         => 1,
                 'wldelay_delay_random'                  => false,
@@ -3452,9 +3452,9 @@ function wldelay_get_protection_profiles() {
             ),
         ),
         'balanced'     => array(
-            'label'       => __( 'Balanced', 'login-delay-shield' ),
-            'tagline'     => __( 'Recommended', 'login-delay-shield' ),
-            'description' => __( 'Turns on the main protections with thresholds that fit most WordPress sites.', 'login-delay-shield' ),
+            'label'       => __( 'Balanced', 'wp-login-delay' ),
+            'tagline'     => __( 'Recommended', 'wp-login-delay' ),
+            'description' => __( 'Turns on the main protections with thresholds that fit most WordPress sites.', 'wp-login-delay' ),
             'settings'    => array(
                 'wldelay_delay'                         => 2,
                 'wldelay_delay_random'                  => true,
@@ -3478,9 +3478,9 @@ function wldelay_get_protection_profiles() {
             ),
         ),
         'aggressive'   => array(
-            'label'       => __( 'Aggressive', 'login-delay-shield' ),
-            'tagline'     => __( 'Maximum protection', 'login-delay-shield' ),
-            'description' => __( 'Uses stricter lockouts and blocks XML-RPC authentication for sites under frequent attack.', 'login-delay-shield' ),
+            'label'       => __( 'Aggressive', 'wp-login-delay' ),
+            'tagline'     => __( 'Maximum protection', 'wp-login-delay' ),
+            'description' => __( 'Uses stricter lockouts and blocks XML-RPC authentication for sites under frequent attack.', 'wp-login-delay' ),
             'settings'    => array(
                 'wldelay_delay'                         => 3,
                 'wldelay_delay_random'                  => true,
@@ -3535,17 +3535,17 @@ function wldelay_get_security_score( $options = null ) {
     }
 
     $features = array(
-        'wldelay_lockout_enabled'              => array( 'label' => __( 'IP Lockout', 'login-delay-shield' ), 'points' => 20 ),
-        'wldelay_progressive_enabled'          => array( 'label' => __( 'Progressive Delay', 'login-delay-shield' ), 'points' => 15 ),
-        'wldelay_custom_login_enabled'         => array( 'label' => __( 'Custom Login URL', 'login-delay-shield' ), 'points' => 15 ),
-        'wldelay_xmlrpc_enabled'               => array( 'label' => __( 'XML-RPC Protection', 'login-delay-shield' ), 'points' => 10 ),
-        'wldelay_email_enabled'                => array( 'label' => __( 'Email Alerts', 'login-delay-shield' ), 'points' => 10 ),
-        'wldelay_whitelist_enabled'            => array( 'label' => __( 'IP Whitelist', 'login-delay-shield' ), 'points' => 5 ),
-        'wldelay_rest_enabled'                 => array( 'label' => __( 'REST API Protection', 'login-delay-shield' ), 'points' => 5 ),
-        'wldelay_application_password_enabled' => array( 'label' => __( 'Application Password Protection', 'login-delay-shield' ), 'points' => 5 ),
-        'wldelay_password_reset_enabled'       => array( 'label' => __( 'Password Reset Protection', 'login-delay-shield' ), 'points' => 5 ),
-        'wldelay_enumeration_hardening_enabled' => array( 'label' => __( 'Username Enumeration Hardening', 'login-delay-shield' ), 'points' => 5 ),
-        'wldelay_fail2ban_enabled'             => array( 'label' => __( 'fail2ban Logging', 'login-delay-shield' ), 'points' => 5 ),
+        'wldelay_lockout_enabled'              => array( 'label' => __( 'IP Lockout', 'wp-login-delay' ), 'points' => 20 ),
+        'wldelay_progressive_enabled'          => array( 'label' => __( 'Progressive Delay', 'wp-login-delay' ), 'points' => 15 ),
+        'wldelay_custom_login_enabled'         => array( 'label' => __( 'Custom Login URL', 'wp-login-delay' ), 'points' => 15 ),
+        'wldelay_xmlrpc_enabled'               => array( 'label' => __( 'XML-RPC Protection', 'wp-login-delay' ), 'points' => 10 ),
+        'wldelay_email_enabled'                => array( 'label' => __( 'Email Alerts', 'wp-login-delay' ), 'points' => 10 ),
+        'wldelay_whitelist_enabled'            => array( 'label' => __( 'IP Whitelist', 'wp-login-delay' ), 'points' => 5 ),
+        'wldelay_rest_enabled'                 => array( 'label' => __( 'REST API Protection', 'wp-login-delay' ), 'points' => 5 ),
+        'wldelay_application_password_enabled' => array( 'label' => __( 'Application Password Protection', 'wp-login-delay' ), 'points' => 5 ),
+        'wldelay_password_reset_enabled'       => array( 'label' => __( 'Password Reset Protection', 'wp-login-delay' ), 'points' => 5 ),
+        'wldelay_enumeration_hardening_enabled' => array( 'label' => __( 'Username Enumeration Hardening', 'wp-login-delay' ), 'points' => 5 ),
+        'wldelay_fail2ban_enabled'             => array( 'label' => __( 'fail2ban Logging', 'wp-login-delay' ), 'points' => 5 ),
     );
 
     $score          = 0;
@@ -4042,12 +4042,12 @@ function wldelay_get_lockout_error_message( $ip = null, $username = '' ) {
         $time_text = human_time_diff( time(), time() + $remaining );
         return sprintf(
             /* translators: %s: remaining lockout duration, e.g. "2 minutes" */
-            __( 'Too many failed login attempts. Please try again in %s.', 'login-delay-shield' ),
+            __( 'Too many failed login attempts. Please try again in %s.', 'wp-login-delay' ),
             $time_text
         );
     }
 
-    return __( 'Too many failed login attempts. Please try again later.', 'login-delay-shield' );
+    return __( 'Too many failed login attempts. Please try again later.', 'wp-login-delay' );
 }
 
 /**
@@ -4136,14 +4136,14 @@ function wldelay_get_login_source_label( $source ) {
         case 'xmlrpc':
             return 'XML-RPC';
         case 'rest':
-            return __( 'REST API', 'login-delay-shield' );
+            return __( 'REST API', 'wp-login-delay' );
         case 'application-password':
-            return __( 'Application Password', 'login-delay-shield' );
+            return __( 'Application Password', 'wp-login-delay' );
         case 'password-reset':
-            return __( 'Password Reset', 'login-delay-shield' );
+            return __( 'Password Reset', 'wp-login-delay' );
         case 'wp-login':
         default:
-            return __( 'Login', 'login-delay-shield' );
+            return __( 'Login', 'wp-login-delay' );
     }
 }
 
@@ -4374,13 +4374,13 @@ function wldelay_is_two_factor_enabled_for_user( $user_id ) {
 function wldelay_get_2fa_provider_label( $provider ) {
     switch ( $provider ) {
         case 'two-factor':
-            return __( 'Two-Factor', 'login-delay-shield' );
+            return __( 'Two-Factor', 'wp-login-delay' );
         case 'wp-2fa':
-            return __( 'WP 2FA', 'login-delay-shield' );
+            return __( 'WP 2FA', 'wp-login-delay' );
         case 'mini-orange':
-            return __( 'miniOrange 2-Factor Authentication', 'login-delay-shield' );
+            return __( 'miniOrange 2-Factor Authentication', 'wp-login-delay' );
         case 'google-authenticator':
-            return __( 'Google Authenticator', 'login-delay-shield' );
+            return __( 'Google Authenticator', 'wp-login-delay' );
         default:
             return '';
     }
@@ -4540,10 +4540,10 @@ function wldelay_safe_mode_admin_notice() {
 
     printf(
         '<div class="notice notice-warning"><p><strong>%s</strong> %s</p></div>',
-        esc_html__( 'Login Delay Shield safe mode is active.', 'login-delay-shield' ),
+        esc_html__( 'Login Delay Shield safe mode is active.', 'wp-login-delay' ),
         sprintf(
             /* translators: 1: WLDELAY_SAFE_MODE constant name, 2: wp-config.php file name. */
-            esc_html__( 'All delays and lockouts are disabled. Remove the %1$s constant from %2$s to re-enable protection.', 'login-delay-shield' ),
+            esc_html__( 'All delays and lockouts are disabled. Remove the %1$s constant from %2$s to re-enable protection.', 'wp-login-delay' ),
             '<code>WLDELAY_SAFE_MODE</code>',
             '<code>wp-config.php</code>'
         )
@@ -4839,7 +4839,7 @@ function wldelay_block_xmlrpc_auth( $user, $username, $password ) {
 
         return new WP_Error(
             'wldelay_xmlrpc_blocked',
-            __( 'XML-RPC authentication is disabled on this site.', 'login-delay-shield' )
+            __( 'XML-RPC authentication is disabled on this site.', 'wp-login-delay' )
         );
     }
 
@@ -5148,12 +5148,12 @@ function wldelay_get_password_reset_lockout_error_message( $ip = null, $username
         $time_text = human_time_diff( time(), time() + $remaining );
         return sprintf(
             /* translators: %s: remaining lockout duration, e.g. "2 minutes" */
-            __( 'Too many password reset attempts. Please try again in %s.', 'login-delay-shield' ),
+            __( 'Too many password reset attempts. Please try again in %s.', 'wp-login-delay' ),
             $time_text
         );
     }
 
-    return __( 'Too many password reset attempts. Please try again later.', 'login-delay-shield' );
+    return __( 'Too many password reset attempts. Please try again later.', 'wp-login-delay' );
 }
 
 /**
@@ -5346,11 +5346,11 @@ function wldelay_send_notification_email( $ip, $username, $attempts ) {
     $to = ! empty( $options['wldelay_email_address'] ) ? $options['wldelay_email_address'] : get_option( 'admin_email' );
     $site_name = get_bloginfo( 'name' );
     /* translators: %s: site name */
-    $subject = sprintf( __( '[%s] Failed login attempts alert', 'login-delay-shield' ), $site_name );
+    $subject = sprintf( __( '[%s] Failed login attempts alert', 'wp-login-delay' ), $site_name );
 
     /* translators: 1: site name, 2: IP address, 3: attempted username, 4: failed attempt count, 5: timestamp */
     $message = sprintf(
-        __( "Multiple failed login attempts detected on %1\$s.\n\nIP Address: %2\$s\nUsername attempted: %3\$s\nFailed attempts: %4\$d\nTime: %5\$s\n\nThis is an automated alert from Login Delay Shield.", 'login-delay-shield' ),
+        __( "Multiple failed login attempts detected on %1\$s.\n\nIP Address: %2\$s\nUsername attempted: %3\$s\nFailed attempts: %4\$d\nTime: %5\$s\n\nThis is an automated alert from Login Delay Shield.", 'wp-login-delay' ),
         $site_name,
         $ip,
         $username,
@@ -5406,7 +5406,7 @@ function wldelay_auth_login ($user, $password) {
                             'Login failed. %d attempt remaining before temporary lockout.',
                             'Login failed. %d attempts remaining before temporary lockout.',
                             $remaining_attempts,
-                            'login-delay-shield'
+                            'wp-login-delay'
                         ),
                         $remaining_attempts
                     )
@@ -5545,7 +5545,7 @@ function wldelay_custom_login_handle_settings_change( $old_value, $value ) {
             'wldelay_custom_login_unreachable',
             sprintf(
                 /* translators: %s: the custom login URL that failed the self-check. */
-                __( 'Custom Login URL was disabled automatically: %s returned a 404 in a self-check, which would have locked you out. The standard wp-login.php still works.', 'login-delay-shield' ),
+                __( 'Custom Login URL was disabled automatically: %s returned a 404 in a self-check, which would have locked you out. The standard wp-login.php still works.', 'wp-login-delay' ),
                 esc_url( home_url( '/' . $new_slug . '/' ) )
             ),
             'error'
@@ -5559,7 +5559,7 @@ function wldelay_custom_login_handle_settings_change( $old_value, $value ) {
             'wldelay_custom_login_unverified',
             sprintf(
                 /* translators: 1: the custom login URL, 2: WLDELAY_DISABLE_CUSTOM_LOGIN constant name. */
-                __( 'Custom Login URL is enabled, but the self-check could not reach %1$s (the host may block loopback requests). Verify the URL in a private browser window before logging out. Emergency bypass: define %2$s in wp-config.php.', 'login-delay-shield' ),
+                __( 'Custom Login URL is enabled, but the self-check could not reach %1$s (the host may block loopback requests). Verify the URL in a private browser window before logging out. Emergency bypass: define %2$s in wp-config.php.', 'wp-login-delay' ),
                 esc_url( home_url( '/' . $new_slug . '/' ) ),
                 'WLDELAY_DISABLE_CUSTOM_LOGIN'
             ),
@@ -5571,7 +5571,7 @@ function wldelay_custom_login_handle_settings_change( $old_value, $value ) {
             'wldelay_custom_login_active',
             sprintf(
                 /* translators: %s: the new custom login URL. */
-                __( 'Custom Login URL is active and verified. Bookmark your new login URL now: %s — wp-login.php returns a 404 from this point on.', 'login-delay-shield' ),
+                __( 'Custom Login URL is active and verified. Bookmark your new login URL now: %s — wp-login.php returns a 404 from this point on.', 'wp-login-delay' ),
                 esc_url( home_url( '/' . $new_slug . '/' ) )
             ),
             'success'
@@ -5617,7 +5617,7 @@ function wldelay_send_custom_login_url_email( $slug ) {
 
     $subject = sprintf(
         /* translators: %s: site name. */
-        __( '[%s] Your login URL has changed', 'login-delay-shield' ),
+        __( '[%s] Your login URL has changed', 'wp-login-delay' ),
         wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES )
     );
 
@@ -5633,7 +5633,7 @@ Bookmark this URL — the standard wp-login.php now returns a 404.
 If you ever lose access, add this line to wp-config.php to restore wp-login.php:
 
 define( \'%2$s\', true );',
-            'login-delay-shield'
+            'wp-login-delay'
         ),
         $login_url,
         'WLDELAY_DISABLE_CUSTOM_LOGIN'
@@ -5981,17 +5981,17 @@ function wldelay_render_login_lockout_block() {
     if ( $remaining > 0 ) {
         $intro = sprintf(
             /* translators: %s: human-readable remaining lockout time, e.g. "2 minutes". */
-            __( 'Too many failed login attempts. You can try again in %s.', 'login-delay-shield' ),
+            __( 'Too many failed login attempts. You can try again in %s.', 'wp-login-delay' ),
             $human_remaining
         );
     } else {
-        $intro = __( 'You can try again now.', 'login-delay-shield' );
+        $intro = __( 'You can try again now.', 'wp-login-delay' );
     }
 
     $help_url   = wldelay_login_help_url();
-    $help_label = __( 'Need help getting in?', 'login-delay-shield' );
-    $ready_text = __( 'You can try again now.', 'login-delay-shield' );
-    $prefix     = __( 'Try again in', 'login-delay-shield' );
+    $help_label = __( 'Need help getting in?', 'wp-login-delay' );
+    $ready_text = __( 'You can try again now.', 'wp-login-delay' );
+    $prefix     = __( 'Try again in', 'wp-login-delay' );
 
     $html  = '<div class="wldelay-login-status wldelay-login-status--locked" role="alert" aria-live="assertive">';
     $html .= '<p class="wldelay-login-status__intro">' . esc_html( $intro ) . '</p>';

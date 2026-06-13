@@ -321,8 +321,8 @@ function wldelay_get_changelog_entries() {
  */
 function wldelay_register_changelog_page() {
     add_options_page(
-        esc_html__( 'Login Delay Shield — What\'s New', 'login-delay-shield' ),
-        esc_html__( 'Login Delay Shield — What\'s New', 'login-delay-shield' ),
+        esc_html__( 'Login Delay Shield — What\'s New', 'wp-login-delay' ),
+        esc_html__( 'Login Delay Shield — What\'s New', 'wp-login-delay' ),
         'manage_options',
         WLDELAY_CHANGELOG_SLUG,
         'wldelay_render_changelog_page'
@@ -358,20 +358,20 @@ function wldelay_render_changelog_page( $entries = null ) {
     $settings_url = admin_url( 'options-general.php?page=login-delay-shield-admin' );
 
     echo '<div class="wrap wldelay-changelog">';
-    echo '<h1>' . esc_html__( 'Login Delay Shield — What\'s New', 'login-delay-shield' ) . '</h1>';
+    echo '<h1>' . esc_html__( 'Login Delay Shield — What\'s New', 'wp-login-delay' ) . '</h1>';
 
     // Link back to the settings screen so the page is not a dead end (R1-8).
     echo '<p class="wldelay-changelog-actions"><a href="' . esc_url( $settings_url ) . '">'
-        . '&larr; ' . esc_html__( 'Back to Login Delay Shield settings', 'login-delay-shield' )
+        . '&larr; ' . esc_html__( 'Back to Login Delay Shield settings', 'wp-login-delay' )
         . '</a></p>';
 
     if ( empty( $entries ) ) {
-        echo '<p>' . esc_html__( 'No release notes are available.', 'login-delay-shield' ) . '</p>';
+        echo '<p>' . esc_html__( 'No release notes are available.', 'wp-login-delay' ) . '</p>';
         echo '</div>';
         return;
     }
 
-    echo '<p>' . esc_html__( 'Release notes for Login Delay Shield, newest first.', 'login-delay-shield' ) . '</p>';
+    echo '<p>' . esc_html__( 'Release notes for Login Delay Shield, newest first.', 'wp-login-delay' ) . '</p>';
 
     foreach ( $shown as $entry ) {
         $version    = isset( $entry['version'] ) ? $entry['version'] : '';
@@ -389,13 +389,13 @@ function wldelay_render_changelog_page( $entries = null ) {
         // number which is locale-independent.
         echo '<h2>';
         /* translators: %s: plugin version number. */
-        echo esc_html( sprintf( __( 'Version %s', 'login-delay-shield' ), $version ) );
+        echo esc_html( sprintf( __( 'Version %s', 'wp-login-delay' ), $version ) );
         if ( $is_current ) {
             // <mark> carries the "highlighted for reference" semantic so the
             // installed version is conveyed without relying on colour alone;
             // it sits inside the <h2> so heading navigation surfaces it.
             echo ' <mark class="wldelay-changelog-current-badge">'
-                . esc_html__( '(Installed version)', 'login-delay-shield' )
+                . esc_html__( '(Installed version)', 'wp-login-delay' )
                 . '</mark>';
         }
         echo '</h2>';
@@ -437,7 +437,7 @@ function wldelay_render_changelog_page( $entries = null ) {
                         '%d older version is not shown.',
                         '%d older versions are not shown.',
                         $total - count( $shown ),
-                        'login-delay-shield'
+                        'wp-login-delay'
                     ),
                     $total - count( $shown )
                 )
@@ -448,7 +448,7 @@ function wldelay_render_changelog_page( $entries = null ) {
     // Funnel the reader to the settings screen to turn on any feature the notes
     // mention, instead of leaving them to hunt for it in the admin menu (R1-8).
     echo '<p class="wldelay-changelog-footer"><a href="' . esc_url( $settings_url ) . '">'
-        . esc_html__( 'Open Login Delay Shield settings to enable any features mentioned above.', 'login-delay-shield' )
+        . esc_html__( 'Open Login Delay Shield settings to enable any features mentioned above.', 'wp-login-delay' )
         . '</a></p>';
 
     echo '</div>';
