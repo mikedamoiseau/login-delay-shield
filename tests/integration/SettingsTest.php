@@ -651,4 +651,118 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertStringContainsString( 'legacy-user', $output );
     }
 
+    // =========================================================================
+    // Coherence validator (F-1-3)
+    // =========================================================================
+
+    /**
+     * Reset the WordPress settings-errors accumulator so each coherence test
+     * sees only the errors produced by its own sanitize() call.
+     *
+     * WordPress stores settings errors in a process-global array; previous
+     * tests in the same WP_UnitTestCase run can leave stale entries behind.
+     *
+     * @return void
+     */
+    private function reset_settings_errors() {
+        global $wp_settings_errors;
+        $wp_settings_errors = array();
+    }
+
+    /**
+     * A coherent settings save registers no coherence warnings.
+     */
+    public function test_coherence_validator_no_warnings_for_clean_save() {
+        $this->reset_settings_errors();
+
+        $result = $this->settings->sanitize( array(
+            'wldelay_whitelist_enabled'   => true,
+            'wldelay_whitelist_ips'       => '203.0.113.0/24',
+            'wldelay_email_enabled'       => true,
+            'wldelay_email_threshold'     => 3,
+            'wldelay_lockout_enabled'     => true,
+            'wldelay_lockout_threshold'   => 5,
+            'wldelay_progressive_enabled' => true,
+            'wldelay_delay'               => 3,
+            'wldelay_progressive_max'     => 30,
+            'wldelay_botnet_enabled'      => true,
+            'wldelay_xmlrpc_enabled'      => false,
+            'wldelay_xmlrpc_block'        => false,
+            'wldelay_fail2ban_enabled'    => false,
+        ) );
+
+        // sanitize() must still return the array unchanged by warnings.
+        $this->assertIsArray( $result );
+        $this->assertSame( 3, $result['wldelay_delay'] );
+
+        $errors = get_settings_errors( WLDELAY_OPTION_NAME );
+        $coherence = array_filter( $errors, function ( $e ) {
+            return strpos( $e['code'], 'wldelay_coherence_' ) === 0;
+        } );
+        $this->assertEmpty( $coherence, 'Expected no coherence warnings for a clean config.' );
+    }
+
+    /**
+     * Whitelist enabled + empty IPs → sanitize registers a 'warning'-type settings error.
+     */
+    public function test_coherence_validator_whitelist_empty_registers_warning() {
+        $this->reset_settings_errors();
+
+        $this->settings->sanitize( array(
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips'     => '',  // Empty — will be sanitized to ''
+        ) );
+
+        $errors = get_settings_errors( WLDELAY_OPTION_NAME );
+        $coherence = array_filter( $errors, function ( $e ) {
+            return strpos( $e['code'], 'wldelay_coherence_' ) === 0 && $e['type'] === 'warning';
+        } );
+        $this->assertNotEmpty( $coherence, 'Expected a coherence warning for whitelist-enabled + empty IPs.' );
+
+        $messages = array_column( array_values( $coherence ), 'message' );
+        $this->assertStringContainsString( 'whitelist', implode( ' ', $messages ) );
+    }
+
+    /**
+     * Email threshold above lockout threshold → sanitize registers a 'warning'-type settings error.
+     */
+    public function test_coherence_validator_email_threshold_above_lockout_registers_warning() {
+        $this->reset_settings_errors();
+
+        $this->settings->sanitize( array(
+            'wldelay_email_enabled'     => true,
+            'wldelay_email_threshold'   => 10,
+            'wldelay_lockout_enabled'   => true,
+            'wldelay_lockout_threshold' => 5,
+        ) );
+
+        $errors = get_settings_errors( WLDELAY_OPTION_NAME );
+        $coherence = array_filter( $errors, function ( $e ) {
+            return strpos( $e['code'], 'wldelay_coherence_' ) === 0 && $e['type'] === 'warning';
+        } );
+        $this->assertNotEmpty( $coherence, 'Expected a coherence warning when email threshold exceeds lockout threshold.' );
+
+        $messages = array_column( array_values( $coherence ), 'message' );
+        $this->assertStringContainsString( 'never be sent', implode( ' ', $messages ) );
+    }
+
+    /**
+     * Coherence warnings are advisory: sanitize() still returns the full options array.
+     */
+    public function test_coherence_warnings_do_not_block_save() {
+        $this->reset_settings_errors();
+
+        $result = $this->settings->sanitize( array(
+            'wldelay_whitelist_enabled' => true,
+            'wldelay_whitelist_ips'     => '',
+            'wldelay_delay'             => 5,
+        ) );
+
+        // Despite the coherence warning, the sanitized result is returned.
+        $this->assertIsArray( $result );
+        $this->assertSame( 5, $result['wldelay_delay'] );
+        // Whitelist remains enabled (warning only — never disabled by validator).
+        $this->assertTrue( $result['wldelay_whitelist_enabled'] );
+    }
+
 }
