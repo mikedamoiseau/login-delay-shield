@@ -17,11 +17,17 @@ class Fail2BanTest extends WP_UnitTestCase {
         $this->log_path = trailingslashit( dirname( wldelay_fail2ban_get_default_log_path() ) ) . 'test/login-delay-shield-fail2ban-test.log';
         $this->delete_log_file();
 
+        // F-4-5: lines are buffered per request; start each test with an empty buffer.
+        wldelay_reset_fail2ban_buffer();
+
         $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
     }
 
     public function tearDown(): void {
         global $wpdb;
+
+        // F-4-5: drop any unflushed lines so they cannot leak into other tests.
+        wldelay_reset_fail2ban_buffer();
 
         $this->delete_log_file();
         if ( $wpdb ) {
@@ -68,6 +74,7 @@ class Fail2BanTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
 
         wldelay_log_failed_attempt( '203.0.113.10', 'alice', 'wp-login' );
+        wldelay_flush_fail2ban_buffer();
 
         $this->assertFileDoesNotExist( $this->log_path );
     }
@@ -80,6 +87,7 @@ class Fail2BanTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
 
         wldelay_log_failed_attempt( '203.0.113.10', 'alice', 'wp-login' );
+        wldelay_flush_fail2ban_buffer();
 
         $this->assertFileExists( $this->log_path );
         $contents = file_get_contents( $this->log_path );
@@ -97,6 +105,7 @@ class Fail2BanTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
 
         wldelay_log_failed_attempt( '203.0.113.10', 'alice', 'wp-login' );
+        wldelay_flush_fail2ban_buffer();
 
         $default_path = wldelay_fail2ban_get_default_log_path();
         $default_dir  = dirname( $default_path );
@@ -120,6 +129,7 @@ class Fail2BanTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
 
         wldelay_lock_ip( '203.0.113.10', 'alice', 'wp-login' );
+        wldelay_flush_fail2ban_buffer();
 
         $this->assertFileDoesNotExist( $this->log_path );
     }
@@ -133,6 +143,7 @@ class Fail2BanTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
 
         wldelay_lock_ip( '203.0.113.10', 'alice', 'wp-login' );
+        wldelay_flush_fail2ban_buffer();
 
         $this->assertFileExists( $this->log_path );
         $contents = file_get_contents( $this->log_path );
@@ -140,5 +151,26 @@ class Fail2BanTest extends WP_UnitTestCase {
         $this->assertStringContainsString( 'source=wp-login', $contents );
         $this->assertStringContainsString( 'ip=203.0.113.10', $contents );
         $this->assertStringContainsString( 'username=alice', $contents );
+    }
+
+    public function test_two_attempts_in_one_request_flush_as_two_lines() {
+        update_option( 'wldelay_options', array(
+            'wldelay_fail2ban_enabled'  => true,
+            'wldelay_fail2ban_log_path' => $this->log_path,
+        ) );
+        wldelay_clear_options_cache();
+
+        wldelay_log_failed_attempt( '203.0.113.10', 'alice', 'wp-login' );
+        wldelay_log_failed_attempt( '203.0.113.10', 'bob', 'rest' );
+
+        // Nothing hits the filesystem until the single shutdown flush (F-4-5).
+        $this->assertFileDoesNotExist( $this->log_path );
+
+        $this->assertSame( 2, wldelay_flush_fail2ban_buffer() );
+
+        $lines = array_values( array_filter( explode( PHP_EOL, file_get_contents( $this->log_path ) ) ) );
+        $this->assertCount( 2, $lines );
+        $this->assertStringContainsString( 'username=alice', $lines[0] );
+        $this->assertStringContainsString( 'username=bob', $lines[1] );
     }
 }
