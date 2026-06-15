@@ -211,6 +211,7 @@ Distributed attack detection.
 * Distributed-attack (botnet) detection — alerts when one username is targeted from many IP addresses, the credential-stuffing pattern that per-IP lockouts cannot see. Detection is on by default and never blocks: you get an audit-log entry, a dashboard warning, and (when email alerts are enabled) an email with the targeted username and sample IPs. Threshold and detection window are configurable.
 * Downloadable fail2ban configuration — one click generates the filter and jail config matching your current log path and format.
 * Settings coherence warnings — the settings page now flags contradictory combinations (empty whitelist, unwritable fail2ban path, alert thresholds that can never fire) without blocking the save.
+* "Learn more" documentation links — each settings card links to the matching section of the online user guide. The base URL is filterable (`wldelay_help_base_url`) and can be disabled.
 
 **Improvements:**
 * All login-protection entry points now share one failure-processing pipeline, eliminating drift between wp-login, XML-RPC, REST, application-password, and password-reset handling.

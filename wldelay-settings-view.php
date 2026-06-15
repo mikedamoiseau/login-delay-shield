@@ -2,6 +2,57 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
+ * Build the "Learn more" documentation URL for a settings feature card (F-5-6).
+ *
+ * Each feature card's primary tooltip links to the matching section anchor in
+ * the public user guide. The base URL is filterable via `wldelay_help_base_url`
+ * so it can be repointed (self-hosted docs, white-label) or disabled entirely —
+ * returning an empty string from the filter suppresses every doc link.
+ *
+ * The `$section` argument is matched against a fixed whitelist (which equals the
+ * anchor id), so a typo or arbitrary value yields no link rather than a broken
+ * one. Keep this list in sync with the section ids on the user-guide page.
+ *
+ * @param string $section Feature key / user-guide anchor id.
+ * @return string Absolute doc URL, or '' when disabled or unknown.
+ */
+function wldelay_get_doc_url( $section ) {
+    /**
+     * Filter the base URL for in-plugin "Learn more" documentation links.
+     *
+     * Return an empty string to disable all doc links.
+     *
+     * @param string $base_url Trailing-slashed user-guide base URL.
+     */
+    $base = apply_filters( 'wldelay_help_base_url', 'https://damoiseau.xyz/docs/login-delay-shield/user-guide/' );
+
+    if ( ! is_string( $base ) || '' === trim( $base ) ) {
+        return '';
+    }
+
+    $anchors = array(
+        'delay-settings',
+        'progressive-delay',
+        'email-notifications',
+        'ip-lockout',
+        'lockout-strategy',
+        'ip-whitelist',
+        'login-log',
+        'fail2ban',
+        'xmlrpc-protection',
+        'rest-api-protection',
+        'custom-login-url',
+        'distributed-attack',
+    );
+
+    if ( ! in_array( $section, $anchors, true ) ) {
+        return '';
+    }
+
+    return trailingslashit( $base ) . '#' . $section;
+}
+
+/**
  * Handles all rendering/view logic for the settings page
  */
 class LDS_Settings_View {
@@ -1375,7 +1426,7 @@ class LDS_Settings_View {
             '<input type="text" id="wldelay_delay" name="wldelay_options[wldelay_delay]" value="%d" />',
             isset( $this->options['wldelay_delay'] ) ? esc_attr( $this->options['wldelay_delay']) : esc_attr( LDS_Settings::_DEFAULT_DELAY_IN_SECONDS )
         );
-        echo $this->tooltip( __( 'A fixed delay applied to every login attempt. Higher values slow down brute-force attacks but may slightly delay legitimate users.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'A fixed delay applied to every login attempt. Higher values slow down brute-force attacks but may slightly delay legitimate users.', 'wp-login-delay' ), wldelay_get_doc_url( 'delay-settings' ) );
     }
 
     /**
@@ -1419,7 +1470,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_email_enabled" name="wldelay_options[wldelay_email_enabled]" value="1" %s />',
             ! empty( $this->options['wldelay_email_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Get notified when someone is trying to break into your site. Alerts are sent once per IP until the attack stops.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Get notified when someone is trying to break into your site. Alerts are sent once per IP until the attack stops.', 'wp-login-delay' ), wldelay_get_doc_url( 'email-notifications' ) );
     }
 
     /**
@@ -1467,7 +1518,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_lockout_enabled" name="wldelay_options[wldelay_lockout_enabled]" value="1" %s />',
             ! empty( $this->options['wldelay_lockout_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Temporarily block IPs after too many failures. Effective at stopping automated attacks cold.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Temporarily block IPs after too many failures. Effective at stopping automated attacks cold.', 'wp-login-delay' ), wldelay_get_doc_url( 'ip-lockout' ) );
     }
 
     /**
@@ -1587,7 +1638,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_whitelist_enabled" name="wldelay_options[wldelay_whitelist_enabled]" value="1" %s />',
             ! empty( $this->options['wldelay_whitelist_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Bypass all protection for trusted IPs. Useful for office networks or VPNs where delays would be annoying.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Bypass all protection for trusted IPs. Useful for office networks or VPNs where delays would be annoying.', 'wp-login-delay' ), wldelay_get_doc_url( 'ip-whitelist' ) );
     }
 
     /**
@@ -1612,7 +1663,7 @@ class LDS_Settings_View {
                 ? esc_attr( $this->options['wldelay_log_retention_days'] )
                 : esc_attr( LDS_Settings::_DEFAULT_LOG_RETENTION_DAYS )
         );
-        echo $this->tooltip( __( 'Old logs are automatically cleaned up to save database space. Shorter retention = smaller database.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Old logs are automatically cleaned up to save database space. Shorter retention = smaller database.', 'wp-login-delay' ), wldelay_get_doc_url( 'login-log' ) );
         echo '<p id="wldelay_log_retention_desc" class="description">' . esc_html__( 'Automatically delete log entries older than this many days. Set to 0 to keep logs forever.', 'wp-login-delay' ) . '</p>';
     }
 
@@ -1684,7 +1735,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_xmlrpc_enabled" name="wldelay_options[wldelay_xmlrpc_enabled]" value="1" %s aria-describedby="wldelay_xmlrpc_enabled_desc" />',
             ! empty( $this->options['wldelay_xmlrpc_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'XML-RPC is often targeted by attackers because it allows multiple login attempts in a single request. Protecting it is strongly recommended.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'XML-RPC is often targeted by attackers because it allows multiple login attempts in a single request. Protecting it is strongly recommended.', 'wp-login-delay' ), wldelay_get_doc_url( 'xmlrpc-protection' ) );
         echo '<p id="wldelay_xmlrpc_enabled_desc" class="description">' . esc_html__( 'Apply delay and lockout protection to XML-RPC authentication requests.', 'wp-login-delay' ) . '</p>';
     }
 
@@ -1739,7 +1790,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_custom_login_enabled" name="wldelay_options[wldelay_custom_login_enabled]" value="1" %s aria-describedby="wldelay_custom_login_enabled_desc" />',
             ! empty( $this->options['wldelay_custom_login_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'When enabled, the default wp-login.php URL will return a 404, and only the custom slug will load the login page.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'When enabled, the default wp-login.php URL will return a 404, and only the custom slug will load the login page.', 'wp-login-delay' ), wldelay_get_doc_url( 'custom-login-url' ) );
         echo '<p id="wldelay_custom_login_enabled_desc" class="description">' . esc_html__( 'Replace wp-login.php with a custom URL slug.', 'wp-login-delay' ) . '</p>';
     }
 
@@ -1796,7 +1847,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_botnet_enabled" name="wldelay_options[wldelay_botnet_enabled]" value="1" %s aria-describedby="wldelay_botnet_enabled_desc" />',
             ! empty( $this->options['wldelay_botnet_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Watches whether a single username is targeted from many different IP addresses inside a short window — the pattern per-IP lockouts cannot see. Generates dashboard banner alerts, audit log entries, and optional emails. Never blocks logins.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Watches whether a single username is targeted from many different IP addresses inside a short window — the pattern per-IP lockouts cannot see. Generates dashboard banner alerts, audit log entries, and optional emails. Never blocks logins.', 'wp-login-delay' ), wldelay_get_doc_url( 'distributed-attack' ) );
         echo '<p id="wldelay_botnet_enabled_desc" class="description">' . esc_html__( 'Enable cross-IP botnet / credential-stuffing detection (alert only, never blocks).', 'wp-login-delay' ) . '</p>';
     }
 
