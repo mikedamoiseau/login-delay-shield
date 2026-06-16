@@ -37,6 +37,7 @@ zip -qr "$OUT_ZIP" \
     wldelay-persistence.php \
     wldelay-pipeline.php \
     wldelay-privacy.php \
+    wldelay-recovery.php \
     wldelay-settings.php \
     wldelay-settings-view.php \
     uninstall.php \
