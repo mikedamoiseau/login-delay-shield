@@ -28,6 +28,7 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
         'wldelay_botnet_enabled'                => true,
         'wldelay_botnet_ip_threshold'           => 5,
         'wldelay_botnet_window_minutes'         => 15,
+        'wldelay_recovery_enabled'              => false,
     );
 
     public function test_defaults_contains_every_known_option_key() {
@@ -68,6 +69,10 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
             'wldelay_whitelist_ips',
             'wldelay_custom_login_enabled',
             'wldelay_custom_login_slug',
+            'wldelay_recovery_enabled',
+            'wldelay_recovery_token_hash',
+            'wldelay_recovery_generated_at',
+            'wldelay_recovery_last_used_at',
         );
 
         foreach ( $expected_keys as $key ) {
