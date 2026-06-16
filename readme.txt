@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 7.0
-Version: 2.5.0
-Stable tag: 2.5.0
+Version: 2.6.0
+Stable tag: 2.6.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -203,6 +203,9 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/wp-login-delay/).
 
 == Changelog ==
+
+= 2.6.0 =
+* New: Emergency Recovery URL — an opt-in, time-boxed secret URL to clear your own IP lockout when locked out with no admin or server access. Stores only a hash of the token, requires a confirm click, is rate-limited, and is fully audited.
 
 = 2.5.0 =
 Distributed attack detection.
