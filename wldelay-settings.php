@@ -626,10 +626,18 @@ class LDS_Settings {
         // token_hash / generated_at / last_used_at are written ONLY by the
         // recovery handlers, never by this form. Carry the stored values through
         // so a settings save never wipes an active recovery token.
+        // When the recovery handler calls update_option() directly (not a form
+        // submit), $input already contains the correct managed values — prefer
+        // those over the pre-update DB state so the sanitize callback never
+        // drops a freshly generated token hash.
         $existing = get_option( 'wldelay_options', array() );
         $existing = is_array( $existing ) ? $existing : array();
         foreach ( array( 'wldelay_recovery_token_hash', 'wldelay_recovery_generated_at', 'wldelay_recovery_last_used_at' ) as $managed_key ) {
-            if ( isset( $existing[ $managed_key ] ) ) {
+            if ( isset( $input[ $managed_key ] ) ) {
+                // The recovery handler is writing a new value — honour it.
+                $new_input[ $managed_key ] = $input[ $managed_key ];
+            } elseif ( isset( $existing[ $managed_key ] ) ) {
+                // Normal settings-form save — carry the stored value through.
                 $new_input[ $managed_key ] = $existing[ $managed_key ];
             }
         }

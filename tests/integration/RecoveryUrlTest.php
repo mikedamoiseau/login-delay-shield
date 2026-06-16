@@ -119,4 +119,37 @@ class RecoveryUrlTest extends WP_UnitTestCase {
         $this->assertArrayHasKey( 'wldelay_recovery_token_hash', $result, 'token_hash key must be present after sanitize.' );
         $this->assertSame( $expected_hash, $result['wldelay_recovery_token_hash'], 'token_hash must equal the pre-save value.' );
     }
+
+    public function test_sanitize_honours_token_hash_from_input() {
+        // Simulates the recovery handler's own update_option() write flowing
+        // through the registered sanitize callback: a NEW token hash arrives in
+        // $input and must survive, not be overwritten by the pre-update DB value.
+        $settings = new LDS_Settings();
+
+        // Pre-existing stored option holds an OLD hash (or none).
+        update_option( 'wldelay_options', array( 'wldelay_recovery_token_hash' => 'old-stale-hash' ) );
+        wldelay_clear_options_cache();
+
+        $new_hash = hash( 'sha256', 'brand-new-token' );
+        $result   = $settings->sanitize(
+            array(
+                'wldelay_recovery_enabled'    => '1',
+                'wldelay_recovery_token_hash' => $new_hash,
+            )
+        );
+
+        $this->assertSame( $new_hash, $result['wldelay_recovery_token_hash'], 'sanitize must honour the token hash supplied in $input, not the stale DB value' );
+    }
+
+    public function test_sanitize_preserves_db_token_when_input_omits_it() {
+        // A normal settings-form save (no managed keys in $input) must carry the
+        // stored hash through unchanged.
+        $settings = new LDS_Settings();
+        update_option( 'wldelay_options', array( 'wldelay_recovery_token_hash' => 'kept-hash' ) );
+        wldelay_clear_options_cache();
+
+        $result = $settings->sanitize( array( 'wldelay_recovery_enabled' => '1' ) );
+
+        $this->assertSame( 'kept-hash', $result['wldelay_recovery_token_hash'] );
+    }
 }
