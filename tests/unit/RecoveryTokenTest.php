@@ -43,4 +43,25 @@ class RecoveryTokenTest extends \PHPUnit\Framework\TestCase {
         $url = wldelay_recovery_build_url( 'tok123' );
         $this->assertSame( 'https://example.test/?wldelay_recovery=tok123', $url );
     }
+
+    public function test_age_days_null_when_never_generated() {
+        Functions\when( 'wldelay_get_options' )->justReturn( array( 'wldelay_recovery_generated_at' => '' ) );
+        $this->assertNull( wldelay_recovery_generated_age_days() );
+    }
+
+    public function test_age_days_and_needs_rotation() {
+        Functions\when( 'current_time' )->justReturn( '2026-01-01 00:00:00' );
+        $past = gmdate( 'Y-m-d H:i:s', strtotime( '2026-01-01 00:00:00' ) - ( 100 * DAY_IN_SECONDS ) );
+        Functions\when( 'wldelay_get_options' )->justReturn( array( 'wldelay_recovery_generated_at' => $past ) );
+
+        $this->assertSame( 100, wldelay_recovery_generated_age_days() );
+        $this->assertTrue( wldelay_recovery_needs_rotation() );
+    }
+
+    public function test_needs_rotation_false_when_fresh() {
+        Functions\when( 'current_time' )->justReturn( '2026-01-01 00:00:00' );
+        $recent = gmdate( 'Y-m-d H:i:s', strtotime( '2026-01-01 00:00:00' ) - ( 10 * DAY_IN_SECONDS ) );
+        Functions\when( 'wldelay_get_options' )->justReturn( array( 'wldelay_recovery_generated_at' => $recent ) );
+        $this->assertFalse( wldelay_recovery_needs_rotation() );
+    }
 }

@@ -94,3 +94,32 @@ function wldelay_recovery_generate_token() {
 
 	return $token;
 }
+
+/**
+ * Age of the current token in whole days, or null when never generated.
+ *
+ * @return int|null
+ */
+function wldelay_recovery_generated_age_days() {
+	$options = wldelay_get_options();
+	$at      = isset( $options['wldelay_recovery_generated_at'] ) ? (string) $options['wldelay_recovery_generated_at'] : '';
+	if ( '' === $at ) {
+		return null;
+	}
+	$generated = strtotime( $at . ' UTC' );
+	$now       = strtotime( current_time( 'mysql', true ) . ' UTC' );
+	if ( ! $generated || ! $now || $now < $generated ) {
+		return 0;
+	}
+	return (int) floor( ( $now - $generated ) / DAY_IN_SECONDS );
+}
+
+/**
+ * Whether the token is old enough to nag the admin to rotate it.
+ *
+ * @return bool
+ */
+function wldelay_recovery_needs_rotation() {
+	$age = wldelay_recovery_generated_age_days();
+	return ( null !== $age && $age >= WLDELAY_RECOVERY_NAG_DAYS );
+}
