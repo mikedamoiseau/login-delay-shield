@@ -443,14 +443,14 @@ class LDS_Settings {
         // Emergency Recovery URL section
         add_settings_section(
             'wldelay_recovery_section_id',
-            'Emergency Recovery URL',
+            __( 'Emergency Recovery URL', 'wp-login-delay' ),
             array( $this->view, 'print_recovery_section_info' ),
             'login-delay-shield-admin'
         );
 
         add_settings_field(
             'wldelay_recovery_enabled',
-            'Enable emergency recovery URL',
+            __( 'Enable emergency recovery URL', 'wp-login-delay' ),
             array( $this->view, 'recovery_enabled_callback' ),
             'login-delay-shield-admin',
             'wldelay_recovery_section_id'

@@ -197,7 +197,7 @@ class LDS_Settings_View {
 
                             <?php if ( null !== $reveal ) : ?>
                                 <div class="notice notice-warning inline" role="region" aria-label="<?php esc_attr_e( 'New recovery URL', 'wp-login-delay' ); ?>">
-                                    <p><strong><?php esc_html_e( 'Copy this URL now — it is shown only once.', 'wp-login-delay' ); ?></strong></p>
+                                    <p><strong><?php esc_html_e( 'Copy or download this URL now — it is only available here for a few minutes.', 'wp-login-delay' ); ?></strong></p>
                                     <p>
                                         <input type="text" readonly class="large-text code" id="wldelay-recovery-url" value="<?php echo esc_attr( $reveal ); ?>" onclick="this.select()">
                                     </p>

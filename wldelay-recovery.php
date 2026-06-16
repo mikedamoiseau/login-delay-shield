@@ -90,6 +90,7 @@ function wldelay_recovery_generate_token() {
 	$options = wldelay_get_options();
 	$options['wldelay_recovery_token_hash']   = wldelay_recovery_hash( $token );
 	$options['wldelay_recovery_generated_at'] = current_time( 'mysql', true );
+	$options['wldelay_recovery_last_used_at'] = '';
 	update_option( 'wldelay_options', $options );
 
 	return $token;
@@ -316,18 +317,19 @@ function wldelay_recovery_handle_request() {
 	$token = sanitize_text_field( wp_unslash( $_GET[ WLDELAY_RECOVERY_QUERY_VAR ] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$ip    = wldelay_get_client_ip();
 
-	if ( wldelay_recovery_rate_limit_hit( $ip ) ) {
-		if ( function_exists( 'wldelay_audit_log' ) ) {
-			wldelay_audit_log( 'recovery_rate_limited', array( 'object' => $ip ) );
-		}
-		wp_die(
-			esc_html__( 'Too many attempts. Please wait a few minutes and try again.', 'wp-login-delay' ),
-			esc_html__( 'Slow down', 'wp-login-delay' ),
-			array( 'response' => 429 )
-		);
-	}
-
 	if ( ! wldelay_recovery_token_matches( $token ) ) {
+		// Only failed attempts count toward the brute-force limit, so a genuine
+		// admin opening the valid link repeatedly is never throttled.
+		if ( wldelay_recovery_rate_limit_hit( $ip ) ) {
+			if ( function_exists( 'wldelay_audit_log' ) ) {
+				wldelay_audit_log( 'recovery_rate_limited', array( 'object' => $ip ) );
+			}
+			wp_die(
+				esc_html__( 'Too many attempts. Please wait a few minutes and try again.', 'wp-login-delay' ),
+				esc_html__( 'Slow down', 'wp-login-delay' ),
+				array( 'response' => 429 )
+			);
+		}
 		if ( function_exists( 'wldelay_audit_log' ) ) {
 			wldelay_audit_log( 'recovery_failed', array( 'object' => $ip ) );
 		}
@@ -390,8 +392,11 @@ function wldelay_recovery_render_landing( $token, $ip, $notice = '' ) {
 		<p>
 			<?php
 			printf(
-				/* translators: %s: caller IP address. */
-				esc_html__( 'This will remove the login lockout for your current IP address (%s). It does not log you in — you will still sign in normally afterwards.', 'wp-login-delay' ),
+				wp_kses(
+					/* translators: %s: caller IP address (wrapped in a <code> tag). */
+					__( 'This will remove the login lockout for your current IP address (%s). It does not log you in — you will still sign in normally afterwards.', 'wp-login-delay' ),
+					array( 'code' => array() )
+				),
 				'<code>' . esc_html( $ip ) . '</code>'
 			);
 			?>
