@@ -123,3 +123,18 @@ function wldelay_recovery_needs_rotation() {
 	$age = wldelay_recovery_generated_age_days();
 	return ( null !== $age && $age >= WLDELAY_RECOVERY_NAG_DAYS );
 }
+
+/**
+ * Record a hit for the caller IP and report whether it has now exceeded the
+ * allowed number of attempts inside the rolling window.
+ *
+ * @param string $ip Caller IP.
+ * @return bool True when the caller is over the limit (should be refused).
+ */
+function wldelay_recovery_rate_limit_hit( $ip ) {
+	$key   = 'wldelay_recovery_rl_' . md5( (string) $ip );
+	$count = (int) get_transient( $key );
+	$count++;
+	set_transient( $key, $count, WLDELAY_RECOVERY_RL_WINDOW );
+	return ( $count > WLDELAY_RECOVERY_RL_MAX );
+}

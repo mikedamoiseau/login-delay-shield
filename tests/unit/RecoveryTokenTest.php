@@ -64,4 +64,20 @@ class RecoveryTokenTest extends \PHPUnit\Framework\TestCase {
         Functions\when( 'wldelay_get_options' )->justReturn( array( 'wldelay_recovery_generated_at' => $recent ) );
         $this->assertFalse( wldelay_recovery_needs_rotation() );
     }
+
+    public function test_rate_limit_allows_until_threshold_then_blocks() {
+        $store = array();
+        Functions\when( 'get_transient' )->alias( function ( $k ) use ( &$store ) {
+            return isset( $store[ $k ] ) ? $store[ $k ] : false;
+        } );
+        Functions\when( 'set_transient' )->alias( function ( $k, $v ) use ( &$store ) {
+            $store[ $k ] = $v;
+            return true;
+        } );
+
+        for ( $i = 0; $i < WLDELAY_RECOVERY_RL_MAX; $i++ ) {
+            $this->assertFalse( wldelay_recovery_rate_limit_hit( '1.2.3.4' ), "hit $i" );
+        }
+        $this->assertTrue( wldelay_recovery_rate_limit_hit( '1.2.3.4' ) );
+    }
 }
