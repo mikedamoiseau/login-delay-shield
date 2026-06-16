@@ -74,6 +74,7 @@ require_once dirname( __FILE__ ) . '/wldelay-audit.php';
 require_once dirname( __FILE__ ) . '/wldelay-botnet.php';
 require_once dirname( __FILE__ ) . '/wldelay-privacy.php';
 require_once dirname( __FILE__ ) . '/wldelay-changelog.php';
+require_once dirname( __FILE__ ) . '/wldelay-recovery.php';
 if( is_admin() ) {
     $wldelay_settings_page = new LDS_Settings();
 }

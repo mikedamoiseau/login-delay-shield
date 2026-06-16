@@ -138,3 +138,60 @@ function wldelay_recovery_rate_limit_hit( $ip ) {
 	set_transient( $key, $count, WLDELAY_RECOVERY_RL_WINDOW );
 	return ( $count > WLDELAY_RECOVERY_RL_MAX );
 }
+
+/**
+ * Stash the raw recovery URL for a short, one-time reveal window so the settings
+ * page and the .txt download can show it right after generation. Never persisted
+ * to options.
+ *
+ * @param int    $user_id Admin user id.
+ * @param string $url     Full recovery URL.
+ * @return void
+ */
+function wldelay_recovery_set_reveal( $user_id, $url ) {
+	set_transient( 'wldelay_recovery_reveal_' . (int) $user_id, (string) $url, WLDELAY_RECOVERY_REVEAL_TTL );
+}
+
+/**
+ * Read the one-time reveal URL for a user (null when absent/expired).
+ *
+ * @param int $user_id Admin user id.
+ * @return string|null
+ */
+function wldelay_recovery_get_reveal( $user_id ) {
+	$url = get_transient( 'wldelay_recovery_reveal_' . (int) $user_id );
+	return ( is_string( $url ) && '' !== $url ) ? $url : null;
+}
+
+/**
+ * Email the recovery URL to the site admin address.
+ *
+ * @param string $url Full recovery URL.
+ * @return void
+ */
+function wldelay_recovery_send_email( $url ) {
+	$blogname = wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES );
+
+	$subject = sprintf(
+		/* translators: %s: site name. */
+		__( '[%s] Your Login Delay Shield emergency recovery URL', 'wp-login-delay' ),
+		$blogname
+	);
+
+	$message = sprintf(
+		/* translators: 1: recovery URL. */
+		__(
+			'Save this emergency recovery URL somewhere safe and OUTSIDE this site (a password manager, a note on another device).
+
+%1$s
+
+If you are ever locked out of the login page, open this URL and confirm to clear the lockout for your current IP address. It does not log you in — you still sign in normally afterwards.
+
+Anyone who has this URL can clear their own lockout, so treat it like a password. Regenerate it from Settings to invalidate this one.',
+			'wp-login-delay'
+		),
+		$url
+	);
+
+	wp_mail( get_option( 'admin_email' ), $subject, $message );
+}
