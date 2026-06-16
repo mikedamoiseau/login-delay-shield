@@ -297,3 +297,181 @@ function wldelay_recovery_handle_download() {
 if ( function_exists( 'add_action' ) ) {
 	add_action( 'admin_post_wldelay_recovery_download', 'wldelay_recovery_handle_download' );
 }
+
+/**
+ * init: detect ?wldelay_recovery=<token>. Feature off or no token -> no-op.
+ * Over rate limit -> refuse. Bad token -> audited generic error. Good token ->
+ * render the confirm landing page. State change happens only on the POST confirm.
+ *
+ * @return void
+ */
+function wldelay_recovery_handle_request() {
+	if ( ! wldelay_recovery_is_enabled() ) {
+		return;
+	}
+	if ( ! isset( $_GET[ WLDELAY_RECOVERY_QUERY_VAR ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- token IS the credential.
+		return;
+	}
+
+	$token = sanitize_text_field( wp_unslash( $_GET[ WLDELAY_RECOVERY_QUERY_VAR ] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$ip    = wldelay_get_client_ip();
+
+	if ( wldelay_recovery_rate_limit_hit( $ip ) ) {
+		if ( function_exists( 'wldelay_audit_log' ) ) {
+			wldelay_audit_log( 'recovery_rate_limited', array( 'object' => $ip ) );
+		}
+		wp_die(
+			esc_html__( 'Too many attempts. Please wait a few minutes and try again.', 'wp-login-delay' ),
+			esc_html__( 'Slow down', 'wp-login-delay' ),
+			array( 'response' => 429 )
+		);
+	}
+
+	if ( ! wldelay_recovery_token_matches( $token ) ) {
+		if ( function_exists( 'wldelay_audit_log' ) ) {
+			wldelay_audit_log( 'recovery_failed', array( 'object' => $ip ) );
+		}
+		wp_die(
+			esc_html__( 'This recovery link is invalid or has been replaced.', 'wp-login-delay' ),
+			esc_html__( 'Recovery', 'wp-login-delay' ),
+			array( 'response' => 403 )
+		);
+	}
+
+	wldelay_recovery_render_landing( $token, $ip );
+}
+if ( function_exists( 'add_action' ) ) {
+	add_action( 'init', 'wldelay_recovery_handle_request' );
+}
+
+/**
+ * Render the minimal confirm landing page. The token is re-submitted in the POST
+ * so the unlock fires from the admin's real click (not an email/AV prefetch).
+ *
+ * @param string $token  Validated raw token.
+ * @param string $ip     Caller IP (display).
+ * @param string $notice Optional notice (e.g. partial-failure message).
+ * @return void
+ */
+function wldelay_recovery_render_landing( $token, $ip, $notice = '' ) {
+	$action = esc_url( admin_url( 'admin-post.php' ) );
+	$nonce  = wp_create_nonce( 'wldelay_recovery_confirm' );
+
+	nocache_headers();
+	header( 'Content-Type: text/html; charset=utf-8' );
+
+	if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+		return;
+	}
+
+	?><!DOCTYPE html>
+<html <?php language_attributes(); ?>>
+<head>
+	<meta charset="<?php bloginfo( 'charset' ); ?>">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="robots" content="noindex,nofollow">
+	<title><?php esc_html_e( 'Login Delay Shield — Recovery', 'wp-login-delay' ); ?></title>
+	<style>
+		body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f0f1;color:#1d2327;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
+		.box{background:#fff;border:1px solid #c3c4c7;border-radius:8px;padding:2rem;max-width:28rem;width:90%;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+		h1{font-size:1.25rem;margin:0 0 1rem}
+		code{background:#f6f7f7;padding:.15rem .4rem;border-radius:4px}
+		button{background:#2271b1;color:#fff;border:0;border-radius:4px;padding:.6rem 1.2rem;font-size:1rem;cursor:pointer}
+		button:hover{background:#135e96}
+		.notice{background:#fcf0f1;border-left:4px solid #d63638;padding:.75rem 1rem;margin:0 0 1rem}
+	</style>
+</head>
+<body>
+	<div class="box">
+		<h1><?php esc_html_e( 'Clear login lockout?', 'wp-login-delay' ); ?></h1>
+		<?php if ( '' !== $notice ) : ?>
+			<p class="notice"><?php echo esc_html( $notice ); ?></p>
+		<?php endif; ?>
+		<p>
+			<?php
+			printf(
+				/* translators: %s: caller IP address. */
+				esc_html__( 'This will remove the login lockout for your current IP address (%s). It does not log you in — you will still sign in normally afterwards.', 'wp-login-delay' ),
+				'<code>' . esc_html( $ip ) . '</code>'
+			);
+			?>
+		</p>
+		<form method="post" action="<?php echo $action; // phpcs:ignore WordPress.Security.EscapeOutput -- esc_url above. ?>">
+			<input type="hidden" name="action" value="wldelay_recovery_confirm">
+			<input type="hidden" name="wldelay_recovery_token" value="<?php echo esc_attr( $token ); ?>">
+			<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $nonce ); ?>">
+			<button type="submit"><?php esc_html_e( 'Confirm — clear my lockout', 'wp-login-delay' ); ?></button>
+		</form>
+	</div>
+</body>
+</html><?php
+	exit;
+}
+
+/**
+ * Handle the POST confirm: re-validate token + nonce, clear the caller IP
+ * lockout (reusing the F-2-1 generation-aware delete), audit, then redirect to
+ * wp-login. A FALSE delete is surfaced as a partial failure, never success.
+ *
+ * @return void
+ */
+function wldelay_recovery_handle_confirm() {
+	if ( ! wldelay_recovery_is_enabled() ) {
+		wp_die( esc_html__( 'Recovery is not enabled.', 'wp-login-delay' ) );
+	}
+	check_admin_referer( 'wldelay_recovery_confirm' );
+
+	$token = isset( $_POST['wldelay_recovery_token'] ) ? sanitize_text_field( wp_unslash( $_POST['wldelay_recovery_token'] ) ) : '';
+	$ip    = wldelay_get_client_ip();
+
+	if ( ! wldelay_recovery_token_matches( $token ) ) {
+		if ( function_exists( 'wldelay_audit_log' ) ) {
+			wldelay_audit_log( 'recovery_failed', array( 'object' => $ip ) );
+		}
+		wp_die(
+			esc_html__( 'This recovery link is invalid or has been replaced.', 'wp-login-delay' ),
+			esc_html__( 'Recovery', 'wp-login-delay' ),
+			array( 'response' => 403 )
+		);
+	}
+
+	$deleted = wldelay_delete_lockout_for_ip( $ip, '' );
+	$failed  = ( false === $deleted );
+
+	$options = wldelay_get_options();
+	$options['wldelay_recovery_last_used_at'] = current_time( 'mysql', true );
+	update_option( 'wldelay_options', $options );
+
+	if ( function_exists( 'wldelay_audit_log' ) ) {
+		wldelay_audit_log(
+			'recovery_used',
+			array(
+				'object'    => $ip,
+				'new_value' => $failed ? 0 : (int) $deleted,
+			)
+		);
+	}
+
+	if ( $failed ) {
+		wldelay_recovery_render_landing(
+			$token,
+			$ip,
+			__( 'Could not fully clear the lockout (database error). If you can use WP-CLI, run "wp login-delay unlock-ip".', 'wp-login-delay' )
+		);
+		return;
+	}
+
+	$redirect = add_query_arg( array( 'wldelay_recovered' => '1' ), wp_login_url() );
+	wp_safe_redirect( $redirect );
+
+	if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+		return;
+	}
+	exit;
+}
+if ( function_exists( 'add_action' ) ) {
+	add_action( 'admin_post_nopriv_wldelay_recovery_confirm', 'wldelay_recovery_handle_confirm' );
+}
+if ( function_exists( 'add_action' ) ) {
+	add_action( 'admin_post_wldelay_recovery_confirm', 'wldelay_recovery_handle_confirm' );
+}
