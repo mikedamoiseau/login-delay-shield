@@ -604,6 +604,20 @@ class LDS_Settings {
         $raw_slug = isset( $input['wldelay_custom_login_slug'] ) ? (string) $input['wldelay_custom_login_slug'] : '';
         $new_input['wldelay_custom_login_slug'] = $this->sanitize_login_slug( $raw_slug );
 
+        // Emergency Recovery URL enable flag (checkbox).
+        $new_input['wldelay_recovery_enabled'] = ! empty( $input['wldelay_recovery_enabled'] );
+
+        // token_hash / generated_at / last_used_at are written ONLY by the
+        // recovery handlers, never by this form. Carry the stored values through
+        // so a settings save never wipes an active recovery token.
+        $existing = get_option( 'wldelay_options', array() );
+        $existing = is_array( $existing ) ? $existing : array();
+        foreach ( array( 'wldelay_recovery_token_hash', 'wldelay_recovery_generated_at', 'wldelay_recovery_last_used_at' ) as $managed_key ) {
+            if ( isset( $existing[ $managed_key ] ) ) {
+                $new_input[ $managed_key ] = $existing[ $managed_key ];
+            }
+        }
+
         // Coherence check: surface advisory warnings for contradictory-but-valid
         // combinations. Warnings never block the save — $new_input is returned
         // unchanged.

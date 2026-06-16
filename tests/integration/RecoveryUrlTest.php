@@ -88,4 +88,35 @@ class RecoveryUrlTest extends WP_UnitTestCase {
         }
         $this->assertTrue( wldelay_recovery_rate_limit_hit( '198.51.100.9' ) );
     }
+
+    /**
+     * A settings save must not wipe an active recovery token.
+     *
+     * wldelay_recovery_generate_token() writes token_hash + generated_at to
+     * wldelay_options via update_option(). The sanitize callback then reads
+     * wldelay_options from the DB so those handler-managed keys are carried
+     * through even when the submitted form input omits them entirely.
+     */
+    public function test_settings_save_preserves_token() {
+        // Generate a token so the three managed keys are written to the stored option.
+        $token = wldelay_recovery_generate_token();
+        wldelay_clear_options_cache();
+
+        $stored_before = wldelay_get_options();
+        $expected_hash = $stored_before['wldelay_recovery_token_hash'];
+
+        $this->assertNotEmpty( $expected_hash, 'Pre-condition: token hash must be stored before save.' );
+
+        // Simulate a settings-form save that includes the enable flag but none
+        // of the three handler-managed keys.
+        $settings = new LDS_Settings();
+        $result   = $settings->sanitize( array( 'wldelay_recovery_enabled' => '1' ) );
+
+        // The enable flag must be honoured.
+        $this->assertTrue( $result['wldelay_recovery_enabled'] );
+
+        // The token hash must survive the save untouched.
+        $this->assertArrayHasKey( 'wldelay_recovery_token_hash', $result, 'token_hash key must be present after sanitize.' );
+        $this->assertSame( $expected_hash, $result['wldelay_recovery_token_hash'], 'token_hash must equal the pre-save value.' );
+    }
 }
