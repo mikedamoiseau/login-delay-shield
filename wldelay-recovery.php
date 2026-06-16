@@ -195,3 +195,105 @@ Anyone who has this URL can clear their own lockout, so treat it like a password
 
 	wp_mail( get_option( 'admin_email' ), $subject, $message );
 }
+
+/**
+ * Admin URL that regenerates the recovery token.
+ *
+ * @return string
+ */
+function wldelay_recovery_generate_admin_url() {
+	$url = add_query_arg(
+		array( 'action' => 'wldelay_recovery_generate' ),
+		admin_url( 'admin-post.php' )
+	);
+	return wp_nonce_url( $url, 'wldelay_recovery_generate' );
+}
+
+/**
+ * Admin URL that downloads the once-revealed recovery URL as a .txt file.
+ *
+ * @return string
+ */
+function wldelay_recovery_download_admin_url() {
+	$url = add_query_arg(
+		array( 'action' => 'wldelay_recovery_download' ),
+		admin_url( 'admin-post.php' )
+	);
+	return wp_nonce_url( $url, 'wldelay_recovery_download' );
+}
+
+/**
+ * Handle the authed "generate / regenerate" action: mint a token, store its
+ * hash, set the one-time reveal, email it, then redirect back to settings.
+ *
+ * @return void
+ */
+function wldelay_recovery_handle_generate() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_die( esc_html__( 'You are not allowed to perform this action.', 'wp-login-delay' ) );
+	}
+	check_admin_referer( 'wldelay_recovery_generate' );
+
+	$token = wldelay_recovery_generate_token();
+	$url   = wldelay_recovery_build_url( $token );
+
+	wldelay_recovery_set_reveal( get_current_user_id(), $url );
+	wldelay_recovery_send_email( $url );
+
+	if ( function_exists( 'wldelay_audit_log' ) ) {
+		wldelay_audit_log( 'recovery_url_generated', array( 'object' => 'recovery_url' ) );
+	}
+
+	$redirect = add_query_arg(
+		array(
+			'page'                 => 'login-delay-shield-admin',
+			'wldelay_recovery_new' => '1',
+		),
+		admin_url( 'options-general.php' )
+	);
+	wp_safe_redirect( $redirect );
+
+	if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+		return;
+	}
+	exit;
+}
+if ( function_exists( 'add_action' ) ) {
+	add_action( 'admin_post_wldelay_recovery_generate', 'wldelay_recovery_handle_generate' );
+}
+
+/**
+ * Handle the authed .txt download of the once-revealed recovery URL.
+ *
+ * @return void
+ */
+function wldelay_recovery_handle_download() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_die( esc_html__( 'You are not allowed to perform this action.', 'wp-login-delay' ) );
+	}
+	check_admin_referer( 'wldelay_recovery_download' );
+
+	$url = wldelay_recovery_get_reveal( get_current_user_id() );
+	if ( null === $url ) {
+		wp_die( esc_html__( 'The recovery URL is no longer available to download. Regenerate it to get a fresh one.', 'wp-login-delay' ) );
+	}
+
+	$body = sprintf(
+		"Login Delay Shield — Emergency Recovery URL\n\n%s\n\nKeep this somewhere safe and off this site. Opening it lets you clear the login lockout for your current IP. It does not log you in.\n",
+		$url
+	);
+
+	nocache_headers();
+	header( 'Content-Type: text/plain; charset=utf-8' );
+	header( 'Content-Disposition: attachment; filename="login-delay-recovery-url.txt"' );
+	header( 'Content-Length: ' . strlen( $body ) );
+
+	if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+		return;
+	}
+	echo $body; // phpcs:ignore WordPress.Security.EscapeOutput -- plain-text file body.
+	exit;
+}
+if ( function_exists( 'add_action' ) ) {
+	add_action( 'admin_post_wldelay_recovery_download', 'wldelay_recovery_handle_download' );
+}
