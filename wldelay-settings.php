@@ -440,6 +440,22 @@ class LDS_Settings {
             'wldelay_custom_login_section_id'
         );
 
+        // Emergency Recovery URL section
+        add_settings_section(
+            'wldelay_recovery_section_id',
+            'Emergency Recovery URL',
+            array( $this->view, 'print_recovery_section_info' ),
+            'login-delay-shield-admin'
+        );
+
+        add_settings_field(
+            'wldelay_recovery_enabled',
+            'Enable emergency recovery URL',
+            array( $this->view, 'recovery_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_recovery_section_id'
+        );
+
     }
 
     /**
