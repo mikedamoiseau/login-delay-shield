@@ -462,11 +462,11 @@ function wldelay_recovery_handle_confirm() {
 	}
 
 	$redirect = add_query_arg( array( 'wldelay_recovered' => '1' ), wp_login_url() );
-	wp_safe_redirect( $redirect );
 
 	if ( defined( 'WP_TESTS_DOMAIN' ) ) {
 		return;
 	}
+	wp_safe_redirect( $redirect );
 	exit;
 }
 if ( function_exists( 'add_action' ) ) {
