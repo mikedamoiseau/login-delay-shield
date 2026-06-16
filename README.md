@@ -29,6 +29,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 - **Password reset protection** — Apply delays, lockouts, and logging to password reset submissions without revealing account existence
 - **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 - **Recovery tools** — Admin unlock action and WP-CLI commands to flush lockouts
+- **Emergency recovery URL (optional)** — A secret link that clears the lockout for your own IP, so you can get back in even with no admin, shell, or file access
 - **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support
 - **Multilingual** — Translated into 18 languages including French, German, Spanish, Japanese, Chinese, Arabic, and more
 - Lightweight and compatible with other security plugins
@@ -94,6 +95,22 @@ A fail2ban filter can match the IP with:
 ```text
 failregex = Login Delay Shield: (?:failed login|lockout) .* ip=<HOST>
 ```
+
+### What happens if I lock myself out?
+
+You can always get back in. Lockouts are temporary by design (24 hours maximum — there are no permanent bans), so waiting always works. To recover immediately:
+
+- If another administrator can log in, use the Active Lockouts manager on the settings page (one-click Unlock per lockout, plus "Unlock Current IP").
+- If you set up the Emergency Recovery URL in advance, open that saved link and confirm (see below).
+- With shell access, use WP-CLI (see WP-CLI Commands below).
+- With only FTP access, add `define( 'WLDELAY_SAFE_MODE', true );` to `wp-config.php` to disable all delays and lockouts until you remove the line.
+- To avoid lockouts entirely, whitelist your own IP.
+
+### What is the Emergency Recovery URL?
+
+An optional, off-by-default secret link you generate in advance from **Settings > Login Delay Shield**. Save it somewhere safe and off your site — it is shown once on screen, emailed to your admin address, and offered as a `.txt` download. If you are ever locked out with no admin login, no shell, and no file access, open the link and confirm: it clears the login lockout for your current IP only. It never logs you in (you still sign in normally afterwards) and never disables protection.
+
+Treat the link like a password. Only a hash of it is stored, so a database leak never exposes a working URL. Opening it requires a confirmation click, attempts are rate-limited and recorded in the audit log, and the plugin reminds you to regenerate it after 90 days (regenerating invalidates the previous link immediately).
 
 ### WP-CLI Commands
 
