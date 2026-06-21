@@ -82,6 +82,37 @@ class RecoveryUrlTest extends WP_UnitTestCase {
         $this->assertNotEmpty( $opts['wldelay_recovery_last_used_at'] );
     }
 
+    public function test_valid_get_request_does_not_clear_lockout() {
+        $this->enable_recovery();
+        $token = wldelay_recovery_generate_token();
+
+        wldelay_lock_ip( '203.0.113.7' );
+        $this->assertTrue( wldelay_is_ip_locked( '203.0.113.7' ) );
+
+        $_GET[ WLDELAY_RECOVERY_QUERY_VAR ] = $token;
+
+        wldelay_recovery_handle_request();
+
+        $this->assertTrue( wldelay_is_ip_locked( '203.0.113.7' ), 'GET must only render confirmation; unlock requires POST.' );
+    }
+
+    public function test_generate_action_enables_recovery_url() {
+        $user_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $user_id );
+
+        $nonce = wp_create_nonce( 'wldelay_recovery_generate' );
+        $_GET['_wpnonce']     = $nonce;
+        $_REQUEST['_wpnonce'] = $nonce;
+
+        wldelay_recovery_handle_generate();
+
+        $opts = wldelay_get_options();
+        $this->assertTrue( $opts['wldelay_recovery_enabled'] );
+        $this->assertNotEmpty( $opts['wldelay_recovery_token_hash'] );
+
+        wp_set_current_user( 0 );
+    }
+
     public function test_rate_limit_blocks_after_threshold() {
         for ( $i = 0; $i < WLDELAY_RECOVERY_RL_MAX; $i++ ) {
             $this->assertFalse( wldelay_recovery_rate_limit_hit( '198.51.100.9' ) );
@@ -151,5 +182,26 @@ class RecoveryUrlTest extends WP_UnitTestCase {
         $result = $settings->sanitize( array( 'wldelay_recovery_enabled' => '1' ) );
 
         $this->assertSame( 'kept-hash', $result['wldelay_recovery_token_hash'] );
+    }
+
+    public function test_sanitize_clears_recovery_token_when_disabled() {
+        $settings = new LDS_Settings();
+        update_option(
+            'wldelay_options',
+            array(
+                'wldelay_recovery_enabled'      => true,
+                'wldelay_recovery_token_hash'   => 'old-hash',
+                'wldelay_recovery_generated_at' => '2026-01-01 00:00:00',
+                'wldelay_recovery_last_used_at' => '2026-01-02 00:00:00',
+            )
+        );
+        wldelay_clear_options_cache();
+
+        $result = $settings->sanitize( array() );
+
+        $this->assertFalse( $result['wldelay_recovery_enabled'] );
+        $this->assertSame( '', $result['wldelay_recovery_token_hash'] );
+        $this->assertSame( '', $result['wldelay_recovery_generated_at'] );
+        $this->assertSame( '', $result['wldelay_recovery_last_used_at'] );
     }
 }

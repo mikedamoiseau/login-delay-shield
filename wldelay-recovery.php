@@ -237,7 +237,16 @@ function wldelay_recovery_handle_generate() {
 	check_admin_referer( 'wldelay_recovery_generate' );
 
 	$token = wldelay_recovery_generate_token();
-	$url   = wldelay_recovery_build_url( $token );
+
+	// Generating a recovery URL is an explicit enablement action: a generated,
+	// emailed URL that remains disabled would give the admin a false safety net.
+	$options = get_option( 'wldelay_options', array() );
+	$options = is_array( $options ) ? $options : array();
+	$options['wldelay_recovery_enabled'] = true;
+	update_option( 'wldelay_options', $options );
+	wldelay_clear_options_cache();
+
+	$url = wldelay_recovery_build_url( $token );
 
 	wldelay_recovery_set_reveal( get_current_user_id(), $url );
 	wldelay_recovery_send_email( $url );
@@ -253,11 +262,11 @@ function wldelay_recovery_handle_generate() {
 		),
 		admin_url( 'options-general.php' )
 	);
-	wp_safe_redirect( $redirect );
 
 	if ( defined( 'WP_TESTS_DOMAIN' ) ) {
 		return;
 	}
+	wp_safe_redirect( $redirect );
 	exit;
 }
 if ( function_exists( 'add_action' ) ) {
@@ -360,12 +369,13 @@ function wldelay_recovery_render_landing( $token, $ip, $notice = '' ) {
 	$action = esc_url( admin_url( 'admin-post.php' ) );
 	$nonce  = wp_create_nonce( 'wldelay_recovery_confirm' );
 
-	nocache_headers();
-	header( 'Content-Type: text/html; charset=utf-8' );
-
 	if ( defined( 'WP_TESTS_DOMAIN' ) ) {
 		return;
 	}
+
+	nocache_headers();
+	header( 'Content-Type: text/html; charset=utf-8' );
+	header( 'Referrer-Policy: no-referrer' );
 
 	?><!DOCTYPE html>
 <html <?php language_attributes(); ?>>
@@ -373,6 +383,7 @@ function wldelay_recovery_render_landing( $token, $ip, $notice = '' ) {
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="robots" content="noindex,nofollow">
+	<meta name="referrer" content="no-referrer">
 	<title><?php esc_html_e( 'Login Delay Shield — Recovery', 'wp-login-delay' ); ?></title>
 	<style>
 		body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f0f1;color:#1d2327;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
@@ -444,9 +455,11 @@ function wldelay_recovery_handle_confirm() {
 	$deleted = wldelay_delete_lockout_for_ip( $ip, '' );
 	$failed  = ( false === $deleted );
 
-	$options = wldelay_get_options();
-	$options['wldelay_recovery_last_used_at'] = current_time( 'mysql', true );
-	update_option( 'wldelay_options', $options );
+	if ( ! $failed ) {
+		$options = wldelay_get_options();
+		$options['wldelay_recovery_last_used_at'] = current_time( 'mysql', true );
+		update_option( 'wldelay_options', $options );
+	}
 
 	if ( function_exists( 'wldelay_audit_log' ) ) {
 		wldelay_audit_log(
