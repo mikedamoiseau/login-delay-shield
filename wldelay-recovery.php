@@ -3,10 +3,11 @@
  * Emergency Recovery URL.
  *
  * Opt-in, time-boxed, unauthenticated URL that clears ONLY the caller's own IP
- * lockout — never grants access, never disables the shield. The raw token is
- * never stored; only its sha256 hash lives in wldelay_options. GET renders a
- * confirm landing page; the unlock fires from a nonce-protected POST so email/
- * AV link-scanner prefetches cannot trigger it. See the design doc for rationale.
+ * lockout — never grants access, never disables the shield. Only the token's
+ * sha256 hash lives in wldelay_options long-term; the raw recovery URL is kept
+ * briefly in a transient after generation for the one-time reveal/download UX.
+ * GET renders a confirm landing page; the unlock fires from a nonce-protected
+ * POST so email/AV link-scanner prefetches cannot trigger it.
  *
  * @package WP_Login_Delay
  */
@@ -79,8 +80,8 @@ function wldelay_recovery_build_url( $token ) {
 }
 
 /**
- * Generate a fresh token, store ONLY its hash + the generation timestamp, and
- * return the raw token (the only time it is ever available in plaintext).
+ * Generate a fresh token, store ONLY its hash + the generation timestamp in
+ * options, and return the raw token for the immediate reveal/email flow.
  *
  * @return string Raw token.
  */
@@ -142,8 +143,8 @@ function wldelay_recovery_rate_limit_hit( $ip ) {
 
 /**
  * Stash the raw recovery URL for a short, one-time reveal window so the settings
- * page and the .txt download can show it right after generation. Never persisted
- * to options.
+ * page and the .txt download can show it right after generation. This may be
+ * persisted by WordPress' transient storage, so keep the TTL short.
  *
  * @param int    $user_id Admin user id.
  * @param string $url     Full recovery URL.

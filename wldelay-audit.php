@@ -1015,11 +1015,15 @@ function wldelay_get_audit_action_options( $limit = 50 ) {
 function wldelay_get_audit_action_label( $action ) {
     $action = (string) $action;
     $labels = array(
-        'settings_changed'  => __( 'Settings changed', 'wp-login-delay' ),
-        'lockout_cleared'   => __( 'Lockout cleared', 'wp-login-delay' ),
-        'lockouts_flushed'  => __( 'All lockouts flushed', 'wp-login-delay' ),
-        'whitelist_changed' => __( 'Whitelist changed', 'wp-login-delay' ),
-        'audit_gap_acknowledged' => __( 'Audit gap acknowledged', 'wp-login-delay' ),
+        'settings_changed'          => __( 'Settings changed', 'wp-login-delay' ),
+        'lockout_cleared'           => __( 'Lockout cleared', 'wp-login-delay' ),
+        'lockouts_flushed'          => __( 'All lockouts flushed', 'wp-login-delay' ),
+        'whitelist_changed'         => __( 'Whitelist changed', 'wp-login-delay' ),
+        'audit_gap_acknowledged'    => __( 'Audit gap acknowledged', 'wp-login-delay' ),
+        'recovery_url_generated'    => __( 'Recovery URL generated', 'wp-login-delay' ),
+        'recovery_used'             => __( 'Recovery URL used', 'wp-login-delay' ),
+        'recovery_failed'           => __( 'Recovery URL failed', 'wp-login-delay' ),
+        'recovery_rate_limited'     => __( 'Recovery URL rate limited', 'wp-login-delay' ),
     );
 
     return isset( $labels[ $action ] ) ? $labels[ $action ] : $action;

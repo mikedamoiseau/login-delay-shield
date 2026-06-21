@@ -108,7 +108,7 @@ You can always get back in. Lockouts are temporary by design (24 hours maximum â
 
 It is an optional, off-by-default secret link you generate in advance from the settings page (Settings > Login Delay Shield). Save it somewhere safe and off your site â€” it is shown once on screen, emailed to your admin address, and offered as a `.txt` download. If you are ever locked out with no admin login, no shell, and no file access, open the link and confirm: it clears the login lockout for your current IP only. It never logs you in (you still sign in normally afterwards) and never disables protection.
 
-Because anyone who holds the link can clear their own lockout, treat it like a password. Only a hash of the link is stored, so a database leak never exposes a working URL. Opening the link asks for a confirmation click before doing anything, attempts are rate-limited and recorded in the audit log, and the plugin reminds you to regenerate it after 90 days (regenerating invalidates the previous link immediately).
+Because anyone who holds the link can clear their own lockout, treat it like a password. The plugin stores only a hash in its long-term settings, but the freshly generated URL may exist briefly in transient storage so it can be shown and downloaded once. Opening the link asks for a confirmation click before doing anything, attempts are rate-limited and recorded in the audit log, and the plugin reminds you to regenerate it after 90 days (regenerating invalidates the previous link immediately).
 
 = Is there a premium version? Will I see ads or upsells? =
 

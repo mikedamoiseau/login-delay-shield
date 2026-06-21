@@ -620,6 +620,23 @@ class AuditLogTest extends WP_UnitTestCase {
     }
 
     /**
+     * Recovery URL audit actions should render as readable labels in filters
+     * and table rows rather than raw machine keys.
+     */
+    public function test_recovery_audit_actions_have_human_labels() {
+        $actions = array(
+            'recovery_url_generated',
+            'recovery_used',
+            'recovery_failed',
+            'recovery_rate_limited',
+        );
+
+        foreach ( $actions as $action ) {
+            $this->assertNotSame( $action, wldelay_get_audit_action_label( $action ) );
+        }
+    }
+
+    /**
      * The FIRST settings save on a fresh install — where wldelay_options does
      * not yet exist, so WordPress takes the add-option path and fires
      * add_option_{$option} rather than update_option_{$option} — must still be
