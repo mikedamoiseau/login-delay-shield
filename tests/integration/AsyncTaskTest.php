@@ -96,6 +96,9 @@ class AsyncTaskTest extends WP_UnitTestCase {
         $table = wldelay_get_lockout_table_name();
 
         global $wpdb;
+        // Isolate this assertion from rows left by other integration tests.
+        $wpdb->query( "DELETE FROM $table" );
+
         // Insert an already-expired lockout row.
         $wpdb->insert( $table, array(
             'transient_key' => 'wldelay_lockout_test',
