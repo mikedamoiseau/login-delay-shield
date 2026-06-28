@@ -306,4 +306,29 @@ class ProgressiveDelayTest extends WP_UnitTestCase {
 
         $this->assertEquals( 2, wldelay_get_failure_count() );
     }
+
+    /**
+     * Test challenge mode tracks failures without email, lockout, or progressive delay enabled.
+     */
+    public function test_challenge_mode_tracks_failures_without_other_counter_features() {
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.1';
+        $_POST['log'] = 'testuser';
+
+        update_option( 'wldelay_options', [
+            'wldelay_delay' => 0,
+            'wldelay_delay_random' => false,
+            'wldelay_progressive_enabled' => false,
+            'wldelay_email_enabled' => false,
+            'wldelay_lockout_enabled' => false,
+            'wldelay_challenge_mode_enabled' => true,
+            'wldelay_challenge_mode_threshold' => 2,
+        ] );
+        wldelay_clear_options_cache();
+
+        wldelay_track_failed_attempt( 'testuser' );
+        wldelay_track_failed_attempt( 'testuser' );
+
+        $this->assertEquals( 2, wldelay_get_failure_count() );
+        $this->assertTrue( wldelay_is_challenge_required( 'testuser' ) );
+    }
 }

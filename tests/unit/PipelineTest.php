@@ -217,4 +217,85 @@ class PipelineTest extends LDS_Unit_Test_Case {
         $r = wldelay_process_failed_attempt( 'admin', 'wp-login', array( 'lockout' => false ) );
         $this->assertFalse( $r['locked'] );
     }
+
+    public function test_challenge_required_for_count_honors_disabled_state() {
+        $options = array(
+            'wldelay_challenge_mode_enabled'   => false,
+            'wldelay_challenge_mode_threshold' => 3,
+        );
+
+        $this->assertFalse( wldelay_challenge_required_for_count( 99, $options ) );
+    }
+
+    public function test_challenge_required_for_count_uses_threshold_boundary() {
+        $options = array(
+            'wldelay_challenge_mode_enabled'   => true,
+            'wldelay_challenge_mode_threshold' => 3,
+        );
+
+        $this->assertFalse( wldelay_challenge_required_for_count( 2, $options ) );
+        $this->assertTrue( wldelay_challenge_required_for_count( 3, $options ) );
+    }
+
+    public function test_challenge_threshold_is_clamped() {
+        $this->assertSame(
+            1,
+            wldelay_get_challenge_mode_threshold( array( 'wldelay_challenge_mode_threshold' => 0 ) )
+        );
+        $this->assertSame(
+            100,
+            wldelay_get_challenge_mode_threshold( array( 'wldelay_challenge_mode_threshold' => 150 ) )
+        );
+    }
+
+    public function test_challenge_required_reads_existing_failure_counter() {
+        $options = array(
+            'wldelay_challenge_mode_enabled'   => true,
+            'wldelay_challenge_mode_threshold' => 3,
+        );
+
+        Functions\when( 'wldelay_get_options' )->justReturn( $options );
+        Functions\expect( 'wldelay_get_failure_count' )->once()->with( '203.0.113.9', 'admin' )->andReturn( 3 );
+
+        $this->assertTrue( wldelay_is_challenge_required( 'admin' ) );
+    }
+
+    public function test_challenge_required_honors_safe_mode() {
+        Functions\when( 'wldelay_get_options' )->justReturn(
+            array(
+                'wldelay_challenge_mode_enabled'   => true,
+                'wldelay_challenge_mode_threshold' => 3,
+            )
+        );
+        Functions\when( 'wldelay_is_safe_mode' )->justReturn( true );
+        Functions\expect( 'wldelay_get_failure_count' )->never();
+
+        $this->assertFalse( wldelay_is_challenge_required( 'admin' ) );
+    }
+
+    public function test_challenge_required_honors_whitelist() {
+        Functions\when( 'wldelay_get_options' )->justReturn(
+            array(
+                'wldelay_challenge_mode_enabled'   => true,
+                'wldelay_challenge_mode_threshold' => 3,
+            )
+        );
+        Functions\when( 'wldelay_is_ip_whitelisted' )->justReturn( true );
+        Functions\expect( 'wldelay_get_failure_count' )->never();
+
+        $this->assertFalse( wldelay_is_challenge_required( 'admin', '203.0.113.9' ) );
+    }
+
+    public function test_challenge_required_returns_false_without_ip() {
+        Functions\when( 'wldelay_get_options' )->justReturn(
+            array(
+                'wldelay_challenge_mode_enabled'   => true,
+                'wldelay_challenge_mode_threshold' => 3,
+            )
+        );
+        Functions\when( 'wldelay_get_client_ip' )->justReturn( '' );
+        Functions\expect( 'wldelay_get_failure_count' )->never();
+
+        $this->assertFalse( wldelay_is_challenge_required( 'admin' ) );
+    }
 }

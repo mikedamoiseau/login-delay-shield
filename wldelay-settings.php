@@ -33,6 +33,11 @@ class LDS_Settings {
     const _DEFAULT_LOCKOUT_ATTEMPT_STRATEGY = 'ip';
 
     /**
+     * Default challenge-mode settings
+     */
+    const _DEFAULT_CHALLENGE_MODE_THRESHOLD = 3;
+
+    /**
      * Default progressive delay settings
      */
     const _DEFAULT_PROGRESSIVE_INCREMENT = 1;
@@ -530,6 +535,15 @@ class LDS_Settings {
 
         // Trust proxy headers (off by default for security)
         $new_input['wldelay_trust_proxy_headers'] = ! empty( $input['wldelay_trust_proxy_headers'] );
+
+        // Challenge mode is disabled by default. This only persists threshold
+        // state for a future local challenge provider; no CAPTCHA/UI is enabled here.
+        $new_input['wldelay_challenge_mode_enabled'] = ! empty( $input['wldelay_challenge_mode_enabled'] );
+
+        $challenge_threshold = isset( $input['wldelay_challenge_mode_threshold'] )
+            ? absint( $input['wldelay_challenge_mode_threshold'] )
+            : self::_DEFAULT_CHALLENGE_MODE_THRESHOLD;
+        $new_input['wldelay_challenge_mode_threshold'] = max( 1, min( 100, $challenge_threshold ) );
 
         // Progressive delay settings
         $new_input['wldelay_progressive_enabled'] = ! empty( $input['wldelay_progressive_enabled'] );
