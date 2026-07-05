@@ -165,6 +165,7 @@ class SanitizationTest extends LDS_Unit_Test_Case {
             'wldelay_application_password_enabled' => '1',
             'wldelay_fail2ban_enabled' => '1',
             'wldelay_fail2ban_include_lockouts' => '1',
+            'wldelay_country_blocking_enabled' => '1',
         ];
         $result = $this->settings->sanitize( $input );
         $this->assertTrue( $result['wldelay_delay_random'] );
@@ -173,6 +174,7 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $this->assertTrue( $result['wldelay_application_password_enabled'] );
         $this->assertTrue( $result['wldelay_fail2ban_enabled'] );
         $this->assertTrue( $result['wldelay_fail2ban_include_lockouts'] );
+        $this->assertTrue( $result['wldelay_country_blocking_enabled'] );
 
         // Test falsy values
         $input = [
@@ -182,6 +184,7 @@ class SanitizationTest extends LDS_Unit_Test_Case {
             'wldelay_application_password_enabled' => null,
             'wldelay_fail2ban_enabled' => '',
             'wldelay_fail2ban_include_lockouts' => '',
+            'wldelay_country_blocking_enabled' => '',
         ];
         $result = $this->settings->sanitize( $input );
         $this->assertFalse( $result['wldelay_delay_random'] );
@@ -190,6 +193,7 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $this->assertFalse( $result['wldelay_application_password_enabled'] );
         $this->assertFalse( $result['wldelay_fail2ban_enabled'] );
         $this->assertFalse( $result['wldelay_fail2ban_include_lockouts'] );
+        $this->assertFalse( $result['wldelay_country_blocking_enabled'] );
     }
 
     /**
@@ -209,6 +213,21 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $this->assertFalse( $result['wldelay_fail2ban_enabled'] );
         $this->assertEquals( '', $result['wldelay_fail2ban_log_path'] );
         $this->assertFalse( $result['wldelay_fail2ban_include_lockouts'] );
+        $this->assertFalse( $result['wldelay_country_blocking_enabled'] );
+        $this->assertEquals( '', $result['wldelay_country_blocking_countries'] );
+    }
+
+    /**
+     * Test country-code sanitization.
+     */
+    public function test_country_codes_are_uppercase_unique_iso_shapes() {
+        $input = [
+            'wldelay_country_blocking_countries' => "us, ca\nDE;usa\nc1\nbr\nus",
+        ];
+
+        $result = $this->settings->sanitize( $input );
+
+        $this->assertSame( "US\nCA\nDE\nBR", $result['wldelay_country_blocking_countries'] );
     }
 
     /**

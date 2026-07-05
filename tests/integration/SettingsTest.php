@@ -99,6 +99,8 @@ class SettingsTest extends WP_UnitTestCase {
             'wldelay_fail2ban_enabled' => true,
             'wldelay_fail2ban_log_path' => 'security/fail2ban.log',
             'wldelay_fail2ban_include_lockouts' => true,
+            'wldelay_country_blocking_enabled' => true,
+            'wldelay_country_blocking_countries' => "us\ncn",
         ];
 
         $result = $this->settings->sanitize( $input );
@@ -119,6 +121,8 @@ class SettingsTest extends WP_UnitTestCase {
             $result['wldelay_fail2ban_log_path']
         );
         $this->assertTrue( $result['wldelay_fail2ban_include_lockouts'] );
+        $this->assertTrue( $result['wldelay_country_blocking_enabled'] );
+        $this->assertSame( "US\nCN", $result['wldelay_country_blocking_countries'] );
     }
 
     /**
@@ -446,6 +450,10 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertArrayHasKey( 'wldelay_fail2ban_enabled', $wp_settings_fields[ $page ]['wldelay_log_section_id'] );
         $this->assertArrayHasKey( 'wldelay_fail2ban_log_path', $wp_settings_fields[ $page ]['wldelay_log_section_id'] );
         $this->assertArrayHasKey( 'wldelay_fail2ban_include_lockouts', $wp_settings_fields[ $page ]['wldelay_log_section_id'] );
+
+        // Check country blocking fields
+        $this->assertArrayHasKey( 'wldelay_country_blocking_enabled', $wp_settings_fields[ $page ]['wldelay_country_blocking_section_id'] );
+        $this->assertArrayHasKey( 'wldelay_country_blocking_countries', $wp_settings_fields[ $page ]['wldelay_country_blocking_section_id'] );
     }
     /**
      * Test telemetry UI renders filtered rows and export URL.
