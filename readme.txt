@@ -214,7 +214,7 @@ Want to help translate the plugin into your language? Visit [translate.wordpress
 == Changelog ==
 
 = 2.6.0 =
-* New: Emergency Recovery URL — an opt-in, time-boxed secret URL to clear your own IP lockout when locked out with no admin or server access. Stores only a hash of the token, requires a confirm click, is rate-limited, and is fully audited.
+* New: Emergency Recovery URL — an opt-in secret URL to clear your own IP lockout when locked out with no admin or server access. Stores only a hash of the token, requires a confirm click, is rate-limited, and is fully audited.
 
 = 2.5.0 =
 Distributed attack detection.

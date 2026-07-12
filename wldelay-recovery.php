@@ -2,7 +2,7 @@
 /**
  * Emergency Recovery URL.
  *
- * Opt-in, time-boxed, unauthenticated URL that clears ONLY the caller's own IP
+ * Opt-in, unauthenticated URL that clears ONLY the caller's own IP
  * lockout — never grants access, never disables the shield. Only the token's
  * sha256 hash lives in wldelay_options long-term; the raw recovery URL is kept
  * briefly in a transient after generation for the one-time reveal/download UX.
@@ -137,7 +137,9 @@ function wldelay_recovery_rate_limit_hit( $ip ) {
 	$key   = 'wldelay_recovery_rl_' . md5( (string) $ip );
 	$count = (int) get_transient( $key );
 	$count++;
-	set_transient( $key, $count, WLDELAY_RECOVERY_RL_WINDOW );
+	// Cap the stored value at one past the limit so a sustained flood of failed
+	// requests cannot grow the counter (or the audit trail below) without bound.
+	set_transient( $key, min( $count, WLDELAY_RECOVERY_RL_MAX + 1 ), WLDELAY_RECOVERY_RL_WINDOW );
 	return ( $count > WLDELAY_RECOVERY_RL_MAX );
 }
 
@@ -331,7 +333,11 @@ function wldelay_recovery_handle_request() {
 		// Only failed attempts count toward the brute-force limit, so a genuine
 		// admin opening the valid link repeatedly is never throttled.
 		if ( wldelay_recovery_rate_limit_hit( $ip ) ) {
-			if ( function_exists( 'wldelay_audit_log' ) ) {
+			// Audit the throttle only once per window so a sustained flood of
+			// blocked requests cannot grow the audit trail without bound.
+			$logged_key = 'wldelay_recovery_rl_logged_' . md5( (string) $ip );
+			if ( function_exists( 'wldelay_audit_log' ) && ! get_transient( $logged_key ) ) {
+				set_transient( $logged_key, 1, WLDELAY_RECOVERY_RL_WINDOW );
 				wldelay_audit_log( 'recovery_rate_limited', array( 'object' => $ip ) );
 			}
 			wp_die(
@@ -462,8 +468,9 @@ function wldelay_recovery_handle_confirm() {
 	}
 
 	if ( function_exists( 'wldelay_audit_log' ) ) {
+		// A DB failure must never surface as a success in the audit log.
 		wldelay_audit_log(
-			'recovery_used',
+			$failed ? 'recovery_failed' : 'recovery_used',
 			array(
 				'object'    => $ip,
 				'new_value' => $failed ? 0 : (int) $deleted,
