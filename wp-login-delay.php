@@ -4710,6 +4710,42 @@ function wldelay_country_block_authentication( $user, $username, $password ) {
 add_filter( 'authenticate', 'wldelay_country_block_authentication', 5, 3 );
 
 /**
+ * Block denied countries on the REST API authentication surface.
+ *
+ * Native Application Password authentication is validated on
+ * `determine_current_user` and never runs the `authenticate` filter, so the
+ * wp-login/XML-RPC guard above cannot see it. Enforce country blocking here for
+ * credentialed REST attempts too, mirroring how the plugin already treats REST
+ * as a distinct auth surface (see wldelay_handle_rest_authentication()).
+ *
+ * @param null|bool|WP_Error $result Current REST auth result.
+ * @return null|bool|WP_Error
+ */
+function wldelay_country_block_rest_authentication( $result ) {
+    // Respect an error another handler already set; only guard fresh attempts.
+    if ( is_wp_error( $result ) ) {
+        return $result;
+    }
+
+    // Scope to credentialed attempts (Basic / Application Password). Anonymous
+    // REST reads are not "login authentication" and are left untouched.
+    if ( ! wldelay_is_application_password_attempt() ) {
+        return $result;
+    }
+
+    if ( wldelay_is_country_blocked( null, 'application-password' ) ) {
+        return new WP_Error(
+            'wldelay_country_blocked',
+            __( 'Login is not available from your location.', 'wp-login-delay' ),
+            array( 'status' => 403 )
+        );
+    }
+
+    return $result;
+}
+add_filter( 'rest_authentication_errors', 'wldelay_country_block_rest_authentication', 5 );
+
+/**
  * Check if the current IP/username is locked.
  *
  * @param string|null $ip Optional IP. Defaults to current client IP.

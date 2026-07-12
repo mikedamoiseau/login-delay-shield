@@ -15,7 +15,7 @@ class CountryBlockingTest extends WP_UnitTestCase {
 
     public function tearDown(): void {
         remove_all_filters( 'wldelay_resolve_country_code' );
-        unset( $_SERVER['REMOTE_ADDR'] );
+        unset( $_SERVER['REMOTE_ADDR'], $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'] );
         delete_option( WLDELAY_OPTION_NAME );
         wldelay_clear_options_cache();
         parent::tearDown();
@@ -108,6 +108,57 @@ class CountryBlockingTest extends WP_UnitTestCase {
         wldelay_country_block_authentication( null, 'admin', 'password' );
 
         $this->assertSame( array( '', '203.0.113.44', 'wp-login' ), $seen );
+    }
+
+    public function test_rest_authentication_filter_is_registered() {
+        $this->assertSame( 5, has_filter( 'rest_authentication_errors', 'wldelay_country_block_rest_authentication' ) );
+    }
+
+    public function test_rest_blocks_credentialed_attempt_from_denied_country() {
+        update_option(
+            WLDELAY_OPTION_NAME,
+            array(
+                'wldelay_country_blocking_enabled'   => true,
+                'wldelay_country_blocking_countries' => 'RU',
+            )
+        );
+        wldelay_clear_options_cache();
+        add_filter( 'wldelay_resolve_country_code', array( $this, 'resolve_ru' ) );
+
+        // Simulate a REST Application Password / Basic Auth attempt. This path
+        // never runs the `authenticate` filter, so the REST guard must catch it.
+        $_SERVER['PHP_AUTH_USER'] = 'admin';
+        $_SERVER['PHP_AUTH_PW']   = 'app-password';
+
+        $result = wldelay_country_block_rest_authentication( null );
+
+        $this->assertWPError( $result );
+        $this->assertSame( 'wldelay_country_blocked', $result->get_error_code() );
+    }
+
+    public function test_rest_ignores_anonymous_request() {
+        update_option(
+            WLDELAY_OPTION_NAME,
+            array(
+                'wldelay_country_blocking_enabled'   => true,
+                'wldelay_country_blocking_countries' => 'RU',
+            )
+        );
+        wldelay_clear_options_cache();
+        add_filter( 'wldelay_resolve_country_code', array( $this, 'resolve_ru' ) );
+
+        // No PHP_AUTH_* credentials -> not a login attempt -> pass through.
+        $result = wldelay_country_block_rest_authentication( null );
+
+        $this->assertNull( $result );
+    }
+
+    public function test_rest_respects_prior_error() {
+        $prior = new WP_Error( 'existing', 'existing error' );
+
+        $result = wldelay_country_block_rest_authentication( $prior );
+
+        $this->assertSame( $prior, $result );
     }
 
     public function resolve_ru( $country = '', $ip = '', $source = '' ) {
