@@ -165,6 +165,7 @@ class SanitizationTest extends LDS_Unit_Test_Case {
             'wldelay_application_password_enabled' => '1',
             'wldelay_fail2ban_enabled' => '1',
             'wldelay_fail2ban_include_lockouts' => '1',
+            'wldelay_challenge_mode_enabled' => '1',
         ];
         $result = $this->settings->sanitize( $input );
         $this->assertTrue( $result['wldelay_delay_random'] );
@@ -173,6 +174,7 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $this->assertTrue( $result['wldelay_application_password_enabled'] );
         $this->assertTrue( $result['wldelay_fail2ban_enabled'] );
         $this->assertTrue( $result['wldelay_fail2ban_include_lockouts'] );
+        $this->assertTrue( $result['wldelay_challenge_mode_enabled'] );
 
         // Test falsy values
         $input = [
@@ -182,6 +184,7 @@ class SanitizationTest extends LDS_Unit_Test_Case {
             'wldelay_application_password_enabled' => null,
             'wldelay_fail2ban_enabled' => '',
             'wldelay_fail2ban_include_lockouts' => '',
+            'wldelay_challenge_mode_enabled' => '',
         ];
         $result = $this->settings->sanitize( $input );
         $this->assertFalse( $result['wldelay_delay_random'] );
@@ -190,6 +193,7 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $this->assertFalse( $result['wldelay_application_password_enabled'] );
         $this->assertFalse( $result['wldelay_fail2ban_enabled'] );
         $this->assertFalse( $result['wldelay_fail2ban_include_lockouts'] );
+        $this->assertFalse( $result['wldelay_challenge_mode_enabled'] );
     }
 
     /**
@@ -209,6 +213,25 @@ class SanitizationTest extends LDS_Unit_Test_Case {
         $this->assertFalse( $result['wldelay_fail2ban_enabled'] );
         $this->assertEquals( '', $result['wldelay_fail2ban_log_path'] );
         $this->assertFalse( $result['wldelay_fail2ban_include_lockouts'] );
+        $this->assertFalse( $result['wldelay_challenge_mode_enabled'] );
+        $this->assertEquals( LDS_Settings::_DEFAULT_CHALLENGE_MODE_THRESHOLD, $result['wldelay_challenge_mode_threshold'] );
+    }
+
+    /**
+     * Test challenge-mode threshold sanitization bounds.
+     */
+    public function test_challenge_mode_threshold_bounded() {
+        $input = [ 'wldelay_challenge_mode_threshold' => 0 ];
+        $result = $this->settings->sanitize( $input );
+        $this->assertEquals( 1, $result['wldelay_challenge_mode_threshold'] );
+
+        $input = [ 'wldelay_challenge_mode_threshold' => 150 ];
+        $result = $this->settings->sanitize( $input );
+        $this->assertEquals( 100, $result['wldelay_challenge_mode_threshold'] );
+
+        $input = [ 'wldelay_challenge_mode_threshold' => 7 ];
+        $result = $this->settings->sanitize( $input );
+        $this->assertEquals( 7, $result['wldelay_challenge_mode_threshold'] );
     }
 
     /**

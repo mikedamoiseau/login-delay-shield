@@ -114,6 +114,19 @@ class WLDelay_Features {
                 'inject'  => false,
             ),
 
+            // Challenge mode threshold state. Disabled until explicitly opted
+            // in; this stores only local state, not a CAPTCHA provider.
+            'wldelay_challenge_mode_enabled'         => array(
+                'default' => false,
+                'type'    => 'bool',
+                'inject'  => true,
+            ),
+            'wldelay_challenge_mode_threshold'       => array(
+                'default' => LDS_Settings::_DEFAULT_CHALLENGE_MODE_THRESHOLD,
+                'type'    => 'int',
+                'inject'  => true,
+            ),
+
             // Email notifications.
             'wldelay_email_enabled'                  => array(
                 'default' => false,
