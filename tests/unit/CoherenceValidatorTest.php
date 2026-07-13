@@ -47,6 +47,8 @@ class CoherenceValidatorTest extends LDS_Unit_Test_Case {
             'wldelay_fail2ban_log_path'   => '',
             'wldelay_whitelist_enabled'   => true,
             'wldelay_whitelist_ips'       => '203.0.113.0/24',
+            'wldelay_country_blocking_enabled'   => false,
+            'wldelay_country_blocking_countries' => '',
             'wldelay_xmlrpc_enabled'      => false,
             'wldelay_xmlrpc_block'        => false,
             'wldelay_progressive_enabled' => true,
@@ -92,6 +94,34 @@ class CoherenceValidatorTest extends LDS_Unit_Test_Case {
         $o = array_merge( $this->clean_options(), array(
             'wldelay_whitelist_enabled' => false,
             'wldelay_whitelist_ips'     => '',
+        ) );
+        $this->assertSame( array(), wldelay_settings_coherence_warnings( $o ) );
+    }
+
+    // =========================================================================
+    // Rule: country blocking enabled + empty country list
+    // =========================================================================
+
+    /**
+     * Country blocking on but no country codes → warning containing 'Country blocking'.
+     */
+    public function test_warns_country_blocking_enabled_with_no_codes() {
+        $o = array_merge( $this->clean_options(), array(
+            'wldelay_country_blocking_enabled'   => true,
+            'wldelay_country_blocking_countries' => '',
+        ) );
+        $w = wldelay_settings_coherence_warnings( $o );
+        $this->assertCount( 1, $w );
+        $this->assertStringContainsString( 'Country blocking', $w[0] );
+    }
+
+    /**
+     * Country blocking disabled + empty country codes → no warning.
+     */
+    public function test_no_warning_when_country_blocking_disabled_with_no_codes() {
+        $o = array_merge( $this->clean_options(), array(
+            'wldelay_country_blocking_enabled'   => false,
+            'wldelay_country_blocking_countries' => '',
         ) );
         $this->assertSame( array(), wldelay_settings_coherence_warnings( $o ) );
     }

@@ -4591,6 +4591,166 @@ function wldelay_is_ip_whitelisted( $ip = null ) {
 }
 
 /**
+ * Return the configured country codes that should be blocked.
+ *
+ * @param array|null $options Optional options array.
+ * @return string[] Uppercase two-letter country codes.
+ */
+function wldelay_get_blocked_country_codes( $options = null ) {
+    if ( null === $options ) {
+        $options = wldelay_get_options();
+    }
+
+    $countries = isset( $options['wldelay_country_blocking_countries'] )
+        ? wldelay_sanitize_country_codes( $options['wldelay_country_blocking_countries'] )
+        : '';
+
+    return '' === $countries ? array() : explode( "\n", $countries );
+}
+
+/**
+ * Resolve the client country code through a filter.
+ *
+ * Login Delay Shield intentionally ships no GeoIP database, network lookup, or
+ * country resolver. Integrations that already know the visitor country can
+ * return an ISO 3166-1 alpha-2 code from this filter.
+ *
+ * @param string|null $ip     Optional IP address. Defaults to client IP.
+ * @param string      $source Optional auth source label.
+ * @return string Uppercase two-letter country code, or empty string.
+ */
+function wldelay_resolve_country_code( $ip = null, $source = '' ) {
+    if ( null === $ip ) {
+        $ip = wldelay_get_client_ip();
+    }
+
+    if ( empty( $ip ) ) {
+        return '';
+    }
+
+    if ( '' === $source ) {
+        $source = wldelay_is_application_password_attempt()
+            ? 'application-password'
+            : wldelay_get_login_source();
+    }
+
+    /**
+     * Filter the client country code used by Country Blocking.
+     *
+     * Return an ISO 3166-1 alpha-2 country code such as "US" or "DE".
+     * The default empty value makes country blocking a no-op unless a site
+     * supplies its own resolver.
+     *
+     * @param string $country_code Empty by default.
+     * @param string $ip           Client IP address after proxy handling.
+     * @param string $source       Auth source label (wp-login, xmlrpc, rest, application-password).
+     */
+    $country_code = apply_filters( 'wldelay_resolve_country_code', '', $ip, (string) $source );
+
+    return wldelay_normalize_country_code( $country_code );
+}
+
+/**
+ * Determine whether country blocking should reject the current request.
+ *
+ * @param string|null $ip     Optional IP address. Defaults to client IP.
+ * @param string      $source Optional auth source label.
+ * @return bool True when the resolved country is configured for blocking.
+ */
+function wldelay_is_country_blocked( $ip = null, $source = '' ) {
+    $options = wldelay_get_options();
+
+    if ( empty( $options['wldelay_country_blocking_enabled'] ) ) {
+        return false;
+    }
+
+    $blocked_countries = wldelay_get_blocked_country_codes( $options );
+    if ( empty( $blocked_countries ) ) {
+        return false;
+    }
+
+    if ( null === $ip ) {
+        $ip = wldelay_get_client_ip();
+    }
+
+    if ( empty( $ip ) ) {
+        return false;
+    }
+
+    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted( $ip ) ) {
+        return false;
+    }
+
+    $country_code = wldelay_resolve_country_code( $ip, $source );
+
+    return '' !== $country_code && in_array( $country_code, $blocked_countries, true );
+}
+
+/**
+ * Block denied countries before WordPress authenticates credentials.
+ *
+ * @param null|WP_User|WP_Error $user     Existing auth result.
+ * @param string                $username Username.
+ * @param string                $password Password.
+ * @return null|WP_User|WP_Error
+ */
+function wldelay_country_block_authentication( $user, $username, $password ) {
+    if ( is_wp_error( $user ) ) {
+        return $user;
+    }
+
+    $source = wldelay_is_application_password_attempt()
+        ? 'application-password'
+        : wldelay_get_login_source();
+
+    if ( wldelay_is_country_blocked( null, $source ) ) {
+        return new WP_Error(
+            'wldelay_country_blocked',
+            __( 'Login is not available from your location.', 'wp-login-delay' )
+        );
+    }
+
+    return $user;
+}
+add_filter( 'authenticate', 'wldelay_country_block_authentication', 5, 3 );
+
+/**
+ * Block denied countries on the REST API authentication surface.
+ *
+ * Native Application Password authentication is validated on
+ * `determine_current_user` and never runs the `authenticate` filter, so the
+ * wp-login/XML-RPC guard above cannot see it. Enforce country blocking here for
+ * credentialed REST attempts too, mirroring how the plugin already treats REST
+ * as a distinct auth surface (see wldelay_handle_rest_authentication()).
+ *
+ * @param null|bool|WP_Error $result Current REST auth result.
+ * @return null|bool|WP_Error
+ */
+function wldelay_country_block_rest_authentication( $result ) {
+    // Respect an error another handler already set; only guard fresh attempts.
+    if ( is_wp_error( $result ) ) {
+        return $result;
+    }
+
+    // Scope to credentialed attempts (Basic / Application Password). Anonymous
+    // REST reads are not "login authentication" and are left untouched.
+    if ( ! wldelay_is_application_password_attempt() ) {
+        return $result;
+    }
+
+    if ( wldelay_is_country_blocked( null, 'application-password' ) ) {
+        return new WP_Error(
+            'wldelay_country_blocked',
+            __( 'Login is not available from your location.', 'wp-login-delay' ),
+            array( 'status' => 403 )
+        );
+    }
+
+    return $result;
+}
+add_filter( 'rest_authentication_errors', 'wldelay_country_block_rest_authentication', 5 );
+
+/**
  * Check if the current IP/username is locked.
  *
  * @param string|null $ip Optional IP. Defaults to current client IP.

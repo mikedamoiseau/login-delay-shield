@@ -285,6 +285,30 @@ class LDS_Settings {
             'wldelay_whitelist_section_id'
         );
 
+        // Country Blocking section
+        add_settings_section(
+            'wldelay_country_blocking_section_id',
+            esc_html__( 'Country Blocking', 'wp-login-delay' ),
+            array( $this->view, 'print_country_blocking_section_info' ),
+            'login-delay-shield-admin'
+        );
+
+        add_settings_field(
+            'wldelay_country_blocking_enabled',
+            esc_html__( 'Enable country blocking', 'wp-login-delay' ),
+            array( $this->view, 'country_blocking_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_country_blocking_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_country_blocking_countries',
+            esc_html__( 'Blocked countries', 'wp-login-delay' ),
+            array( $this->view, 'country_blocking_countries_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_country_blocking_section_id'
+        );
+
         // Log Settings section
         add_settings_section(
             'wldelay_log_section_id',
@@ -580,6 +604,14 @@ class LDS_Settings {
         $whitelist_ips = isset( $input['wldelay_whitelist_ips'] ) ? $input['wldelay_whitelist_ips'] : '';
         $new_input['wldelay_whitelist_ips'] = $this->sanitize_whitelist_ips( $whitelist_ips );
 
+        // Country Blocking settings
+        $new_input['wldelay_country_blocking_enabled'] = ! empty( $input['wldelay_country_blocking_enabled'] );
+
+        $blocked_countries = isset( $input['wldelay_country_blocking_countries'] )
+            ? $input['wldelay_country_blocking_countries']
+            : '';
+        $new_input['wldelay_country_blocking_countries'] = $this->sanitize_country_codes( $blocked_countries );
+
         // Log retention settings (1-365 days, 0 = keep forever)
         $log_retention = isset( $input['wldelay_log_retention_days'] )
             ? absint( $input['wldelay_log_retention_days'] )
@@ -764,6 +796,59 @@ class LDS_Settings {
         return implode( "\n", $valid_ips );
     }
 
+    /**
+     * Sanitize country codes.
+     *
+     * Accepts two-letter ISO 3166-1 alpha-2 shaped codes separated by commas or
+     * whitespace. The plugin deliberately does not bundle a country-code
+     * database, so this validates shape only.
+     *
+     * @param string $input Raw country-code list.
+     * @return string Uppercase country codes, one per line.
+     */
+    public function sanitize_country_codes( $input ) {
+        return wldelay_sanitize_country_codes( $input );
+    }
+
+}
+
+/**
+ * Normalize a single country code.
+ *
+ * @param string $country_code Raw country code.
+ * @return string Uppercase two-letter code, or empty string when invalid.
+ */
+function wldelay_normalize_country_code( $country_code ) {
+    $country_code = strtoupper( trim( (string) $country_code ) );
+
+    return preg_match( '/^[A-Z]{2}$/', $country_code ) ? $country_code : '';
+}
+
+/**
+ * Sanitize a country-code list.
+ *
+ * @param string|array $input Raw country-code list.
+ * @return string Uppercase country codes, one per line.
+ */
+function wldelay_sanitize_country_codes( $input ) {
+    if ( is_array( $input ) ) {
+        $input = implode( "\n", $input );
+    }
+
+    $tokens = preg_split( '/[\s,;]+/', (string) $input );
+    if ( ! is_array( $tokens ) ) {
+        return '';
+    }
+
+    $codes = array();
+    foreach ( $tokens as $token ) {
+        $code = wldelay_normalize_country_code( $token );
+        if ( '' !== $code ) {
+            $codes[ $code ] = true;
+        }
+    }
+
+    return implode( "\n", array_keys( $codes ) );
 }
 
 /**
@@ -795,6 +880,13 @@ function wldelay_settings_coherence_warnings( array $options ) {
         $ips = isset( $options['wldelay_whitelist_ips'] ) ? trim( (string) $options['wldelay_whitelist_ips'] ) : '';
         if ( '' === $ips ) {
             $warnings[] = __( 'The IP whitelist is enabled but empty — it currently bypasses nothing.', 'wp-login-delay' );
+        }
+    }
+
+    if ( ! empty( $options['wldelay_country_blocking_enabled'] ) ) {
+        $countries = isset( $options['wldelay_country_blocking_countries'] ) ? trim( (string) $options['wldelay_country_blocking_countries'] ) : '';
+        if ( '' === $countries ) {
+            $warnings[] = __( 'Country blocking is enabled but no country codes are configured — it currently blocks nothing.', 'wp-login-delay' );
         }
     }
 

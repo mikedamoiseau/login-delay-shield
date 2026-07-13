@@ -256,6 +256,19 @@ class LDS_Settings_View {
                     </div>
 
                     <div class="wldelay-card">
+                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-country-blocking-body">
+                            <span class="dashicons dashicons-admin-site-alt3" aria-hidden="true"></span>
+                            <?php esc_html_e( 'Country Blocking', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_country_blocking_enabled', __( 'Country Blocking', 'wp-login-delay' ) ); ?>
+                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                        </h2>
+                        <div id="wldelay-country-blocking-body" class="wldelay-card-body">
+                            <p class="description"><?php esc_html_e( 'Block login authentication from selected country codes when a separate GeoIP resolver supplies the visitor country.', 'wp-login-delay' ); ?></p>
+                            <?php $this->do_settings_section_fields( 'wldelay_country_blocking_section_id' ); ?>
+                        </div>
+                    </div>
+
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-log-body">
                             <span class="dashicons dashicons-list-view" aria-hidden="true"></span>
                             <?php esc_html_e( 'Login Log', 'wp-login-delay' ); ?>
@@ -455,6 +468,7 @@ class LDS_Settings_View {
             'wldelay_password_reset_enabled' => __( 'Password Reset Protection', 'wp-login-delay' ),
             'wldelay_custom_login_enabled' => __( 'Custom Login URL', 'wp-login-delay' ),
             'wldelay_recovery_enabled' => __( 'Emergency Recovery URL', 'wp-login-delay' ),
+            'wldelay_country_blocking_enabled' => __( 'Country Blocking', 'wp-login-delay' ),
             'wldelay_fail2ban_enabled' => __( 'fail2ban Logging', 'wp-login-delay' ),
         );
 
@@ -1471,6 +1485,13 @@ class LDS_Settings_View {
     }
 
     /**
+     * Print country-blocking section info.
+     */
+    public function print_country_blocking_section_info() {
+        // Description is now in card structure.
+    }
+
+    /**
      * Print log section info
      */
     public function print_log_section_info() {
@@ -1717,6 +1738,30 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Enter trusted IP addresses. CIDR notation (e.g., 192.168.1.0/24) allows whitelisting entire networks.', 'wp-login-delay' ) );
         echo '<p id="wldelay_whitelist_ips_desc" class="description">' . esc_html__( 'One IP address or CIDR range per line (e.g., 192.168.1.1 or 10.0.0.0/8).', 'wp-login-delay' ) . '</p>';
+    }
+
+    /**
+     * Country blocking enabled callback.
+     */
+    public function country_blocking_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_country_blocking_enabled" name="wldelay_options[wldelay_country_blocking_enabled]" value="1" %s aria-describedby="wldelay_country_blocking_enabled_desc" />',
+            ! empty( $this->options['wldelay_country_blocking_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'When enabled, login authentication is blocked only when a country resolver filter returns a configured country code.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_country_blocking_enabled_desc" class="description">' . esc_html__( 'Disabled by default. Requires a GeoIP resolver hooked to wldelay_resolve_country_code; this plugin ships no GeoIP database.', 'wp-login-delay' ) . '</p>';
+    }
+
+    /**
+     * Country blocking country-code callback.
+     */
+    public function country_blocking_countries_callback() {
+        printf(
+            '<textarea id="wldelay_country_blocking_countries" name="wldelay_options[wldelay_country_blocking_countries]" rows="4" cols="20" class="large-text code" aria-describedby="wldelay_country_blocking_countries_desc">%s</textarea>',
+            isset( $this->options['wldelay_country_blocking_countries'] ) ? esc_textarea( $this->options['wldelay_country_blocking_countries'] ) : ''
+        );
+        echo $this->tooltip( __( 'Enter ISO 3166-1 alpha-2 country codes to block from login authentication.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_country_blocking_countries_desc" class="description">' . esc_html__( 'Two-letter codes only, one per line or comma-separated, for example: RU, CN, KP.', 'wp-login-delay' ) . '</p>';
     }
 
     /**

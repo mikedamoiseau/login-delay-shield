@@ -71,6 +71,8 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
             'wldelay_trust_proxy_headers',
             'wldelay_whitelist_enabled',
             'wldelay_whitelist_ips',
+            'wldelay_country_blocking_enabled',
+            'wldelay_country_blocking_countries',
             'wldelay_custom_login_enabled',
             'wldelay_custom_login_slug',
             'wldelay_recovery_enabled',
@@ -114,6 +116,8 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
         $this->assertFalse( $defaults['wldelay_fail2ban_enabled'] );
         $this->assertSame( '', $defaults['wldelay_fail2ban_log_path'] );
         $this->assertFalse( $defaults['wldelay_challenge_mode_enabled'] );
+        $this->assertFalse( $defaults['wldelay_country_blocking_enabled'] );
+        $this->assertSame( '', $defaults['wldelay_country_blocking_countries'] );
     }
 
     /**

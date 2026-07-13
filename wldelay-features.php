@@ -252,6 +252,19 @@ class WLDelay_Features {
                 'inject'  => false,
             ),
 
+            // Country blocking. Resolver is intentionally filter-only; the
+            // plugin ships no GeoIP database or lookup service.
+            'wldelay_country_blocking_enabled'       => array(
+                'default' => false,
+                'type'    => 'bool',
+                'inject'  => false,
+            ),
+            'wldelay_country_blocking_countries'     => array(
+                'default' => '',
+                'type'    => 'string',
+                'inject'  => false,
+            ),
+
             // Custom login URL. The slug default mirrors the read-site fallback
             // in wldelay_get_custom_login_slug() / sanitize_login_slug().
             'wldelay_custom_login_enabled'           => array(
