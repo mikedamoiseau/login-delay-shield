@@ -1,4 +1,11 @@
+# syntax=docker/dockerfile:1
 # Dev/test image for the Login Delay Shield plugin.
+#
+# NOTE: the `# syntax=` directive above MUST stay on line 1 (no comment or blank
+# line before it) so BuildKit loads the stable frontend that understands the
+# `COPY <<'EOF'` heredocs below. Without it, older/legacy builders parse the
+# heredoc body (`set -e`) as a Dockerfile instruction and fail with
+# `unknown instruction: SET`.
 #
 # Bundles PHP 8.2, Composer, WP-CLI, MariaDB, a working WordPress
 # install, the WordPress phpunit test harness, and the official
