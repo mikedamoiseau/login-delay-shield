@@ -15,6 +15,8 @@ class CustomLoginUrlTest extends LDS_Unit_Test_Case {
     protected function setUp(): void {
         parent::setUp();
 
+        Functions\when( 'get_option' )->justReturn( false );
+
         Functions\when( 'absint' )->alias( function( $value ) {
             return abs( (int) $value );
         } );

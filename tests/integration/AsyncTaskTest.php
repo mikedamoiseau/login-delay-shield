@@ -97,7 +97,7 @@ class AsyncTaskTest extends WP_UnitTestCase {
 
         global $wpdb;
         // Isolate this assertion from rows left by other integration tests.
-        $wpdb->query( "DELETE FROM $table" );
+        $wpdb->query( "TRUNCATE TABLE $table" );
 
         // Insert an already-expired lockout row.
         $wpdb->insert( $table, array(
