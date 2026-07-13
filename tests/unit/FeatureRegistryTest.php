@@ -12,12 +12,14 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
 
     /**
      * The opt-in security flags that wldelay_get_options() injects at read
-     * time, plus the botnet-detection keys (F-1-9) which default ON and are
-     * injected so existing installs see the feature before any save/migration.
+     * time, plus stateful threshold feature defaults that need a stable read
+     * shape before any save/migration.
      *
      * @var array<string,mixed>
      */
     private static $injected = array(
+        'wldelay_challenge_mode_enabled'        => false,
+        'wldelay_challenge_mode_threshold'      => LDS_Settings::_DEFAULT_CHALLENGE_MODE_THRESHOLD,
         'wldelay_rest_enabled'                  => false,
         'wldelay_application_password_enabled'  => false,
         'wldelay_password_reset_enabled'        => false,
@@ -46,6 +48,8 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
             'wldelay_lockout_threshold',
             'wldelay_lockout_duration',
             'wldelay_lockout_attempt_strategy',
+            'wldelay_challenge_mode_enabled',
+            'wldelay_challenge_mode_threshold',
             'wldelay_email_enabled',
             'wldelay_email_address',
             'wldelay_email_threshold',
@@ -95,6 +99,7 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
         $this->assertSame( LDS_Settings::_DEFAULT_LOCKOUT_THRESHOLD, $defaults['wldelay_lockout_threshold'] );
         $this->assertSame( LDS_Settings::_DEFAULT_LOCKOUT_DURATION, $defaults['wldelay_lockout_duration'] );
         $this->assertSame( LDS_Settings::_DEFAULT_LOCKOUT_ATTEMPT_STRATEGY, $defaults['wldelay_lockout_attempt_strategy'] );
+        $this->assertSame( LDS_Settings::_DEFAULT_CHALLENGE_MODE_THRESHOLD, $defaults['wldelay_challenge_mode_threshold'] );
         $this->assertSame( LDS_Settings::_DEFAULT_EMAIL_THRESHOLD, $defaults['wldelay_email_threshold'] );
         $this->assertSame( LDS_Settings::_DEFAULT_EMAIL_COOLDOWN, $defaults['wldelay_email_cooldown'] );
         $this->assertSame( LDS_Settings::_DEFAULT_LOG_RETENTION_DAYS, $defaults['wldelay_log_retention_days'] );
@@ -110,6 +115,7 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
         $this->assertFalse( $defaults['wldelay_enumeration_hardening_enabled'] );
         $this->assertFalse( $defaults['wldelay_fail2ban_enabled'] );
         $this->assertSame( '', $defaults['wldelay_fail2ban_log_path'] );
+        $this->assertFalse( $defaults['wldelay_challenge_mode_enabled'] );
         $this->assertFalse( $defaults['wldelay_country_blocking_enabled'] );
         $this->assertSame( '', $defaults['wldelay_country_blocking_countries'] );
     }

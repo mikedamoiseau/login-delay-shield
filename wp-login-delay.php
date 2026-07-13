@@ -5440,9 +5440,10 @@ function wldelay_track_failed_attempt( $username, $source = null ) {
     $email_enabled = ! empty( $options['wldelay_email_enabled'] );
     $lockout_enabled = ! empty( $options['wldelay_lockout_enabled'] );
     $progressive_enabled = ! empty( $options['wldelay_progressive_enabled'] );
+    $challenge_enabled = ! empty( $options['wldelay_challenge_mode_enabled'] );
 
     // Skip tracking if no feature needs failure counters.
-    if ( ! $email_enabled && ! $lockout_enabled && ! $progressive_enabled ) {
+    if ( ! $email_enabled && ! $lockout_enabled && ! $progressive_enabled && ! $challenge_enabled ) {
         return 0;
     }
 

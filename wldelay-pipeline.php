@@ -16,6 +16,81 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
+ * Resolve the sanitized challenge-mode failed-attempt threshold.
+ *
+ * @param array|null $options Optional options array.
+ * @return int Threshold clamped to the supported 1-100 range.
+ */
+function wldelay_get_challenge_mode_threshold( $options = null ) {
+    if ( $options === null ) {
+        $options = wldelay_get_options();
+    }
+
+    $threshold = isset( $options['wldelay_challenge_mode_threshold'] )
+        ? (int) $options['wldelay_challenge_mode_threshold']
+        : LDS_Settings::_DEFAULT_CHALLENGE_MODE_THRESHOLD;
+
+    return max( 1, min( 100, $threshold ) );
+}
+
+/**
+ * Pure threshold predicate for challenge-mode state.
+ *
+ * @param int        $failure_count Existing failure-counter value.
+ * @param array|null $options Optional options array.
+ * @return bool True when challenge mode is enabled and the count meets the threshold.
+ */
+function wldelay_challenge_required_for_count( $failure_count, $options = null ) {
+    if ( $options === null ) {
+        $options = wldelay_get_options();
+    }
+
+    if ( empty( $options['wldelay_challenge_mode_enabled'] ) ) {
+        return false;
+    }
+
+    return (int) $failure_count >= wldelay_get_challenge_mode_threshold( $options );
+}
+
+/**
+ * Determine whether the current login subject should be challenged.
+ *
+ * Uses the same failed-login counter and IP/IP+username strategy as lockout,
+ * while honoring safe mode and IP whitelist bypasses. This is foundation only:
+ * callers can consult the predicate later without this helper rendering or
+ * verifying any challenge provider.
+ *
+ * @param string      $username Normalized username (may be '').
+ * @param string|null $ip Optional IP. Defaults to current client IP.
+ * @param array|null  $options Optional options array.
+ * @return bool True when a challenge is required.
+ */
+function wldelay_is_challenge_required( $username = '', $ip = null, $options = null ) {
+    if ( $options === null ) {
+        $options = wldelay_get_options();
+    }
+
+    if ( empty( $options['wldelay_challenge_mode_enabled'] ) ) {
+        return false;
+    }
+
+    if ( wldelay_is_safe_mode() || wldelay_is_ip_whitelisted( $ip ) ) {
+        return false;
+    }
+
+    if ( $ip === null ) {
+        $ip = wldelay_get_client_ip();
+    }
+    if ( empty( $ip ) ) {
+        return false;
+    }
+
+    $failure_count = wldelay_get_failure_count( $ip, $username );
+
+    return wldelay_challenge_required_for_count( $failure_count, $options );
+}
+
+/**
  * Process a failed authentication attempt through the shared pipeline.
  *
  * @param string $username Normalized username (may be '').
