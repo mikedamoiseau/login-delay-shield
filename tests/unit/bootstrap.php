@@ -72,6 +72,11 @@ require_once dirname( dirname( __DIR__ ) ) . '/wldelay-changelog.php';
 // collaborators are stubbed via Brain Monkey in the tests.
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-pipeline.php';
 
+// Load the emergency recovery URL module. Pure-logic functions (hash, match,
+// build URL) are unit-tested without a WP runtime; hook registrations are
+// guarded by function_exists so they stay inert here.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-recovery.php';
+
 // WordPress time constants used by the botnet module (and available globally
 // in a real WP runtime). Define them here so unit tests run without WP.
 if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {

@@ -256,3 +256,26 @@ jQuery(document).ready(function ($) {
         });
     });
 });
+
+( function () {
+    var btn = document.getElementById( 'wldelay-recovery-copy' );
+    if ( ! btn ) {
+        return;
+    }
+    btn.addEventListener( 'click', function () {
+        var input = document.getElementById( btn.getAttribute( 'data-target' ) );
+        if ( ! input ) {
+            return;
+        }
+        input.select();
+        input.setSelectionRange( 0, 99999 );
+        if ( navigator.clipboard && navigator.clipboard.writeText ) {
+            navigator.clipboard.writeText( input.value );
+        } else {
+            document.execCommand( 'copy' );
+        }
+        var original = btn.textContent;
+        btn.textContent = '✓';
+        setTimeout( function () { btn.textContent = original; }, 1500 );
+    } );
+} )();

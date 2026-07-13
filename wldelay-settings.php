@@ -440,6 +440,22 @@ class LDS_Settings {
             'wldelay_custom_login_section_id'
         );
 
+        // Emergency Recovery URL section
+        add_settings_section(
+            'wldelay_recovery_section_id',
+            __( 'Emergency Recovery URL', 'wp-login-delay' ),
+            array( $this->view, 'print_recovery_section_info' ),
+            'login-delay-shield-admin'
+        );
+
+        add_settings_field(
+            'wldelay_recovery_enabled',
+            __( 'Enable emergency recovery URL', 'wp-login-delay' ),
+            array( $this->view, 'recovery_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_recovery_section_id'
+        );
+
     }
 
     /**
@@ -603,6 +619,32 @@ class LDS_Settings {
         $new_input['wldelay_custom_login_enabled'] = ! empty( $input['wldelay_custom_login_enabled'] );
         $raw_slug = isset( $input['wldelay_custom_login_slug'] ) ? (string) $input['wldelay_custom_login_slug'] : '';
         $new_input['wldelay_custom_login_slug'] = $this->sanitize_login_slug( $raw_slug );
+
+        // Emergency Recovery URL enable flag (checkbox).
+        $new_input['wldelay_recovery_enabled'] = ! empty( $input['wldelay_recovery_enabled'] );
+
+        // token_hash / generated_at / last_used_at are written ONLY by the
+        // recovery handlers, never by this form. Carry the stored values through
+        // so a settings save never wipes an active recovery token while enabled.
+        // When disabled, clear managed token fields so re-enabling cannot revive
+        // an old secret URL.
+        // When the recovery handler calls update_option() directly (not a form
+        // submit), $input already contains the correct managed values — prefer
+        // those over the pre-update DB state so the sanitize callback never
+        // drops a freshly generated token hash.
+        $existing = get_option( 'wldelay_options', array() );
+        $existing = is_array( $existing ) ? $existing : array();
+        foreach ( array( 'wldelay_recovery_token_hash', 'wldelay_recovery_generated_at', 'wldelay_recovery_last_used_at' ) as $managed_key ) {
+            if ( isset( $input[ $managed_key ] ) ) {
+                // The recovery handler is writing a new value — honour it.
+                $new_input[ $managed_key ] = $input[ $managed_key ];
+            } elseif ( ! $new_input['wldelay_recovery_enabled'] ) {
+                $new_input[ $managed_key ] = '';
+            } elseif ( isset( $existing[ $managed_key ] ) ) {
+                // Normal settings-form save — carry the stored value through.
+                $new_input[ $managed_key ] = $existing[ $managed_key ];
+            }
+        }
 
         // Coherence check: surface advisory warnings for contradictory-but-valid
         // combinations. Warnings never block the save — $new_input is returned
