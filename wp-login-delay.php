@@ -3363,6 +3363,7 @@ function wldelay_get_version_highlights( $version ) {
         '2.6.0' => array(
             __( 'New: Emergency Recovery URL — a secret, opt-in link to clear your own IP lockout if you are ever locked out with no admin or server access.', 'wp-login-delay' ),
             __( 'The recovery token is stored only as a hash, requires a confirm click, is rate-limited, and every use is fully audited.', 'wp-login-delay' ),
+            __( 'New: optional country blocking for login authentication. Off by default and requires a GeoIP resolver hooked to the wldelay_resolve_country_code filter (the plugin ships no GeoIP database).', 'wp-login-delay' ),
         ),
         '2.5.0' => array(
             __( 'Distributed attack detection — alerts when one username is hit from many IPs, the credential-stuffing pattern per-IP lockouts miss. On by default; alert-only, never blocks.', 'wp-login-delay' ),

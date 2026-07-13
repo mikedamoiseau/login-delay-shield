@@ -34,6 +34,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 * **Password reset protection** — Apply delays, lockouts, and logging to password reset submissions without revealing account existence
 * **Custom login URL** — Move the login page to a custom URL to reduce automated bot traffic targeting `/wp-login.php`
+* **Country blocking (optional, developer integration)** — Block login authentication from selected country codes. Ships no GeoIP database; requires a resolver hooked to the `wldelay_resolve_country_code` filter to supply the visitor country
 * **Emergency recovery URL (optional)** — Generate a secret link that clears the lockout for your own IP, so you can get back in even with no admin, shell, or file access
 * **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 * **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support
@@ -130,6 +131,10 @@ If you don't use the WordPress mobile app or remote publishing tools like Window
 
 Yes, for most sites. Attackers can abuse password reset forms to probe accounts or create noise during credential attacks. Password reset protection applies the same delay and lockout behavior used for login attempts, logs the source as `password-reset`, and keeps messages generic so the form does not reveal whether a username or email exists.
 
+= How does country blocking work? =
+
+Country blocking rejects login authentication from ISO 3166-1 alpha-2 country codes you list (for example RU, CN, KP). It is off by default. Important: the plugin ships **no** GeoIP database and performs no network lookup, so it does nothing on its own — a developer must supply the visitor's country by hooking the `wldelay_resolve_country_code` filter (for example from a CDN header like Cloudflare's `CF-IPCountry`, or a server GeoIP module). When a resolver is present, blocked-country logins are rejected across wp-login, XML-RPC, and REST application-password authentication. Whitelisted IPs and safe mode always bypass it.
+
 = How do email notifications work? =
 
 When enabled, the plugin tracks failed login attempts per IP address. Once the threshold is reached (default: 5 attempts), an email is sent to alert you. The counter resets after one hour of no failed attempts from that IP.
@@ -215,6 +220,7 @@ Want to help translate the plugin into your language? Visit [translate.wordpress
 
 = 2.6.0 =
 * New: Emergency Recovery URL — an opt-in secret URL to clear your own IP lockout when locked out with no admin or server access. Stores only a hash of the token, requires a confirm click, is rate-limited, and is fully audited.
+* New: Country blocking (optional, off by default) — block login authentication from selected ISO country codes. Ships no GeoIP database; a developer supplies the visitor country via the `wldelay_resolve_country_code` filter. Whitelisted IPs and safe mode bypass it. Also enforced on the REST application-password path.
 
 = 2.5.0 =
 Distributed attack detection.
