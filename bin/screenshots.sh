@@ -39,7 +39,8 @@ IMAGE="login-delay-shield-dev:${DOCKERFILE_HASH}"
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo ">>> Building $IMAGE (Dockerfile changed or first run; ~3 min)..."
-    docker build -t "$IMAGE" "$REPO_DIR"
+    # Force BuildKit — the Dockerfile uses heredocs the legacy builder rejects.
+    DOCKER_BUILDKIT=1 docker build -t "$IMAGE" "$REPO_DIR"
 fi
 
 cleanup() {
