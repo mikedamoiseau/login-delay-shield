@@ -264,6 +264,31 @@ class WLDelay_Features {
                 'type'    => 'string',
                 'inject'  => false,
             ),
+
+            // Emergency Recovery URL (opt-in). token_hash/generated_at/
+            // last_used_at are written by the recovery handlers, never by the
+            // settings form; only the enable flag is form-controlled. Inject the
+            // enable flag so reads see a stable false default.
+            'wldelay_recovery_enabled'               => array(
+                'default' => false,
+                'type'    => 'bool',
+                'inject'  => true,
+            ),
+            'wldelay_recovery_token_hash'            => array(
+                'default' => '',
+                'type'    => 'string',
+                'inject'  => false,
+            ),
+            'wldelay_recovery_generated_at'          => array(
+                'default' => '',
+                'type'    => 'string',
+                'inject'  => false,
+            ),
+            'wldelay_recovery_last_used_at'          => array(
+                'default' => '',
+                'type'    => 'string',
+                'inject'  => false,
+            ),
         );
     }
 

@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.5.0' );
+define( 'WLDELAY_VERSION', '2.6.0' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
@@ -39,7 +39,7 @@ define( 'WLDELAY_DASH_TRENDS_TTL', 5 * MINUTE_IN_SECONDS );
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC/password-reset protection, custom login URL, and email alerts.
-Version: 2.5.0
+Version: 2.6.0
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
@@ -74,6 +74,7 @@ require_once dirname( __FILE__ ) . '/wldelay-audit.php';
 require_once dirname( __FILE__ ) . '/wldelay-botnet.php';
 require_once dirname( __FILE__ ) . '/wldelay-privacy.php';
 require_once dirname( __FILE__ ) . '/wldelay-changelog.php';
+require_once dirname( __FILE__ ) . '/wldelay-recovery.php';
 if( is_admin() ) {
     $wldelay_settings_page = new LDS_Settings();
 }
@@ -3359,6 +3360,10 @@ add_action( 'admin_notices', 'wldelay_show_whats_new_notice' );
  */
 function wldelay_get_version_highlights( $version ) {
     $highlights = array(
+        '2.6.0' => array(
+            __( 'New: Emergency Recovery URL — a secret, opt-in link to clear your own IP lockout if you are ever locked out with no admin or server access.', 'wp-login-delay' ),
+            __( 'The recovery token is stored only as a hash, requires a confirm click, is rate-limited, and every use is fully audited.', 'wp-login-delay' ),
+        ),
         '2.5.0' => array(
             __( 'Distributed attack detection — alerts when one username is hit from many IPs, the credential-stuffing pattern per-IP lockouts miss. On by default; alert-only, never blocks.', 'wp-login-delay' ),
             __( 'Downloadable fail2ban filter and jail config that matches your current log format in one click.', 'wp-login-delay' ),

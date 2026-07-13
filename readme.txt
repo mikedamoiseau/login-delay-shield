@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 7.0
-Version: 2.5.0
-Stable tag: 2.5.0
+Version: 2.6.0
+Stable tag: 2.6.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -34,6 +34,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 * **Password reset protection** — Apply delays, lockouts, and logging to password reset submissions without revealing account existence
 * **Custom login URL** — Move the login page to a custom URL to reduce automated bot traffic targeting `/wp-login.php`
+* **Emergency recovery URL (optional)** — Generate a secret link that clears the lockout for your own IP, so you can get back in even with no admin, shell, or file access
 * **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 * **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support
 * **Multilingual** — Translated into 18 languages including French, German, Spanish, Japanese, Chinese, Arabic, and more
@@ -49,6 +50,7 @@ A security plugin that locks out its own administrator is worse than no security
 
 * Whitelisted IPs (including CIDR ranges) bypass every delay and lockout
 * The Active Lockouts manager on the settings page lists current lockouts with a one-click Unlock for each, plus an "Unlock Current IP" action
+* The optional Emergency Recovery URL — a secret link you save in advance — clears your own IP lockout even when you have no admin, shell, or file access
 * WP-CLI recovery commands: `wp wp-login-delay unlock-ip <ip>` and `wp wp-login-delay flush-lockouts`
 * Lockouts are always temporary (24 hours maximum) — there are no permanent bans
 
@@ -97,9 +99,16 @@ Enable the IP whitelist feature and add your IP address (or a range using CIDR n
 You can always get back in. Lockouts are temporary by design (24 hours maximum — there are no permanent bans), so waiting always works. To recover immediately:
 
 * If another administrator can log in, the Active Lockouts manager on the settings page shows every current lockout with a one-click Unlock, and an "Unlock Current IP" action.
+* If you set up the optional Emergency Recovery URL in advance, open that saved link and confirm — it clears your own IP lockout with no admin, shell, or file access needed. See the next question.
 * With shell access, use WP-CLI: `wp wp-login-delay unlock-ip <ip>` or `wp wp-login-delay flush-lockouts`.
 * With only FTP access, add `define( 'WLDELAY_SAFE_MODE', true );` to `wp-config.php` — this safe mode disables all delays and lockouts until you remove the line (a warning shows in the admin while it is active).
 * To avoid lockouts entirely, whitelist your own IP (CIDR ranges supported) — whitelisted IPs bypass all delays and lockouts.
+
+= What is the Emergency Recovery URL? =
+
+It is an optional, off-by-default secret link you generate in advance from the settings page (Settings > Login Delay Shield). Save it somewhere safe and off your site — it is shown once on screen, emailed to your admin address, and offered as a `.txt` download. If you are ever locked out with no admin login, no shell, and no file access, open the link and confirm: it clears the login lockout for your current IP only. It never logs you in (you still sign in normally afterwards) and never disables protection.
+
+Because anyone who holds the link can clear their own lockout, treat it like a password. The plugin stores only a hash in its long-term settings, but the freshly generated URL may exist briefly in transient storage so it can be shown and downloaded once. Opening the link asks for a confirmation click before doing anything, attempts are rate-limited and recorded in the audit log, and the plugin reminds you to regenerate it after 90 days (regenerating invalidates the previous link immediately).
 
 = Is there a premium version? Will I see ads or upsells? =
 
@@ -203,6 +212,9 @@ Found a bug or want to suggest an improvement? Open a thread in the [support for
 Want to help translate the plugin into your language? Visit [translate.wordpress.org](https://translate.wordpress.org/projects/wp-plugins/wp-login-delay/).
 
 == Changelog ==
+
+= 2.6.0 =
+* New: Emergency Recovery URL — an opt-in secret URL to clear your own IP lockout when locked out with no admin or server access. Stores only a hash of the token, requires a confirm click, is rate-limited, and is fully audited.
 
 = 2.5.0 =
 Distributed attack detection.

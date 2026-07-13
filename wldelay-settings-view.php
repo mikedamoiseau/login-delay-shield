@@ -178,6 +178,71 @@ class LDS_Settings_View {
                     </div>
 
                     <div class="wldelay-card">
+                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="false" aria-controls="wldelay-recovery-body">
+                            <span class="dashicons dashicons-sos" aria-hidden="true"></span>
+                            <?php esc_html_e( 'Emergency Recovery URL', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_recovery_enabled', __( 'Emergency Recovery URL', 'wp-login-delay' ) ); ?>
+                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                        </h2>
+                        <div id="wldelay-recovery-body" class="wldelay-card-body">
+                            <p class="description">
+                                <?php esc_html_e( 'A secret URL you can open if you are ever locked out with no admin or server access. It clears the lockout for your current IP only — it never logs you in or disables protection.', 'wp-login-delay' ); ?>
+                            </p>
+                            <?php $this->do_settings_section_fields( 'wldelay_recovery_section_id' ); ?>
+
+                            <?php
+                            $reveal    = function_exists( 'wldelay_recovery_get_reveal' ) ? wldelay_recovery_get_reveal( get_current_user_id() ) : null;
+                            $has_token = ! empty( wldelay_get_options()['wldelay_recovery_token_hash'] );
+                            ?>
+
+                            <?php if ( null !== $reveal ) : ?>
+                                <div class="notice notice-warning inline" role="region" aria-label="<?php esc_attr_e( 'New recovery URL', 'wp-login-delay' ); ?>">
+                                    <p><strong><?php esc_html_e( 'Copy or download this URL now — it is only available here for a few minutes.', 'wp-login-delay' ); ?></strong></p>
+                                    <p>
+                                        <input type="text" readonly class="large-text code" id="wldelay-recovery-url" value="<?php echo esc_attr( $reveal ); ?>" onclick="this.select()">
+                                    </p>
+                                    <p>
+                                        <button type="button" class="button" id="wldelay-recovery-copy" data-target="wldelay-recovery-url"><?php esc_html_e( 'Copy to clipboard', 'wp-login-delay' ); ?></button>
+                                        <a class="button" href="<?php echo esc_url( wldelay_recovery_download_admin_url() ); ?>"><?php esc_html_e( 'Download as .txt', 'wp-login-delay' ); ?></a>
+                                    </p>
+                                    <p class="description"><?php esc_html_e( 'A copy has also been emailed to the site admin address.', 'wp-login-delay' ); ?></p>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ( $has_token ) : ?>
+                                <?php $age = wldelay_recovery_generated_age_days(); ?>
+                                <p class="description" aria-live="polite">
+                                    <?php
+                                    printf(
+                                        /* translators: %d: number of days. */
+                                        esc_html__( 'Active — generated %d day(s) ago.', 'wp-login-delay' ),
+                                        (int) $age
+                                    );
+                                    ?>
+                                </p>
+                                <?php if ( wldelay_recovery_needs_rotation() ) : ?>
+                                    <p class="notice notice-warning inline" aria-live="polite">
+                                        <?php
+                                        printf(
+                                            /* translators: %d: nag threshold in days. */
+                                            esc_html__( 'This recovery URL is over %d days old. Regenerate it for safety.', 'wp-login-delay' ),
+                                            (int) WLDELAY_RECOVERY_NAG_DAYS
+                                        );
+                                        ?>
+                                    </p>
+                                <?php endif; ?>
+                            <?php endif; ?>
+
+                            <p>
+                                <a class="button button-secondary" href="<?php echo esc_url( wldelay_recovery_generate_admin_url() ); ?>">
+                                    <?php echo $has_token ? esc_html__( 'Regenerate recovery URL', 'wp-login-delay' ) : esc_html__( 'Generate recovery URL', 'wp-login-delay' ); ?>
+                                </a>
+                            </p>
+                            <p class="description"><?php esc_html_e( 'Regenerating immediately invalidates the previous URL.', 'wp-login-delay' ); ?></p>
+                        </div>
+                    </div>
+
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-whitelist-body">
                             <span class="dashicons dashicons-shield-alt" aria-hidden="true"></span>
                             <?php esc_html_e( 'IP Whitelist', 'wp-login-delay' ); ?>
@@ -402,6 +467,7 @@ class LDS_Settings_View {
             'wldelay_application_password_enabled' => __( 'Application Password Protection', 'wp-login-delay' ),
             'wldelay_password_reset_enabled' => __( 'Password Reset Protection', 'wp-login-delay' ),
             'wldelay_custom_login_enabled' => __( 'Custom Login URL', 'wp-login-delay' ),
+            'wldelay_recovery_enabled' => __( 'Emergency Recovery URL', 'wp-login-delay' ),
             'wldelay_country_blocking_enabled' => __( 'Country Blocking', 'wp-login-delay' ),
             'wldelay_fail2ban_enabled' => __( 'fail2ban Logging', 'wp-login-delay' ),
         );
@@ -1851,6 +1917,24 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Choose a unique, hard-to-guess slug. Only lowercase letters, numbers, and hyphens are allowed.', 'wp-login-delay' ) );
         echo '<p id="wldelay_custom_login_slug_desc" class="description">' . esc_html__( 'Lowercase letters, numbers, and hyphens only. Reserved slugs (wp-admin, login, etc.) are rejected.', 'wp-login-delay' ) . '</p>';
+    }
+
+    /**
+     * Print recovery section info
+     */
+    public function print_recovery_section_info() {
+        // Intro text lives in the card body; nothing extra needed here.
+    }
+
+    /**
+     * Recovery enabled callback
+     */
+    public function recovery_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_recovery_enabled" name="wldelay_options[wldelay_recovery_enabled]" value="1" %s aria-describedby="wldelay_recovery_enabled_desc" />',
+            ! empty( $this->options['wldelay_recovery_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo '<p id="wldelay_recovery_enabled_desc" class="description">' . esc_html__( 'Turn on a secret URL that can clear your own IP lockout if you are ever locked out.', 'wp-login-delay' ) . '</p>';
     }
 
     /**
