@@ -40,13 +40,31 @@ class EmailChallengeProviderTest extends LDS_Unit_Test_Case {
             if ( 0 === strpos( (string) $key, 'wldelay_challenge_email_rl_' ) ) {
                 return 5;
             }
-            return array( 'provider' => 'email', 'answer' => 'h:PRIOR' );
+            return array( 'provider' => 'email', 'answer' => 'h:PRIOR', 'user' => 'bob' );
         } );
         Functions\expect( 'wp_mail' )->never();
 
         $provider = new LDS_Email_Challenge_Provider();
         $state    = $provider->issue( 'bob', '203.0.113.9' );
         $this->assertSame( 'h:PRIOR', $state['answer'], 'rate-limited issue must not clobber the delivered code' );
+    }
+
+    public function test_issue_does_not_preserve_prior_code_of_other_account() {
+        Functions\when( 'get_user_by' )->justReturn( $this->makeUser( 'bob@example.com' ) );
+        Functions\when( 'get_transient' )->alias( function ( $key ) {
+            if ( 0 === strpos( (string) $key, 'wldelay_challenge_email_rl_' ) ) {
+                return 5; // rate-limited: would preserve if the account matched
+            }
+            return array( 'provider' => 'email', 'answer' => 'h:OTHER', 'user' => 'attacker' );
+        } );
+        Functions\when( 'wp_generate_password' )->justReturn( 'RANDOMFALLBACK' );
+        Functions\expect( 'wp_mail' )->never();
+
+        $provider = new LDS_Email_Challenge_Provider();
+        $state    = $provider->issue( 'bob', '203.0.113.9' );
+        // Prior code was bound to a different account: must NOT be reused.
+        $this->assertNotSame( 'h:OTHER', $state['answer'] );
+        $this->assertSame( wp_hash( 'RANDOMFALLBACK' ), $state['answer'] );
     }
 
     public function test_issue_fails_closed_when_send_fails_and_no_prior() {
