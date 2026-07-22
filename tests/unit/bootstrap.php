@@ -77,6 +77,11 @@ require_once dirname( dirname( __DIR__ ) ) . '/wldelay-pipeline.php';
 // guarded by function_exists so they stay inert here.
 require_once dirname( dirname( __DIR__ ) ) . '/wldelay-recovery.php';
 
+// Load the challenge provider library. Provider classes + registry + state
+// helpers are pure logic (collaborators stubbed via Brain Monkey). The M1 file
+// registers no top-level hooks, so it loads cleanly without a WP runtime.
+require_once dirname( dirname( __DIR__ ) ) . '/wldelay-challenge.php';
+
 // WordPress time constants used by the botnet module (and available globally
 // in a real WP runtime). Define them here so unit tests run without WP.
 if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {
