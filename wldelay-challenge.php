@@ -429,6 +429,7 @@ function wldelay_challenge_authenticate_user( $user, $password ) {
 
     // Non-interactive entry points cannot render/complete a challenge: deny.
     if ( 'wp-login' !== $source ) {
+        wldelay_mark_login_gate_rejection();
         return new WP_Error(
             'wldelay_challenge_required',
             __( 'Additional verification is required. Complete it on the login page.', 'wp-login-delay' )
@@ -439,6 +440,7 @@ function wldelay_challenge_authenticate_user( $user, $password ) {
     $provider = wldelay_get_active_challenge_provider();
 
     if ( ! $provider->is_available( $username, $ip ) ) {
+        wldelay_mark_login_gate_rejection();
         return new WP_Error(
             'wldelay_challenge_unavailable',
             __( 'Additional verification is required but cannot be completed for this account.', 'wp-login-delay' )
@@ -460,6 +462,7 @@ function wldelay_challenge_authenticate_user( $user, $password ) {
 
     if ( '' === $answer || $stale ) {
         wldelay_issue_challenge( $provider, $username, $ip );
+        wldelay_mark_login_gate_rejection();
         return new WP_Error(
             'wldelay_challenge_required',
             __( 'Security check required. Complete the verification below and sign in again.', 'wp-login-delay' )

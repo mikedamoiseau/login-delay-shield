@@ -220,6 +220,7 @@ Want to help translate the plugin into your language? Visit [translate.wordpress
 
 = 2.7.0 =
 * New: Challenge mode is now active. After a configurable number of failed sign-ins from an IP, the login form presents a self-hosted challenge — a math question, an emailed one-time code, or an in-browser proof-of-work — that must be solved before credentials are checked, so password validity never leaks. Non-interactive logins (XML-RPC, REST, application passwords) are blocked outright. No third-party CAPTCHA. Developers can register custom challenge providers via the `wldelay_challenge_providers` filter.
+* Fix: failed sign-ins on the standard login form now correctly count and apply the configured delay, so IP lockout, email alerts, progressive delay, and challenge mode trigger as intended (previously the counter and delay could be skipped for wp-login attempts).
 
 = 2.6.0 =
 * New: Emergency Recovery URL — an opt-in secret URL to clear your own IP lockout when locked out with no admin or server access. Stores only a hash of the token, requires a confirm click, is rate-limited, and is fully audited.
