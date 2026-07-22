@@ -20,6 +20,7 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
     private static $injected = array(
         'wldelay_challenge_mode_enabled'        => false,
         'wldelay_challenge_mode_threshold'      => LDS_Settings::_DEFAULT_CHALLENGE_MODE_THRESHOLD,
+        'wldelay_challenge_mode_provider'       => 'math',
         'wldelay_rest_enabled'                  => false,
         'wldelay_application_password_enabled'  => false,
         'wldelay_password_reset_enabled'        => false,
@@ -50,6 +51,7 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
             'wldelay_lockout_attempt_strategy',
             'wldelay_challenge_mode_enabled',
             'wldelay_challenge_mode_threshold',
+            'wldelay_challenge_mode_provider',
             'wldelay_email_enabled',
             'wldelay_email_address',
             'wldelay_email_threshold',
@@ -100,6 +102,7 @@ class FeatureRegistryTest extends LDS_Unit_Test_Case {
         $this->assertSame( LDS_Settings::_DEFAULT_LOCKOUT_DURATION, $defaults['wldelay_lockout_duration'] );
         $this->assertSame( LDS_Settings::_DEFAULT_LOCKOUT_ATTEMPT_STRATEGY, $defaults['wldelay_lockout_attempt_strategy'] );
         $this->assertSame( LDS_Settings::_DEFAULT_CHALLENGE_MODE_THRESHOLD, $defaults['wldelay_challenge_mode_threshold'] );
+        $this->assertSame( 'math', $defaults['wldelay_challenge_mode_provider'] );
         $this->assertSame( LDS_Settings::_DEFAULT_EMAIL_THRESHOLD, $defaults['wldelay_email_threshold'] );
         $this->assertSame( LDS_Settings::_DEFAULT_EMAIL_COOLDOWN, $defaults['wldelay_email_cooldown'] );
         $this->assertSame( LDS_Settings::_DEFAULT_LOG_RETENTION_DAYS, $defaults['wldelay_log_retention_days'] );

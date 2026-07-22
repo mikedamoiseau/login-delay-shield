@@ -269,6 +269,19 @@ class LDS_Settings_View {
                     </div>
 
                     <div class="wldelay-card">
+                        <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-challenge-mode-body">
+                            <span class="dashicons dashicons-shield" aria-hidden="true"></span>
+                            <?php esc_html_e( 'Challenge Mode', 'wp-login-delay' ); ?>
+                            <?php echo $this->get_status_badge( 'wldelay_challenge_mode_enabled', __( 'Challenge Mode', 'wp-login-delay' ) ); ?>
+                            <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
+                        </h2>
+                        <div id="wldelay-challenge-mode-body" class="wldelay-card-body">
+                            <p class="description"><?php esc_html_e( 'Require a self-hosted verification step on the login form after repeated failed sign-ins, before credentials are checked.', 'wp-login-delay' ); ?></p>
+                            <?php $this->do_settings_section_fields( 'wldelay_challenge_mode_section_id' ); ?>
+                        </div>
+                    </div>
+
+                    <div class="wldelay-card">
                         <h2 class="wldelay-card-header" role="button" tabindex="0" aria-expanded="true" aria-controls="wldelay-log-body">
                             <span class="dashicons dashicons-list-view" aria-hidden="true"></span>
                             <?php esc_html_e( 'Login Log', 'wp-login-delay' ); ?>
@@ -469,6 +482,7 @@ class LDS_Settings_View {
             'wldelay_custom_login_enabled' => __( 'Custom Login URL', 'wp-login-delay' ),
             'wldelay_recovery_enabled' => __( 'Emergency Recovery URL', 'wp-login-delay' ),
             'wldelay_country_blocking_enabled' => __( 'Country Blocking', 'wp-login-delay' ),
+            'wldelay_challenge_mode_enabled' => __( 'Challenge Mode', 'wp-login-delay' ),
             'wldelay_fail2ban_enabled' => __( 'fail2ban Logging', 'wp-login-delay' ),
         );
 
@@ -1762,6 +1776,61 @@ class LDS_Settings_View {
         );
         echo $this->tooltip( __( 'Enter ISO 3166-1 alpha-2 country codes to block from login authentication.', 'wp-login-delay' ) );
         echo '<p id="wldelay_country_blocking_countries_desc" class="description">' . esc_html__( 'Two-letter codes only, one per line or comma-separated, for example: RU, CN, KP.', 'wp-login-delay' ) . '</p>';
+    }
+
+    /**
+     * Challenge mode section intro.
+     */
+    public function print_challenge_mode_section_info() {
+        echo '<p>' . esc_html__( 'After repeated failed sign-ins from an IP, require a self-hosted verification step on the login form before credentials are checked. No third-party CAPTCHA.', 'wp-login-delay' ) . '</p>';
+    }
+
+    /**
+     * Challenge mode enabled callback.
+     */
+    public function challenge_mode_enabled_callback() {
+        printf(
+            '<input type="checkbox" id="wldelay_challenge_mode_enabled" name="wldelay_options[wldelay_challenge_mode_enabled]" value="1" %s aria-describedby="wldelay_challenge_mode_enabled_desc" />',
+            ! empty( $this->options['wldelay_challenge_mode_enabled'] ) ? 'checked="checked"' : ''
+        );
+        echo $this->tooltip( __( 'When enabled, an over-threshold IP must clear a challenge before the password is checked, so password validity never leaks.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_challenge_mode_enabled_desc" class="description">' . esc_html__( 'Disabled by default. Non-interactive logins (XML-RPC, REST, application passwords) are blocked outright once the threshold is crossed.', 'wp-login-delay' ) . '</p>';
+    }
+
+    /**
+     * Challenge mode threshold callback.
+     */
+    public function challenge_mode_threshold_callback() {
+        printf(
+            '<input type="number" id="wldelay_challenge_mode_threshold" name="wldelay_options[wldelay_challenge_mode_threshold]" value="%d" min="1" max="100" aria-describedby="wldelay_challenge_mode_threshold_desc" />',
+            isset( $this->options['wldelay_challenge_mode_threshold'] )
+                ? esc_attr( $this->options['wldelay_challenge_mode_threshold'] )
+                : esc_attr( LDS_Settings::_DEFAULT_CHALLENGE_MODE_THRESHOLD )
+        );
+        echo $this->tooltip( __( 'How many failed attempts from an IP trigger the challenge on the next attempt.', 'wp-login-delay' ) );
+        echo '<p id="wldelay_challenge_mode_threshold_desc" class="description">' . esc_html__( 'Number of failed attempts before a challenge is required (1-100).', 'wp-login-delay' ) . '</p>';
+    }
+
+    /**
+     * Challenge mode provider callback.
+     */
+    public function challenge_mode_provider_callback() {
+        $active = isset( $this->options['wldelay_challenge_mode_provider'] )
+            ? (string) $this->options['wldelay_challenge_mode_provider']
+            : 'math';
+
+        echo '<select id="wldelay_challenge_mode_provider" name="wldelay_options[wldelay_challenge_mode_provider]" aria-describedby="wldelay_challenge_mode_provider_desc">';
+        foreach ( wldelay_get_challenge_providers() as $id => $provider ) {
+            printf(
+                '<option value="%1$s" %2$s>%3$s</option>',
+                esc_attr( $id ),
+                selected( $active, $id, false ),
+                esc_html( $provider->label() )
+            );
+        }
+        echo '</select>';
+        echo $this->tooltip( __( 'Question/math needs no email or JavaScript; Email code sends a one-time code to the account owner; Proof of work runs a short in-browser computation (requires JavaScript).', 'wp-login-delay' ) );
+        echo '<p id="wldelay_challenge_mode_provider_desc" class="description">' . esc_html__( 'Applies to the interactive login form. Only one challenge type is active at a time.', 'wp-login-delay' ) . '</p>';
     }
 
     /**

@@ -126,6 +126,11 @@ class WLDelay_Features {
                 'type'    => 'int',
                 'inject'  => true,
             ),
+            'wldelay_challenge_mode_provider'        => array(
+                'default' => 'math',
+                'type'    => 'enum',
+                'inject'  => true,
+            ),
 
             // Email notifications.
             'wldelay_email_enabled'                  => array(
