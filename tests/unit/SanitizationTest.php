@@ -224,6 +224,24 @@ class SanitizationTest extends LDS_Unit_Test_Case {
     }
 
     /**
+     * Challenge provider is whitelisted against the registered ids, else math.
+     */
+    public function test_challenge_provider_whitelisted_else_math() {
+        Functions\when( 'sanitize_key' )->alias( function ( $k ) {
+            return strtolower( preg_replace( '/[^a-z0-9_\-]/', '', (string) $k ) );
+        } );
+        Functions\when( 'apply_filters' )->alias( function ( $tag, $value ) {
+            return $value;
+        } );
+
+        $result = $this->settings->sanitize( array( 'wldelay_challenge_mode_provider' => 'bogus-provider' ) );
+        $this->assertSame( 'math', $result['wldelay_challenge_mode_provider'] );
+
+        $result2 = $this->settings->sanitize( array( 'wldelay_challenge_mode_provider' => 'email' ) );
+        $this->assertSame( 'email', $result2['wldelay_challenge_mode_provider'] );
+    }
+
+    /**
      * Test challenge-mode threshold sanitization bounds.
      */
     public function test_challenge_mode_threshold_bounded() {

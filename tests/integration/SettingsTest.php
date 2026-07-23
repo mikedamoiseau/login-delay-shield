@@ -417,6 +417,22 @@ class SettingsTest extends WP_UnitTestCase {
         $this->assertArrayHasKey( 'login-delay-shield-admin', $wp_settings_sections );
         $this->assertArrayHasKey( 'wldelay_setting_section_id', $wp_settings_sections['login-delay-shield-admin'] );
         $this->assertArrayHasKey( 'wldelay_email_section_id', $wp_settings_sections['login-delay-shield-admin'] );
+        $this->assertArrayHasKey( 'wldelay_challenge_mode_section_id', $wp_settings_sections['login-delay-shield-admin'] );
+    }
+
+    /**
+     * Challenge mode section exposes enable, threshold and provider fields.
+     */
+    public function test_challenge_mode_fields_registered() {
+        $this->settings->page_init();
+
+        global $wp_settings_fields;
+        $page    = 'login-delay-shield-admin';
+        $section = 'wldelay_challenge_mode_section_id';
+
+        $this->assertArrayHasKey( 'wldelay_challenge_mode_enabled', $wp_settings_fields[ $page ][ $section ] );
+        $this->assertArrayHasKey( 'wldelay_challenge_mode_threshold', $wp_settings_fields[ $page ][ $section ] );
+        $this->assertArrayHasKey( 'wldelay_challenge_mode_provider', $wp_settings_fields[ $page ][ $section ] );
     }
 
     /**

@@ -309,6 +309,38 @@ class LDS_Settings {
             'wldelay_country_blocking_section_id'
         );
 
+        // Challenge Mode section
+        add_settings_section(
+            'wldelay_challenge_mode_section_id',
+            esc_html__( 'Challenge Mode', 'wp-login-delay' ),
+            array( $this->view, 'print_challenge_mode_section_info' ),
+            'login-delay-shield-admin'
+        );
+
+        add_settings_field(
+            'wldelay_challenge_mode_enabled',
+            esc_html__( 'Enable challenge mode', 'wp-login-delay' ),
+            array( $this->view, 'challenge_mode_enabled_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_challenge_mode_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_challenge_mode_threshold',
+            esc_html__( 'Failed attempts before challenge', 'wp-login-delay' ),
+            array( $this->view, 'challenge_mode_threshold_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_challenge_mode_section_id'
+        );
+
+        add_settings_field(
+            'wldelay_challenge_mode_provider',
+            esc_html__( 'Challenge type', 'wp-login-delay' ),
+            array( $this->view, 'challenge_mode_provider_callback' ),
+            'login-delay-shield-admin',
+            'wldelay_challenge_mode_section_id'
+        );
+
         // Log Settings section
         add_settings_section(
             'wldelay_log_section_id',
@@ -584,6 +616,16 @@ class LDS_Settings {
             ? absint( $input['wldelay_challenge_mode_threshold'] )
             : self::_DEFAULT_CHALLENGE_MODE_THRESHOLD;
         $new_input['wldelay_challenge_mode_threshold'] = max( 1, min( 100, $challenge_threshold ) );
+
+        // Challenge provider: whitelist against the registered provider ids so a
+        // tampered value can never select an unregistered provider.
+        $challenge_provider = isset( $input['wldelay_challenge_mode_provider'] )
+            ? sanitize_key( $input['wldelay_challenge_mode_provider'] )
+            : 'math';
+        if ( ! in_array( $challenge_provider, array_keys( wldelay_get_challenge_providers() ), true ) ) {
+            $challenge_provider = 'math';
+        }
+        $new_input['wldelay_challenge_mode_provider'] = $challenge_provider;
 
         // Progressive delay settings
         $new_input['wldelay_progressive_enabled'] = ! empty( $input['wldelay_progressive_enabled'] );

@@ -75,6 +75,7 @@ require_once dirname( __FILE__ ) . '/wldelay-botnet.php';
 require_once dirname( __FILE__ ) . '/wldelay-privacy.php';
 require_once dirname( __FILE__ ) . '/wldelay-changelog.php';
 require_once dirname( __FILE__ ) . '/wldelay-recovery.php';
+require_once dirname( __FILE__ ) . '/wldelay-challenge.php';
 if( is_admin() ) {
     $wldelay_settings_page = new LDS_Settings();
 }
@@ -4705,6 +4706,7 @@ function wldelay_country_block_authentication( $user, $username, $password ) {
         : wldelay_get_login_source();
 
     if ( wldelay_is_country_blocked( null, $source ) ) {
+        wldelay_mark_login_gate_rejection();
         return new WP_Error(
             'wldelay_country_blocked',
             __( 'Login is not available from your location.', 'wp-login-delay' )
@@ -4952,17 +4954,93 @@ function wldelay_get_recent_failed_attempts( $limit = 20 ) {
  *
  * @param string $username Username attempted
  */
-function wldelay_on_login_failed( $username ) {
-    // Log-only path: for wp-login the wp_authenticate_user handler owns tracking
-    // and delay; other sources' own handlers do.
-    // The pipeline gates safe-mode/whitelist/empty-IP internally.
+/**
+ * Mark the current request as a plugin-issued login gate rejection (an active
+ * lockout, a required/unavailable challenge, or a country block). Read by
+ * wldelay_on_login_failed so those rejections are logged but NOT counted as
+ * fresh credential failures — this works regardless of whether the caller
+ * passes the WP 5.4+ $error argument to wp_login_failed.
+ *
+ * @return void
+ */
+function wldelay_mark_login_gate_rejection() {
+    $GLOBALS['wldelay_login_gate_rejection'] = true;
+}
+
+function wldelay_on_login_failed( $username, $error = null ) {
+    $source = wldelay_get_login_source();
+
+    // Own tracking + delay only for a GENUINE interactive wp-login credential
+    // failure. wldelay_auth_login runs on wp_authenticate_user, which core fires
+    // BEFORE it verifies the password, so it only ever sees a WP_User and its
+    // failure branch never runs — nothing else counts the failure or applies the
+    // delay for the login form. We take ownership here so the counter climbs and
+    // the threshold features (lockout, email, progressive, challenge) trigger.
+    //
+    // But NOT for:
+    //   - Real XML-RPC / REST / application-password attempts: they have their
+    //     own handlers. Detected via the request constants + PHP-auth headers,
+    //     NOT wldelay_get_login_source()'s URI-substring check, which a crafted
+    //     wp-login URL (e.g. ?redirect_to=/xmlrpc.php) could otherwise use to
+    //     dodge tracking.
+    //   - The plugin's OWN gate rejections (an active lockout, a required/
+    //     unavailable challenge, a country block). Counting those would let a
+    //     merely-shown challenge push a legitimate user toward lockout, or let
+    //     repeated blocked requests refresh an existing lockout window forever.
+    //     A wrong challenge ANSWER (wldelay_challenge_failed) is a real failed
+    //     attempt and is intentionally still counted.
+    //
+    // Interactive login is detected POSITIVELY from the presence of the login
+    // form fields ($_POST['wp-submit']/'pwd'), not from the absence of Basic-auth
+    // headers: a site behind ambient HTTP Basic auth sends those headers on the
+    // login POST too, and gating on them would silently stop counting genuine
+    // form failures there. XML-RPC/REST carry neither the form fields nor a
+    // login POST, so this also excludes them (reinforced by their constants).
+    $is_form_submission = isset( $_POST['wp-submit'] ) || isset( $_POST['pwd'] );
+    $is_real_xmlrpc     = defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST;
+    $is_real_rest       = defined( 'REST_REQUEST' ) && REST_REQUEST;
+
+    // Gate rejection detection is independent of the WP 5.4+ $error arg: the
+    // plugin's own gates set a request marker (this plugin supports WP as old as
+    // 3.5.1, where wp_login_failed passes no $error). The $error code check is a
+    // belt-and-suspenders fallback for gate errors surfaced by other code paths.
+    $marked_gate_rejection = ! empty( $GLOBALS['wldelay_login_gate_rejection'] );
+    unset( $GLOBALS['wldelay_login_gate_rejection'] ); // consume (single request)
+
+    $gate_rejections = array(
+        'wldelay_ip_locked',
+        'wldelay_challenge_required',
+        'wldelay_challenge_unavailable',
+        'wldelay_country_blocked',
+    );
+    $is_gate_rejection = $marked_gate_rejection
+        || ( ( $error instanceof WP_Error ) && array_intersect( $error->get_error_codes(), $gate_rejections ) );
+
+    $is_interactive_wp_login = $is_form_submission
+        && ! $is_real_xmlrpc
+        && ! $is_real_rest
+        && ! $is_gate_rejection;
+
+    if ( $is_interactive_wp_login ) {
+        $result = wldelay_process_failed_attempt(
+            $username,
+            'wp-login',
+            array( 'lockout' => false ) // track/log/delay default true; lockout state lookup unused here
+        );
+        if ( ! empty( $result['delay'] ) ) {
+            sleep( $result['delay'] );
+        }
+        return;
+    }
+
+    // Everything else: log only. Their own handlers (or none) own track/delay.
     wldelay_process_failed_attempt(
         $username,
-        wldelay_get_login_source(),
+        $source,
         array( 'track' => false, 'delay' => false, 'lockout' => false )
     );
 }
-add_action( 'wp_login_failed', 'wldelay_on_login_failed' );
+add_action( 'wp_login_failed', 'wldelay_on_login_failed', 10, 2 );
 
 /**
  * Block XMLRPC authentication if configured
@@ -5539,6 +5617,7 @@ function wldelay_auth_login ($user, $password) {
     // Check lockout first (before any processing)
     $options = wldelay_get_options();
     if ( ! empty( $options['wldelay_lockout_enabled'] ) && wldelay_is_ip_locked( null, $username ) ) {
+        wldelay_mark_login_gate_rejection();
         return new WP_Error(
             'wldelay_ip_locked',
             wldelay_get_lockout_error_message( null, $username )
@@ -5579,6 +5658,7 @@ function wldelay_auth_login ($user, $password) {
                     )
                 );
             } elseif ( wldelay_is_ip_locked( null, $username ) ) {
+                wldelay_mark_login_gate_rejection();
                 return new WP_Error(
                     'wldelay_ip_locked',
                     wldelay_get_lockout_error_message( null, $username )
