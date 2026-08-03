@@ -43,6 +43,10 @@ function wldelay_get_doc_url( $section ) {
         'rest-api-protection',
         'custom-login-url',
         'distributed-attack',
+        'country-blocking',
+        'challenge-mode',
+        'recovery-url',
+        'audit-log',
     );
 
     if ( ! in_array( $section, $anchors, true ) ) {
@@ -302,7 +306,8 @@ class LDS_Settings_View {
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-audit-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'A read-only record of sensitive administrative actions — settings changes, manual unlocks, and whitelist edits — for compliance and forensic review.', 'wp-login-delay' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'A read-only record of sensitive administrative actions — settings changes, manual unlocks, and whitelist edits — for compliance and forensic review.', 'wp-login-delay' ); ?>
+                                <?php echo $this->tooltip( __( 'Every entry records who acted, when, and what changed. Entries are never editable from the admin.', 'wp-login-delay' ), wldelay_get_doc_url( 'audit-log' ) ); ?></p>
                             <?php $this->render_audit_log(); ?>
                         </div>
                     </div>
@@ -1661,7 +1666,7 @@ class LDS_Settings_View {
             esc_html__( 'IP + username', 'wp-login-delay' )
         );
 
-        echo $this->tooltip( __( 'Choose how failed attempts are grouped for progressive delay and lockout. "IP + username" is better for shared networks.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Choose how failed attempts are grouped for progressive delay and lockout. "IP + username" is better for shared networks.', 'wp-login-delay' ), wldelay_get_doc_url( 'lockout-strategy' ) );
         echo '<p id="wldelay_lockout_attempt_strategy_desc" class="description">' . esc_html__( 'IP only = one counter per IP. IP + username = separate counters per username on the same IP.', 'wp-login-delay' ) . '</p>';
     }
 
@@ -1699,7 +1704,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_progressive_enabled" name="wldelay_options[wldelay_progressive_enabled]" value="1" %s aria-describedby="wldelay_progressive_enabled_desc" />',
             ! empty( $this->options['wldelay_progressive_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Delays grow longer with each failed attempt. First try might be 1s, second 2s, third 3s, etc. Very effective against automated attacks.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Delays grow longer with each failed attempt. First try might be 1s, second 2s, third 3s, etc. Very effective against automated attacks.', 'wp-login-delay' ), wldelay_get_doc_url( 'progressive-delay' ) );
         echo '<p id="wldelay_progressive_enabled_desc" class="description">' . esc_html__( 'Increase delay with each consecutive failed attempt from the same IP.', 'wp-login-delay' ) . '</p>';
     }
 
@@ -1762,7 +1767,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_country_blocking_enabled" name="wldelay_options[wldelay_country_blocking_enabled]" value="1" %s aria-describedby="wldelay_country_blocking_enabled_desc" />',
             ! empty( $this->options['wldelay_country_blocking_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'When enabled, login authentication is blocked whenever the visitor country matches one of the codes below.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'When enabled, login authentication is blocked whenever the visitor country matches one of the codes below.', 'wp-login-delay' ), wldelay_get_doc_url( 'country-blocking' ) );
         echo '<p id="wldelay_country_blocking_enabled_desc" class="description">' . esc_html__( 'Disabled by default. This plugin ships no GeoIP database — it uses the country your server or CDN already reports (a server GeoIP module, Cloudflare, or a proxy header), or one supplied through the wldelay_resolve_country_code filter.', 'wp-login-delay' ) . '</p>';
         echo $this->country_detection_status();
     }
@@ -1852,7 +1857,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_challenge_mode_enabled" name="wldelay_options[wldelay_challenge_mode_enabled]" value="1" %s aria-describedby="wldelay_challenge_mode_enabled_desc" />',
             ! empty( $this->options['wldelay_challenge_mode_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'When enabled, an over-threshold IP must clear a challenge before the password is checked, so password validity never leaks.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'When enabled, an over-threshold IP must clear a challenge before the password is checked, so password validity never leaks.', 'wp-login-delay' ), wldelay_get_doc_url( 'challenge-mode' ) );
         echo '<p id="wldelay_challenge_mode_enabled_desc" class="description">' . esc_html__( 'Disabled by default. Non-interactive logins (XML-RPC, REST, application passwords) are blocked outright once the threshold is crossed.', 'wp-login-delay' ) . '</p>';
     }
 
@@ -1914,7 +1919,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_fail2ban_enabled" name="wldelay_options[wldelay_fail2ban_enabled]" value="1" %s aria-describedby="wldelay_fail2ban_enabled_desc" />',
             ! empty( $this->options['wldelay_fail2ban_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Write a fail2ban-compatible line when Login Delay Shield records an authentication failure.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Write a fail2ban-compatible line when Login Delay Shield records an authentication failure.', 'wp-login-delay' ), wldelay_get_doc_url( 'fail2ban' ) );
         echo '<p id="wldelay_fail2ban_enabled_desc" class="description">' . esc_html__( 'Disabled by default. Enable only after configuring a fail2ban jail to watch the selected log file.', 'wp-login-delay' ) . '</p>';
     }
 
@@ -1998,7 +2003,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_rest_enabled" name="wldelay_options[wldelay_rest_enabled]" value="1" %s aria-describedby="wldelay_rest_enabled_desc" />',
             ! empty( $this->options['wldelay_rest_enabled'] ) ? 'checked="checked"' : ''
         );
-        echo $this->tooltip( __( 'Apply delay and lockout checks to failed REST API authentication requests.', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Apply delay and lockout checks to failed REST API authentication requests.', 'wp-login-delay' ), wldelay_get_doc_url( 'rest-api-protection' ) );
         echo '<p id="wldelay_rest_enabled_desc" class="description">' . esc_html__( 'Protect failed REST authentication attempts with the same delay/lockout behavior.', 'wp-login-delay' ) . '</p>';
     }
 
@@ -2062,6 +2067,7 @@ class LDS_Settings_View {
             '<input type="checkbox" id="wldelay_recovery_enabled" name="wldelay_options[wldelay_recovery_enabled]" value="1" %s aria-describedby="wldelay_recovery_enabled_desc" />',
             ! empty( $this->options['wldelay_recovery_enabled'] ) ? 'checked="checked"' : ''
         );
+        echo $this->tooltip( __( 'A secret, opt-in URL that clears the lockout on your own IP — for regaining access when you are locked out with no admin or server access.', 'wp-login-delay' ), wldelay_get_doc_url( 'recovery-url' ) );
         echo '<p id="wldelay_recovery_enabled_desc" class="description">' . esc_html__( 'Turn on a secret URL that can clear your own IP lockout if you are ever locked out.', 'wp-login-delay' ) . '</p>';
     }
 

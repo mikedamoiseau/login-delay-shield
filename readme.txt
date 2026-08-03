@@ -4,7 +4,7 @@ Donate link: http://damoiseau.me/
 Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 7.4
 Requires at least: 3.5.1
-Tested up to: 7.0
+Tested up to: 7.0.2
 Version: 2.6.0
 Stable tag: 2.6.0
 License: GPLv2 or later
@@ -232,6 +232,7 @@ Want to help translate the plugin into your language? Visit [translate.wordpress
 * New: country blocking now works without writing any code. It reads the country your server or CDN already determined — a server GeoIP module (`GEOIP_COUNTRY_CODE`), Cloudflare's `CF-IPCountry` (only when "Trust proxy headers" is on and the request really comes from a Cloudflare edge), or a generic `X-Country-Code` proxy header (when "Trust proxy headers" is on). The settings page now shows which country is detected for your own request, so you can tell at a glance whether detection works on your host. A resolver supplied through the `wldelay_resolve_country_code` filter still takes precedence.
 * Fix (security): country blocking could be bypassed by a sign-in with valid credentials, because WordPress re-checks the credentials after the block runs and overwrote the rejection. The block is now re-asserted after the username is resolved and before the password is verified, and again after every other authenticator has run, so it also holds for XML-RPC application passwords.
 * Fix: a blocked country (and any other plugin block, such as an active lockout) is no longer counted as a failed sign-in on the REST and application-password paths, so blocked requests can no longer drive a legitimate visitor into lockout.
+* The Country Blocking and Challenge Mode settings cards now have "Learn more" links to the user guide, like the other cards.
 
 = 2.6.0 =
 * New: Emergency Recovery URL — an opt-in secret URL to clear your own IP lockout when locked out with no admin or server access. Stores only a hash of the token, requires a confirm click, is rate-limited, and is fully audited.
