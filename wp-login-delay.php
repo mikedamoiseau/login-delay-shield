@@ -4658,6 +4658,139 @@ function wldelay_resolve_country_code( $ip = null, $source = '' ) {
 }
 
 /**
+ * Built-in resolver: read the country an upstream already worked out.
+ *
+ * The plugin still ships no GeoIP database, but plenty of sites sit behind
+ * something that has already done the lookup, and reading that makes country
+ * blocking usable without writing any PHP. Three sources, most trustworthy first:
+ *
+ *   1. `$_SERVER['GEOIP_COUNTRY_CODE']` — set by the web server itself (Apache
+ *      mod_geoip, the MaxMind module, nginx GeoIP). PHP exposes request headers
+ *      as HTTP_*, so a bare name like this cannot come from the client, and is
+ *      honoured regardless of the proxy-trust setting.
+ *   2. `CF-IPCountry` — only when proxy headers are trusted AND the TCP peer
+ *      really is a Cloudflare edge. Anyone can send the header; only Cloudflare
+ *      can send it from a Cloudflare IP. Same rule the plugin already applies to
+ *      CF-Connecting-IP.
+ *   3. `X-Country-Code` — the generic reverse-proxy convention, only when proxy
+ *      headers are trusted. Nothing can verify the peer here, so this rides
+ *      entirely on the site owner declaring its proxy trustworthy.
+ *
+ * Registered at priority 5, below the default 10, so a site-supplied resolver
+ * runs afterwards and keeps the final say. An already-resolved value is returned
+ * untouched.
+ *
+ * Cloudflare reports "XX" for an unknown country, which passes through as an
+ * ordinary code and only matters if a site lists it. Its "T1" (Tor exit node) is
+ * rejected by the two-letter normaliser, so Tor cannot be blocked this way.
+ *
+ * @param string $country_code Country resolved so far.
+ * @param string $ip           Client IP address (unused; the headers describe the current request).
+ * @param string $source       Auth source label.
+ * @return string ISO 3166-1 alpha-2 code, or the incoming value.
+ */
+function wldelay_default_country_resolver( $country_code = '', $ip = '', $source = '' ) {
+    if ( '' !== wldelay_normalize_country_code( $country_code ) ) {
+        return $country_code;
+    }
+
+    $detected = wldelay_detect_country_from_request();
+
+    return '' !== $detected['code'] ? $detected['code'] : $country_code;
+}
+add_filter( 'wldelay_resolve_country_code', 'wldelay_default_country_resolver', 5, 3 );
+
+/**
+ * Detect the current request's country and which source reported it.
+ *
+ * Split out from the resolver so the settings page can tell the site owner what
+ * detection actually finds on their host — otherwise the toggle gives no way to
+ * know whether anything is supplying a country at all.
+ *
+ * @return array{code:string,source:string} Source is 'server-module', 'cloudflare',
+ *                                          'proxy-header', or '' when nothing was found.
+ */
+function wldelay_detect_country_from_request() {
+    $none = array(
+        'code'   => '',
+        'source' => '',
+    );
+
+    /**
+     * Filter whether a bare GEOIP_COUNTRY_CODE server variable is trusted.
+     *
+     * True by default: PHP exposes request headers as HTTP_*, so an unprefixed
+     * variable normally can only come from the web server's own GeoIP module. A
+     * deployment that deliberately maps client input into a bare CGI parameter
+     * (an unusual fastcgi_param or SetEnvIf rule) can return false here.
+     *
+     * @param bool $trusted Whether to honour $_SERVER['GEOIP_COUNTRY_CODE'].
+     */
+    if ( isset( $_SERVER['GEOIP_COUNTRY_CODE'] ) && apply_filters( 'wldelay_trust_server_country_variable', true ) ) {
+        $code = wldelay_normalize_country_code( sanitize_text_field( wp_unslash( $_SERVER['GEOIP_COUNTRY_CODE'] ) ) );
+        if ( '' !== $code ) {
+            return array(
+                'code'   => $code,
+                'source' => 'server-module',
+            );
+        }
+    }
+
+    $options = wldelay_get_options();
+    if ( empty( $options['wldelay_trust_proxy_headers'] ) ) {
+        return $none;
+    }
+
+    $remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) ) : '';
+
+    if ( isset( $_SERVER['HTTP_CF_IPCOUNTRY'] ) && wldelay_is_cloudflare_remote_addr( $remote_addr ) ) {
+        $code = wldelay_normalize_country_code( sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_IPCOUNTRY'] ) ) );
+        if ( '' !== $code ) {
+            return array(
+                'code'   => $code,
+                'source' => 'cloudflare',
+            );
+        }
+    }
+
+    if ( isset( $_SERVER['HTTP_X_COUNTRY_CODE'] ) ) {
+        $code = wldelay_normalize_country_code( sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_COUNTRY_CODE'] ) ) );
+        if ( '' !== $code ) {
+            return array(
+                'code'   => $code,
+                'source' => 'proxy-header',
+            );
+        }
+    }
+
+    return $none;
+}
+
+/**
+ * Whether the country detected for the current request is itself blocked.
+ *
+ * Used to warn a site owner before they lock themselves out: with detection
+ * working, listing your own country blocks your own sign-ins too.
+ *
+ * @return bool
+ */
+function wldelay_is_own_country_blocked() {
+    $options = wldelay_get_options();
+    if ( empty( $options['wldelay_country_blocking_enabled'] ) ) {
+        return false;
+    }
+
+    // Resolve through the filter, not just built-in detection, so a custom
+    // resolver's answer is what the warning reflects.
+    $country_code = wldelay_resolve_country_code();
+    if ( '' === $country_code ) {
+        return false;
+    }
+
+    return in_array( $country_code, wldelay_get_blocked_country_codes( $options ), true );
+}
+
+/**
  * Determine whether country blocking should reject the current request.
  *
  * @param string|null $ip     Optional IP address. Defaults to client IP.

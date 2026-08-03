@@ -34,7 +34,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 * **Password reset protection** — Apply delays, lockouts, and logging to password reset submissions without revealing account existence
 * **Custom login URL** — Move the login page to a custom URL to reduce automated bot traffic targeting `/wp-login.php`
-* **Country blocking (optional, developer integration)** — Block login authentication from selected country codes. Ships no GeoIP database; requires a resolver hooked to the `wldelay_resolve_country_code` filter to supply the visitor country
+* **Country blocking (optional)** — Block login authentication from selected country codes. Ships no GeoIP database, but reads the country your server or CDN already worked out (Cloudflare's `CF-IPCountry`, a server GeoIP module, or an `X-Country-Code` proxy header); developers can supply it themselves through the `wldelay_resolve_country_code` filter
 * **Emergency recovery URL (optional)** — Generate a secret link that clears the lockout for your own IP, so you can get back in even with no admin, shell, or file access
 * **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 * **Accessible admin interface** — WCAG 2.1 compliant with keyboard navigation and screen reader support
@@ -133,7 +133,15 @@ Yes, for most sites. Attackers can abuse password reset forms to probe accounts 
 
 = How does country blocking work? =
 
-Country blocking rejects login authentication from ISO 3166-1 alpha-2 country codes you list (for example RU, CN, KP). It is off by default. Important: the plugin ships **no** GeoIP database and performs no network lookup, so it does nothing on its own — a developer must supply the visitor's country by hooking the `wldelay_resolve_country_code` filter (for example from a CDN header like Cloudflare's `CF-IPCountry`, or a server GeoIP module). When a resolver is present, blocked-country logins are rejected across wp-login, XML-RPC, and REST application-password authentication. Whitelisted IPs and safe mode always bypass it.
+Country blocking rejects login authentication from ISO 3166-1 alpha-2 country codes you list (for example RU, CN, KP). It is off by default. The plugin ships **no** GeoIP database and performs no network lookup — it reads a country your server or CDN has already determined:
+
+* A server GeoIP module (Apache mod_geoip, MaxMind, nginx GeoIP), which sets `GEOIP_COUNTRY_CODE`. Always used when present, because only the server can set it.
+* Cloudflare's `CF-IPCountry` header, used when "Trust proxy headers" is enabled **and** the connection really comes from a Cloudflare edge IP.
+* A generic `X-Country-Code` proxy header, used when "Trust proxy headers" is enabled.
+
+If none of those is available, country blocking does nothing until a developer supplies the country by hooking the `wldelay_resolve_country_code` filter, which always takes precedence over the built-in detection. Blocked-country logins are rejected across wp-login, XML-RPC, and REST application-password authentication. Whitelisted IPs and safe mode always bypass it.
+
+Header-based detection is only as trustworthy as your proxy setup: with "Trust proxy headers" enabled, any visitor able to reach your server directly (bypassing the CDN) could send a country header of their choosing. Restrict direct access to your origin if you rely on it.
 
 = How do email notifications work? =
 
@@ -221,6 +229,7 @@ Want to help translate the plugin into your language? Visit [translate.wordpress
 = 2.7.0 =
 * New: Challenge mode is now active. After a configurable number of failed sign-ins from an IP, the login form presents a self-hosted challenge — a math question, an emailed one-time code, or an in-browser proof-of-work — that must be solved before credentials are checked, so password validity never leaks. Non-interactive logins (XML-RPC, REST, application passwords) are blocked outright. No third-party CAPTCHA. Developers can register custom challenge providers via the `wldelay_challenge_providers` filter.
 * Fix: failed sign-ins on the standard login form now correctly count and apply the configured delay, so IP lockout, email alerts, progressive delay, and challenge mode trigger as intended (previously the counter and delay could be skipped for wp-login attempts).
+* New: country blocking now works without writing any code. It reads the country your server or CDN already determined — a server GeoIP module (`GEOIP_COUNTRY_CODE`), Cloudflare's `CF-IPCountry` (only when "Trust proxy headers" is on and the request really comes from a Cloudflare edge), or a generic `X-Country-Code` proxy header (when "Trust proxy headers" is on). The settings page now shows which country is detected for your own request, so you can tell at a glance whether detection works on your host. A resolver supplied through the `wldelay_resolve_country_code` filter still takes precedence.
 * Fix (security): country blocking could be bypassed by a sign-in with valid credentials, because WordPress re-checks the credentials after the block runs and overwrote the rejection. The block is now re-asserted after the username is resolved and before the password is verified, and again after every other authenticator has run, so it also holds for XML-RPC application passwords.
 * Fix: a blocked country (and any other plugin block, such as an active lockout) is no longer counted as a failed sign-in on the REST and application-password paths, so blocked requests can no longer drive a legitimate visitor into lockout.
 
