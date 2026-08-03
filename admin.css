@@ -684,6 +684,28 @@
     color: #1d2327;
 }
 
+/* Country detection readout under the Country Blocking toggle */
+.wldelay-country-status {
+    margin-top: 6px;
+}
+
+/* Self-lockout warning: the visitor's own country is on the block list.
+   Selectors include the element so they outrank core's p.description colour.
+   #8a6100 on #fcf9e8 measures 5.2:1, above the 4.5:1 minimum for normal text. */
+p.wldelay-country-warning {
+    background: #fcf9e8;
+    border-left: 4px solid #dba617;
+    border-radius: 2px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #8a6100;
+}
+
+p.wldelay-country-warning strong {
+    color: #8a6100;
+}
+
 /* ==========================================================================
    Tooltips
    ========================================================================== */

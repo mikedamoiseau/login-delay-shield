@@ -27,7 +27,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 - **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 - **REST/API auth protection (optional)** — Apply delay/lockout checks to REST and application-password authentication paths
 - **Password reset protection** — Apply delays, lockouts, and logging to password reset submissions without revealing account existence
-- **Country blocking (optional, developer integration)** — Block login authentication from selected country codes. Ships no GeoIP database; needs a resolver hooked to the `wldelay_resolve_country_code` filter to supply the visitor country
+- **Country blocking (optional)** — Block login authentication from selected country codes. Ships no GeoIP database; reads the country your server or CDN already determined (`GEOIP_COUNTRY_CODE`, Cloudflare's `CF-IPCountry`, or an `X-Country-Code` proxy header), or one supplied through the `wldelay_resolve_country_code` filter
 - **Challenge mode (optional)** — After a set number of failed sign-ins, require a self-hosted challenge (math question, emailed one-time code, or in-browser proof-of-work) before credentials are checked. No third-party CAPTCHA; extensible via the `wldelay_challenge_providers` filter
 - **Log retention** — Automatic cleanup of old log entries (configurable retention period)
 - **Recovery tools** — Admin unlock action and WP-CLI commands to flush lockouts

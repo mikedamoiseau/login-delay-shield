@@ -47,6 +47,14 @@ class HelpLinksTest extends LDS_Unit_Test_Case {
             'xmlrpc-protection',
             'custom-login-url',
             'distributed-attack',
+            'country-blocking',
+            'challenge-mode',
+            'progressive-delay',
+            'lockout-strategy',
+            'fail2ban',
+            'rest-api-protection',
+            'recovery-url',
+            'audit-log',
         );
         foreach ( $sections as $section ) {
             $url = wldelay_get_doc_url( $section );
