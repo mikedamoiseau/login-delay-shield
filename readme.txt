@@ -4,7 +4,7 @@ Donate link: http://damoiseau.me/
 Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 7.4
 Requires at least: 3.5.1
-Tested up to: 7.0.2
+Tested up to: 7.1
 Version: 2.6.0
 Stable tag: 2.6.0
 License: GPLv2 or later
