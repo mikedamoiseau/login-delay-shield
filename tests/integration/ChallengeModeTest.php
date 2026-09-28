@@ -113,6 +113,7 @@ class ChallengeModeTest extends WP_UnitTestCase {
             has_filter( 'rest_authentication_errors', 'wldelay_challenge_rest_authentication' )
         );
 
+        $_SERVER['REQUEST_URI']   = '/wp-json/wp/v2/users/me';
         $_SERVER['PHP_AUTH_USER'] = 'chaluser';
         $_SERVER['PHP_AUTH_PW']   = 'app-pw';
         $result = wldelay_challenge_rest_authentication( null );
@@ -177,6 +178,7 @@ class ChallengeModeTest extends WP_UnitTestCase {
         ) );
         wldelay_clear_options_cache();
 
+        $_SERVER['REQUEST_URI']   = '/wp-json/wp/v2/users/me';
         $_SERVER['PHP_AUTH_USER'] = 'chaluser';
         $_SERVER['PHP_AUTH_PW']   = 'app-pw';
         wldelay_track_failed_attempt( 'chaluser', 'application-password' );

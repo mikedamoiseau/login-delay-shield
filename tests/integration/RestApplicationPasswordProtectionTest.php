@@ -172,6 +172,7 @@ class RestApplicationPasswordProtectionTest extends WP_UnitTestCase {
             'wldelay_progressive_enabled' => true,
         ) );
         wldelay_clear_options_cache();
+        $_SERVER['REQUEST_URI'] = '/xmlrpc.php';
         $_SERVER['PHP_AUTH_USER'] = 'app-user';
         $_SERVER['PHP_AUTH_PW'] = 'wrong';
 
@@ -194,6 +195,7 @@ class RestApplicationPasswordProtectionTest extends WP_UnitTestCase {
         ) );
         wldelay_clear_options_cache();
 
+        $_SERVER['REQUEST_URI'] = '/xmlrpc.php';
         $_SERVER['PHP_AUTH_USER'] = 'locked-app-user';
         $_SERVER['PHP_AUTH_PW'] = 'bad';
         wldelay_lock_ip( '203.0.113.10', 'locked-app-user' );
@@ -244,6 +246,48 @@ class RestApplicationPasswordProtectionTest extends WP_UnitTestCase {
         $result = wldelay_handle_rest_authentication( $incoming );
 
         $this->assertSame( $incoming, $result );
+        $this->assertCount( 0, wldelay_get_recent_failed_attempts( 10 ) );
+    }
+
+    public function test_basic_auth_is_an_application_password_attempt_only_on_api_requests() {
+        $_SERVER['PHP_AUTH_USER'] = 'someone';
+        $_SERVER['PHP_AUTH_PW'] = 'secret';
+
+        // Ambient HTTP auth in front of the login form (htpasswd staging site).
+        $_SERVER['REQUEST_URI'] = '/wp-login.php';
+        $this->assertFalse( wldelay_is_application_password_attempt() );
+
+        $_SERVER['REQUEST_URI'] = '/xmlrpc.php';
+        $this->assertTrue( wldelay_is_application_password_attempt() );
+
+        $_SERVER['REQUEST_URI'] = '/wp-json/wp/v2/users/me';
+        $this->assertTrue( wldelay_is_application_password_attempt() );
+
+        // Mirrors core: a site extending the API definition is honoured.
+        $_SERVER['REQUEST_URI'] = '/graphql';
+        add_filter( 'application_password_is_api_request', '__return_true' );
+        $this->assertTrue( wldelay_is_application_password_attempt() );
+    }
+
+    /**
+     * With site-wide Basic auth, wp-login.php page views carry PHP_AUTH_*. The
+     * application-password handler must not treat each view as a failed
+     * application-password sign-in (it counted and slept on every page load).
+     */
+    public function test_ambient_basic_auth_login_page_view_is_not_counted() {
+        update_option( 'wldelay_options', array(
+            'wldelay_application_password_enabled' => true,
+            'wldelay_delay' => 0,
+        ) );
+        wldelay_clear_options_cache();
+        $_SERVER['REQUEST_URI'] = '/wp-login.php';
+        $_SERVER['PHP_AUTH_USER'] = 'htuser';
+        $_SERVER['PHP_AUTH_PW'] = 'htpass';
+        $before = wldelay_get_failure_count( null, 'htuser' );
+
+        wp_signon( array() );
+
+        $this->assertSame( $before, wldelay_get_failure_count( null, 'htuser' ) );
         $this->assertCount( 0, wldelay_get_recent_failed_attempts( 10 ) );
     }
 

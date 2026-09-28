@@ -3718,6 +3718,12 @@ function wldelay_get_cloudflare_ip_ranges() {
  * @return bool
  */
 function wldelay_is_cloudflare_remote_addr( $remote_addr ) {
+    // A dual-stack listener reports an IPv4 peer as an IPv4-mapped IPv6 address
+    // (::ffff:162.158.1.1); compare the embedded IPv4 against the IPv4 ranges.
+    if ( 0 === stripos( $remote_addr, '::ffff:' ) && false !== filter_var( substr( $remote_addr, 7 ), FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 ) ) {
+        $remote_addr = substr( $remote_addr, 7 );
+    }
+
     if ( '' === $remote_addr || false === filter_var( $remote_addr, FILTER_VALIDATE_IP ) ) {
         return false;
     }
@@ -4109,10 +4115,23 @@ function wldelay_get_php_auth_username() {
 /**
  * Detect whether current request is attempting application-password auth.
  *
- * @return bool True when PHP auth headers are present.
+ * Application passwords only authenticate API requests — core gates them the
+ * same way in wp_authenticate_application_password(). Basic-auth credentials on
+ * any other request are ambient HTTP auth (an htpasswd-protected staging site,
+ * a server-level password prompt), not an application-password attempt, and
+ * treating them as one would count every login-page view as a failed attempt.
+ *
+ * @return bool True when PHP auth headers are present on an API request.
  */
 function wldelay_is_application_password_attempt() {
-    return isset( $_SERVER['PHP_AUTH_USER'] ) && isset( $_SERVER['PHP_AUTH_PW'] );
+    if ( ! isset( $_SERVER['PHP_AUTH_USER'] ) || ! isset( $_SERVER['PHP_AUTH_PW'] ) ) {
+        return false;
+    }
+
+    $is_api_request = wldelay_is_xmlrpc_request() || wldelay_is_rest_request();
+
+    /** This filter is documented in wp-includes/user.php */
+    return (bool) apply_filters( 'application_password_is_api_request', $is_api_request );
 }
 
 /**
@@ -4611,11 +4630,13 @@ function wldelay_get_blocked_country_codes( $options = null ) {
 }
 
 /**
- * Resolve the client country code through a filter.
+ * Resolve the client country code: a site-supplied resolver first, then the
+ * country the server or CDN already reported.
  *
- * Login Delay Shield intentionally ships no GeoIP database, network lookup, or
- * country resolver. Integrations that already know the visitor country can
- * return an ISO 3166-1 alpha-2 code from this filter.
+ * Login Delay Shield ships no GeoIP database or network lookup. Integrations
+ * that already know the visitor country can return an ISO 3166-1 alpha-2 code
+ * from the `wldelay_resolve_country_code` filter; when none answers, built-in
+ * detection (wldelay_detect_country_from_request()) fills the gap.
  *
  * @param string|null $ip     Optional IP address. Defaults to client IP.
  * @param string      $source Optional auth source label.
@@ -4639,9 +4660,11 @@ function wldelay_resolve_country_code( $ip = null, $source = '' ) {
     /**
      * Filter the client country code used by Country Blocking.
      *
-     * Return an ISO 3166-1 alpha-2 country code such as "US" or "DE".
-     * The default empty value makes country blocking a no-op unless a site
-     * supplies its own resolver.
+     * Return an ISO 3166-1 alpha-2 country code such as "US" or "DE", or leave
+     * the empty default to fall back to built-in server/CDN detection. The
+     * incoming value is always empty — built-in detection runs only after this
+     * filter, so a resolver never receives (and cannot be tricked into
+     * deferring to) a client-supplied header value.
      *
      * The block is asserted at several points in the authentication chain, so
      * this filter can run more than once for a single login attempt. A resolver
@@ -4652,60 +4675,48 @@ function wldelay_resolve_country_code( $ip = null, $source = '' ) {
      * @param string $ip           Client IP address after proxy handling.
      * @param string $source       Auth source label (wp-login, xmlrpc, rest, application-password).
      */
-    $country_code = apply_filters( 'wldelay_resolve_country_code', '', $ip, (string) $source );
+    $country_code = wldelay_normalize_country_code(
+        apply_filters( 'wldelay_resolve_country_code', '', $ip, (string) $source )
+    );
 
-    return wldelay_normalize_country_code( $country_code );
+    if ( '' === $country_code ) {
+        $detected     = wldelay_detect_country_from_request();
+        $country_code = $detected['code'];
+    }
+
+    return $country_code;
 }
 
 /**
- * Built-in resolver: read the country an upstream already worked out.
+ * Built-in detection: read the country an upstream already worked out.
  *
  * The plugin still ships no GeoIP database, but plenty of sites sit behind
  * something that has already done the lookup, and reading that makes country
- * blocking usable without writing any PHP. Three sources, most trustworthy first:
+ * blocking usable without writing any PHP. Three sources, in this order:
  *
- *   1. `$_SERVER['GEOIP_COUNTRY_CODE']` — set by the web server itself (Apache
- *      mod_geoip, the MaxMind module, nginx GeoIP). PHP exposes request headers
- *      as HTTP_*, so a bare name like this cannot come from the client, and is
- *      honoured regardless of the proxy-trust setting.
- *   2. `CF-IPCountry` — only when proxy headers are trusted AND the TCP peer
+ *   1. `CF-IPCountry` — only when proxy headers are trusted AND the TCP peer
  *      really is a Cloudflare edge. Anyone can send the header; only Cloudflare
  *      can send it from a Cloudflare IP. Same rule the plugin already applies to
- *      CF-Connecting-IP.
+ *      CF-Connecting-IP. It outranks the server variable because a verified
+ *      Cloudflare peer proves REMOTE_ADDR is an edge server: an origin GeoIP
+ *      module looking up REMOTE_ADDR would report the edge's country, not the
+ *      visitor's.
+ *   2. `$_SERVER['GEOIP_COUNTRY_CODE']` — set by the web server itself (Apache
+ *      mod_geoip, the MaxMind module, nginx GeoIP). PHP exposes request headers
+ *      as HTTP_*, so a bare name like this cannot come from the client, and is
+ *      honoured regardless of the proxy-trust setting. Behind a proxy other than
+ *      Cloudflare it is only right if the module is configured to look up the
+ *      forwarded client address.
  *   3. `X-Country-Code` — the generic reverse-proxy convention, only when proxy
  *      headers are trusted. Nothing can verify the peer here, so this rides
  *      entirely on the site owner declaring its proxy trustworthy.
- *
- * Registered at priority 5, below the default 10, so a site-supplied resolver
- * runs afterwards and keeps the final say. An already-resolved value is returned
- * untouched.
  *
  * Cloudflare reports "XX" for an unknown country, which passes through as an
  * ordinary code and only matters if a site lists it. Its "T1" (Tor exit node) is
  * rejected by the two-letter normaliser, so Tor cannot be blocked this way.
  *
- * @param string $country_code Country resolved so far.
- * @param string $ip           Client IP address (unused; the headers describe the current request).
- * @param string $source       Auth source label.
- * @return string ISO 3166-1 alpha-2 code, or the incoming value.
- */
-function wldelay_default_country_resolver( $country_code = '', $ip = '', $source = '' ) {
-    if ( '' !== wldelay_normalize_country_code( $country_code ) ) {
-        return $country_code;
-    }
-
-    $detected = wldelay_detect_country_from_request();
-
-    return '' !== $detected['code'] ? $detected['code'] : $country_code;
-}
-add_filter( 'wldelay_resolve_country_code', 'wldelay_default_country_resolver', 5, 3 );
-
-/**
- * Detect the current request's country and which source reported it.
- *
- * Split out from the resolver so the settings page can tell the site owner what
- * detection actually finds on their host — otherwise the toggle gives no way to
- * know whether anything is supplying a country at all.
+ * Also used by the settings page to tell the site owner what detection actually
+ * finds on their host.
  *
  * @return array{code:string,source:string} Source is 'server-module', 'cloudflare',
  *                                          'proxy-header', or '' when nothing was found.
@@ -4715,6 +4726,22 @@ function wldelay_detect_country_from_request() {
         'code'   => '',
         'source' => '',
     );
+
+    $options     = wldelay_get_options();
+    $trust_proxy = ! empty( $options['wldelay_trust_proxy_headers'] );
+
+    if ( $trust_proxy && isset( $_SERVER['HTTP_CF_IPCOUNTRY'] ) ) {
+        $remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) ) : '';
+        if ( wldelay_is_cloudflare_remote_addr( $remote_addr ) ) {
+            $code = wldelay_normalize_country_code( sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_IPCOUNTRY'] ) ) );
+            if ( '' !== $code ) {
+                return array(
+                    'code'   => $code,
+                    'source' => 'cloudflare',
+                );
+            }
+        }
+    }
 
     /**
      * Filter whether a bare GEOIP_COUNTRY_CODE server variable is trusted.
@@ -4736,21 +4763,8 @@ function wldelay_detect_country_from_request() {
         }
     }
 
-    $options = wldelay_get_options();
-    if ( empty( $options['wldelay_trust_proxy_headers'] ) ) {
+    if ( ! $trust_proxy ) {
         return $none;
-    }
-
-    $remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) ) : '';
-
-    if ( isset( $_SERVER['HTTP_CF_IPCOUNTRY'] ) && wldelay_is_cloudflare_remote_addr( $remote_addr ) ) {
-        $code = wldelay_normalize_country_code( sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_IPCOUNTRY'] ) ) );
-        if ( '' !== $code ) {
-            return array(
-                'code'   => $code,
-                'source' => 'cloudflare',
-            );
-        }
     }
 
     if ( isset( $_SERVER['HTTP_X_COUNTRY_CODE'] ) ) {
@@ -4764,30 +4778,6 @@ function wldelay_detect_country_from_request() {
     }
 
     return $none;
-}
-
-/**
- * Whether the country detected for the current request is itself blocked.
- *
- * Used to warn a site owner before they lock themselves out: with detection
- * working, listing your own country blocks your own sign-ins too.
- *
- * @return bool
- */
-function wldelay_is_own_country_blocked() {
-    $options = wldelay_get_options();
-    if ( empty( $options['wldelay_country_blocking_enabled'] ) ) {
-        return false;
-    }
-
-    // Resolve through the filter, not just built-in detection, so a custom
-    // resolver's answer is what the warning reflects.
-    $country_code = wldelay_resolve_country_code();
-    if ( '' === $country_code ) {
-        return false;
-    }
-
-    return in_array( $country_code, wldelay_get_blocked_country_codes( $options ), true );
 }
 
 /**
@@ -4829,7 +4819,7 @@ function wldelay_is_country_blocked( $ip = null, $source = '' ) {
 /**
  * Build the country-block rejection, or return the untouched auth result.
  *
- * Shared by the two hooks below so both surfaces reject identically.
+ * Shared by the three hooks below so every surface rejects identically.
  *
  * @param null|WP_User|WP_Error $user Existing auth result.
  * @return null|WP_User|WP_Error
@@ -4857,10 +4847,18 @@ function wldelay_country_block_result( $user ) {
 /**
  * Block denied countries before WordPress authenticates credentials.
  *
- * Runs early on `authenticate` so auth paths that never reach
- * `wp_authenticate_user` — SSO / social-login plugins that return a WP_User
- * straight from their own `authenticate` callback — are still covered. On its
- * own this hook is NOT sufficient: see wldelay_country_block_authenticate_user().
+ * Runs early on `authenticate` so a blocked request exits before any credential
+ * work. On its own this hook is NOT sufficient: see
+ * wldelay_country_block_authenticate_user() and
+ * wldelay_country_block_late_authentication(). Plugins that sign a user in by
+ * calling wp_set_auth_cookie() directly never run `authenticate` at all, so no
+ * hook here can cover them.
+ *
+ * An empty username and password is not a sign-in attempt — wp-login.php calls
+ * wp_signon() with no credentials on every page load — so it is left to core.
+ * Rejecting it would log every page view from a blocked country as a failed
+ * login. A callback that returns a WP_User for such a request (cookie or SSO) is
+ * still caught by the late backstop.
  *
  * @param null|WP_User|WP_Error $user     Existing auth result.
  * @param string                $username Username.
@@ -4868,6 +4866,10 @@ function wldelay_country_block_result( $user ) {
  * @return null|WP_User|WP_Error
  */
 function wldelay_country_block_authentication( $user, $username, $password ) {
+    if ( '' === (string) $username && '' === (string) $password ) {
+        return $user;
+    }
+
     return wldelay_country_block_result( $user );
 }
 add_filter( 'authenticate', 'wldelay_country_block_authentication', 5, 3 );

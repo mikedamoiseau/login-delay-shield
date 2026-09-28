@@ -39,18 +39,39 @@ class CountryResolverTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
     }
 
-    public function test_resolver_is_registered_below_the_default_priority() {
-        // Must run BEFORE a site-supplied resolver (default priority 10) so that
-        // a custom resolver, running later, still has the final say.
-        $priority = has_filter( 'wldelay_resolve_country_code', 'wldelay_default_country_resolver' );
-        $this->assertNotFalse( $priority );
-        $this->assertLessThan( 10, $priority );
+    public function test_site_resolver_always_receives_an_empty_value() {
+        // A resolver written as `return $c ?: lookup()` must not be handed a
+        // header value: with proxy trust on, X-Country-Code is whatever the
+        // visitor sent, and deferring to it would let them pick a country.
+        $this->trust_proxy_headers();
+        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'US';
+
+        $received = null;
+        add_filter(
+            'wldelay_resolve_country_code',
+            function ( $country ) use ( &$received ) {
+                $received = $country;
+                return '' !== $country ? $country : 'RU';
+            }
+        );
+
+        $this->assertSame( 'RU', wldelay_resolve_country_code( '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( '', $received );
+    }
+
+    public function test_built_in_detection_fills_in_when_no_resolver_answers() {
+        $this->trust_proxy_headers();
+        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'DE';
+
+        add_filter( 'wldelay_resolve_country_code', '__return_empty_string' );
+
+        $this->assertSame( 'DE', wldelay_resolve_country_code( '203.0.113.44', 'wp-login' ) );
     }
 
     public function test_no_headers_resolves_to_empty() {
         $this->trust_proxy_headers();
 
-        $this->assertSame( '', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( '', wldelay_detect_country_from_request()['code'] );
     }
 
     public function test_cf_ipcountry_is_ignored_when_proxy_headers_are_not_trusted() {
@@ -59,7 +80,7 @@ class CountryResolverTest extends WP_UnitTestCase {
         $_SERVER['HTTP_CF_IPCOUNTRY'] = 'RU';
         $_SERVER['REMOTE_ADDR']       = '173.245.48.1'; // a real Cloudflare edge IP
 
-        $this->assertSame( '', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( '', wldelay_detect_country_from_request()['code'] );
     }
 
     public function test_cf_ipcountry_is_ignored_when_the_peer_is_not_cloudflare() {
@@ -67,7 +88,7 @@ class CountryResolverTest extends WP_UnitTestCase {
         $_SERVER['HTTP_CF_IPCOUNTRY'] = 'RU';
         $_SERVER['REMOTE_ADDR']       = '203.0.113.44'; // not a Cloudflare range
 
-        $this->assertSame( '', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( '', wldelay_detect_country_from_request()['code'] );
     }
 
     public function test_cf_ipcountry_is_used_when_trusted_and_peer_is_cloudflare() {
@@ -75,15 +96,15 @@ class CountryResolverTest extends WP_UnitTestCase {
         $_SERVER['HTTP_CF_IPCOUNTRY'] = 'ru';
         $_SERVER['REMOTE_ADDR']       = '173.245.48.1';
 
-        $this->assertSame( 'RU', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( 'RU', wldelay_detect_country_from_request()['code'] );
     }
 
     public function test_generic_country_header_requires_proxy_trust() {
         $_SERVER['HTTP_X_COUNTRY_CODE'] = 'DE';
-        $this->assertSame( '', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( '', wldelay_detect_country_from_request()['code'] );
 
         $this->trust_proxy_headers();
-        $this->assertSame( 'DE', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( 'DE', wldelay_detect_country_from_request()['code'] );
     }
 
     public function test_server_geoip_variable_is_used_without_proxy_trust() {
@@ -92,7 +113,7 @@ class CountryResolverTest extends WP_UnitTestCase {
         // (mod_geoip / MaxMind). Trustworthy regardless of the proxy setting.
         $_SERVER['GEOIP_COUNTRY_CODE'] = 'fr';
 
-        $this->assertSame( 'FR', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( 'FR', wldelay_detect_country_from_request()['code'] );
     }
 
     public function test_server_geoip_variable_can_be_distrusted_by_filter() {
@@ -101,10 +122,10 @@ class CountryResolverTest extends WP_UnitTestCase {
         $_SERVER['GEOIP_COUNTRY_CODE'] = 'FR';
         add_filter( 'wldelay_trust_server_country_variable', '__return_false' );
 
-        $this->assertSame( '', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( '', wldelay_detect_country_from_request()['code'] );
 
         remove_all_filters( 'wldelay_trust_server_country_variable' );
-        $this->assertSame( 'FR', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( 'FR', wldelay_detect_country_from_request()['code'] );
     }
 
     public function test_cloudflare_tor_marker_is_not_a_country() {
@@ -114,14 +135,7 @@ class CountryResolverTest extends WP_UnitTestCase {
         $_SERVER['REMOTE_ADDR']       = '173.245.48.1';
         $_SERVER['HTTP_CF_IPCOUNTRY'] = 'T1';
 
-        $this->assertSame( '', wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ) );
-    }
-
-    public function test_an_already_resolved_country_is_left_alone() {
-        $this->trust_proxy_headers();
-        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'DE';
-
-        $this->assertSame( 'US', wldelay_default_country_resolver( 'US', '203.0.113.44', 'wp-login' ) );
+        $this->assertSame( '', wldelay_detect_country_from_request()['code'] );
     }
 
     public function test_malformed_header_values_are_rejected() {
@@ -131,7 +145,7 @@ class CountryResolverTest extends WP_UnitTestCase {
             $_SERVER['HTTP_X_COUNTRY_CODE'] = $value;
             $this->assertSame(
                 '',
-                wldelay_default_country_resolver( '', '203.0.113.44', 'wp-login' ),
+                wldelay_detect_country_from_request()['code'],
                 sprintf( 'Value %s must not resolve to a country.', var_export( $value, true ) )
             );
         }
@@ -159,55 +173,113 @@ class CountryResolverTest extends WP_UnitTestCase {
         $this->assertSame( 'RU', $detected['code'] );
         $this->assertSame( 'cloudflare', $detected['source'] );
 
-        // The server variable outranks both headers.
-        $_SERVER['GEOIP_COUNTRY_CODE'] = 'FR';
+        // A verified Cloudflare peer outranks the server variable: behind
+        // Cloudflare an origin GeoIP module looks up the edge, not the visitor.
+        $_SERVER['GEOIP_COUNTRY_CODE'] = 'US';
         $detected                      = wldelay_detect_country_from_request();
-        $this->assertSame( 'FR', $detected['code'] );
+        $this->assertSame( 'RU', $detected['code'] );
+        $this->assertSame( 'cloudflare', $detected['source'] );
+
+        // Without a Cloudflare peer the server variable outranks the generic,
+        // unverifiable proxy header.
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.44';
+        $detected               = wldelay_detect_country_from_request();
+        $this->assertSame( 'US', $detected['code'] );
         $this->assertSame( 'server-module', $detected['source'] );
     }
 
-    public function test_detects_when_the_owners_own_country_is_on_the_block_list() {
-        update_option(
-            WLDELAY_OPTION_NAME,
-            array(
-                'wldelay_trust_proxy_headers'        => true,
-                'wldelay_country_blocking_enabled'   => true,
-                'wldelay_country_blocking_countries' => "RU\nDE",
-            )
-        );
-        wldelay_clear_options_cache();
+    public function test_ipv4_mapped_cloudflare_peer_is_recognised() {
+        // A dual-stack listener reports an IPv4 peer as ::ffff:a.b.c.d.
+        $this->assertTrue( wldelay_is_cloudflare_remote_addr( '::ffff:173.245.48.1' ) );
+        $this->assertFalse( wldelay_is_cloudflare_remote_addr( '::ffff:203.0.113.44' ) );
 
-        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'DE';
-        $this->assertTrue( wldelay_is_own_country_blocked(), 'Blocking your own country risks locking yourself out.' );
-
-        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'FR';
-        $this->assertFalse( wldelay_is_own_country_blocked() );
+        $this->trust_proxy_headers();
+        $_SERVER['REMOTE_ADDR']       = '::ffff:173.245.48.1';
+        $_SERVER['HTTP_CF_IPCOUNTRY'] = 'RU';
+        $this->assertSame( 'RU', wldelay_detect_country_from_request()['code'] );
     }
 
-    public function test_own_country_check_is_false_when_the_feature_is_off_or_undetected() {
-        update_option(
-            WLDELAY_OPTION_NAME,
-            array(
-                'wldelay_trust_proxy_headers'        => true,
-                'wldelay_country_blocking_enabled'   => false,
-                'wldelay_country_blocking_countries' => 'DE',
-            )
-        );
-        wldelay_clear_options_cache();
-        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'DE';
-        $this->assertFalse( wldelay_is_own_country_blocked() );
+    /**
+     * Render the settings card's detection readout.
+     */
+    private function render_detection_status() {
+        $view   = new LDS_Settings_View();
+        $method = new ReflectionMethod( $view, 'country_detection_status' );
+        $method->setAccessible( true );
+        return $method->invoke( $view );
+    }
 
+    private function enable_blocking( $countries, $extra = array() ) {
         update_option(
             WLDELAY_OPTION_NAME,
-            array(
-                'wldelay_trust_proxy_headers'        => true,
-                'wldelay_country_blocking_enabled'   => true,
-                'wldelay_country_blocking_countries' => 'DE',
+            array_merge(
+                array(
+                    'wldelay_trust_proxy_headers'        => true,
+                    'wldelay_country_blocking_enabled'   => true,
+                    'wldelay_country_blocking_countries' => $countries,
+                ),
+                $extra
             )
         );
         wldelay_clear_options_cache();
-        unset( $_SERVER['HTTP_X_COUNTRY_CODE'] );
-        $this->assertFalse( wldelay_is_own_country_blocked() );
+        unset( $GLOBALS['wldelay_parsed_whitelist'] );
+    }
+
+    public function test_readout_warns_when_the_owners_own_country_is_on_the_block_list() {
+        $this->enable_blocking( "RU\nDE" );
+
+        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'DE';
+        $html                           = $this->render_detection_status();
+        $this->assertStringContainsString( 'id="wldelay_country_blocking_status"', $html );
+        $this->assertStringContainsString( 'id="wldelay_country_blocking_warning"', $html );
+        $this->assertStringContainsString( 'Warning: DE is on your block list', $html );
+
+        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'FR';
+        $this->assertStringNotContainsString( 'is on your block list', $this->render_detection_status() );
+    }
+
+    public function test_readout_reports_the_country_a_site_resolver_enforces() {
+        // Header says DE, but the site's resolver answers RU and RU is what the
+        // login gate enforces — the readout and warning must say RU.
+        $this->enable_blocking( 'RU' );
+        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'DE';
+        add_filter(
+            'wldelay_resolve_country_code',
+            function () {
+                return 'RU';
+            }
+        );
+
+        $html = wp_strip_all_tags( $this->render_detection_status() );
+        $this->assertStringContainsString( 'RU, supplied by a custom wldelay_resolve_country_code filter', $html );
+        $this->assertStringContainsString( 'Warning: RU is on your block list', $html );
+        $this->assertStringNotContainsString( 'DE', $html );
+    }
+
+    public function test_readout_does_not_warn_a_whitelisted_owner() {
+        // A whitelisted IP really does bypass the block, so warning about it
+        // (and telling the owner to whitelist themselves) would be wrong.
+        $this->enable_blocking(
+            'DE',
+            array(
+                'wldelay_whitelist_enabled' => true,
+                'wldelay_whitelist_ips'     => '203.0.113.44',
+            )
+        );
+        wldelay_clear_whitelist_cache();
+        $_SERVER['HTTP_X_COUNTRY_CODE'] = 'DE';
+
+        $html = $this->render_detection_status();
+        $this->assertStringContainsString( 'Detected country for your current request: <strong>DE</strong>', $html );
+        $this->assertStringNotContainsString( 'is on your block list', $html );
+    }
+
+    public function test_readout_says_nothing_detected_when_no_country_is_available() {
+        $this->enable_blocking( 'DE' );
+
+        $html = $this->render_detection_status();
+        $this->assertStringContainsString( 'No country detected for your current request', $html );
+        $this->assertStringNotContainsString( 'is on your block list', $html );
     }
 
     public function test_a_site_supplied_resolver_still_wins() {
