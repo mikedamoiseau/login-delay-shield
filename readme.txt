@@ -34,6 +34,7 @@ A brute-force attack works by systematically trying passwords until finding the 
 * **XML-RPC protection** — Apply delays to XML-RPC authentication or block it entirely
 * **Password reset protection** — Apply delays, lockouts, and logging to password reset submissions without revealing account existence
 * **Custom login URL** — Move the login page to a custom URL to reduce automated bot traffic targeting `/wp-login.php`
+* **Challenge mode (optional)** — After repeated failed sign-ins, the login form asks for a self-hosted verification step before the password is checked: a math question, a one-time code emailed to the account owner, or an in-browser proof-of-work. No third-party CAPTCHA
 * **Country blocking (optional)** — Block login authentication from selected country codes. Ships no GeoIP database, but reads the country your server or CDN already worked out (Cloudflare's `CF-IPCountry`, a server GeoIP module, or an `X-Country-Code` proxy header); developers can supply it themselves through the `wldelay_resolve_country_code` filter
 * **Emergency recovery URL (optional)** — Generate a secret link that clears the lockout for your own IP, so you can get back in even with no admin, shell, or file access
 * **Log retention** — Automatic cleanup of old log entries (configurable retention period)
@@ -130,6 +131,16 @@ If you don't use the WordPress mobile app or remote publishing tools like Window
 = Should I protect password reset requests? =
 
 Yes, for most sites. Attackers can abuse password reset forms to probe accounts or create noise during credential attacks. Password reset protection applies the same delay and lockout behavior used for login attempts, logs the source as `password-reset`, and keeps messages generic so the form does not reveal whether a username or email exists.
+
+= How does challenge mode work? =
+
+Challenge mode is off by default. Once an IP (or, with the `IP + username` strategy, an IP and account) reaches the failed sign-in threshold you set, the login form shows one extra verification step, which must be completed before the password is checked, so a correct password is never confirmed to someone who has not passed it. Choose one type:
+
+* **Question / math** — a simple sum. Needs no email and no JavaScript.
+* **Email code** — a 6-digit code sent to the account's email address. Up to five codes are sent per IP and per account every 10 minutes, and each code allows five wrong answers.
+* **Proof of work** — the browser solves a short computation. It needs JavaScript and HTTPS (browsers only offer the required cryptography on secure pages); on a plain-HTTP site the math question is shown instead.
+
+Sign-ins that cannot show a form — XML-RPC, REST, and application passwords — are refused while a challenge is required. Whitelisted IPs and safe mode bypass challenge mode.
 
 = How does country blocking work? =
 
@@ -229,6 +240,8 @@ Want to help translate the plugin into your language? Visit [translate.wordpress
 = 2.7.0 =
 * New: Challenge mode is now active. After a configurable number of failed sign-ins from an IP, the login form presents a self-hosted challenge — a math question, an emailed one-time code, or an in-browser proof-of-work — that must be solved before credentials are checked, so password validity never leaks. Non-interactive logins (XML-RPC, REST, application passwords) are blocked outright. No third-party CAPTCHA. Developers can register custom challenge providers via the `wldelay_challenge_providers` filter.
 * Fix: failed sign-ins on the standard login form now correctly count and apply the configured delay, so IP lockout, email alerts, progressive delay, and challenge mode trigger as intended (previously the counter and delay could be skipped for wp-login attempts).
+* Fix: with XML-RPC protection on (delay mode), failed XML-RPC sign-ins now count toward lockout and apply the delay too; previously they were only logged, so an XML-RPC-only brute force never reached the lockout threshold.
+* Fix: with the `IP + username` lockout strategy, a failed sign-in is now counted under the same (lowercased) username every check uses, so typing the username with different capitalisation no longer avoids the lockout.
 * New: country blocking now works without writing any code. It reads the country your server or CDN already determined — Cloudflare's `CF-IPCountry` (only when "Trust proxy headers" is on and the request really comes from a Cloudflare edge), a server GeoIP module (`GEOIP_COUNTRY_CODE`), or a generic `X-Country-Code` proxy header (when "Trust proxy headers" is on). The settings page now shows which country is detected for your own request, so you can tell at a glance whether detection works on your host. A resolver supplied through the `wldelay_resolve_country_code` filter still takes precedence, and still receives an empty value, so it can never be handed a visitor-supplied header.
 * Fix (security): country blocking could be bypassed by a sign-in with valid credentials, because WordPress re-checks the credentials after the block runs and overwrote the rejection. The block is now re-asserted after the username is resolved and before the password is verified, and again after every other authenticator has run, so it also holds for XML-RPC application passwords.
 * Fix: a blocked country (and any other plugin block, such as an active lockout) is no longer counted as a failed sign-in on the REST and application-password paths, so blocked requests can no longer drive a legitimate visitor into lockout.
