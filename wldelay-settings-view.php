@@ -267,7 +267,7 @@ class LDS_Settings_View {
                             <span class="dashicons dashicons-arrow-down-alt2 wldelay-toggle" aria-hidden="true"></span>
                         </h2>
                         <div id="wldelay-country-blocking-body" class="wldelay-card-body">
-                            <p class="description"><?php esc_html_e( 'Block login authentication from selected country codes when a separate GeoIP resolver supplies the visitor country.', 'wp-login-delay' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Block login authentication from selected country codes, using the visitor country your server or CDN reports.', 'wp-login-delay' ); ?></p>
                             <?php $this->do_settings_section_fields( 'wldelay_country_blocking_section_id' ); ?>
                         </div>
                     </div>
@@ -1764,7 +1764,7 @@ class LDS_Settings_View {
      */
     public function country_blocking_enabled_callback() {
         printf(
-            '<input type="checkbox" id="wldelay_country_blocking_enabled" name="wldelay_options[wldelay_country_blocking_enabled]" value="1" %s aria-describedby="wldelay_country_blocking_enabled_desc" />',
+            '<input type="checkbox" id="wldelay_country_blocking_enabled" name="wldelay_options[wldelay_country_blocking_enabled]" value="1" %s aria-describedby="wldelay_country_blocking_enabled_desc wldelay_country_blocking_status wldelay_country_blocking_warning" />',
             ! empty( $this->options['wldelay_country_blocking_enabled'] ) ? 'checked="checked"' : ''
         );
         echo $this->tooltip( __( 'When enabled, login authentication is blocked whenever the visitor country matches one of the codes below.', 'wp-login-delay' ), wldelay_get_doc_url( 'country-blocking' ) );
@@ -1781,49 +1781,44 @@ class LDS_Settings_View {
      * @return string
      */
     private function country_detection_status() {
+        // Report the country that is actually enforced. A site resolver on
+        // wldelay_resolve_country_code outranks built-in detection, so the
+        // resolved code — not just what the headers say — is what matters.
+        $code     = wldelay_resolve_country_code();
         $detected = wldelay_detect_country_from_request();
+        $source   = ( '' !== $code && $code === $detected['code'] ) ? $detected['source'] : 'custom-filter';
 
-        // Built-in detection is not the only source: a site may hook
-        // wldelay_resolve_country_code, which outranks it. Report the country
-        // that would actually be used, not just what the headers say.
-        if ( '' === $detected['code'] ) {
-            $resolved = wldelay_resolve_country_code();
-            if ( '' !== $resolved ) {
-                $detected = array(
-                    'code'   => $resolved,
-                    'source' => 'custom-filter',
-                );
-            }
-        }
-
-        if ( '' === $detected['code'] ) {
-            return '<p class="description wldelay-country-status">'
+        if ( '' === $code ) {
+            return '<p id="wldelay_country_blocking_status" class="description wldelay-country-status">'
                 . esc_html__( 'No country detected for your current request, so country blocking will have no effect. Enable a server GeoIP module, or turn on "Trust proxy headers" if your site is behind Cloudflare or a proxy that sends a country header. A request with no country available is always allowed through.', 'wp-login-delay' )
                 . '</p>';
         }
 
-        $sources = array(
-            'server-module' => __( 'a server GeoIP module', 'wp-login-delay' ),
-            'cloudflare'    => __( 'the Cloudflare CF-IPCountry header', 'wp-login-delay' ),
-            'proxy-header'  => __( 'the X-Country-Code proxy header', 'wp-login-delay' ),
-            'custom-filter' => __( 'a custom wldelay_resolve_country_code filter', 'wp-login-delay' ),
+        $messages = array(
+            /* translators: %s: two-letter country code detected for the current visitor */
+            'server-module' => __( 'Detected country for your current request: %s, reported by a server GeoIP module.', 'wp-login-delay' ),
+            /* translators: %s: two-letter country code detected for the current visitor */
+            'cloudflare'    => __( 'Detected country for your current request: %s, reported by the Cloudflare CF-IPCountry header.', 'wp-login-delay' ),
+            /* translators: %s: two-letter country code detected for the current visitor */
+            'proxy-header'  => __( 'Detected country for your current request: %s, reported by the X-Country-Code proxy header.', 'wp-login-delay' ),
+            /* translators: %s: two-letter country code detected for the current visitor */
+            'custom-filter' => __( 'Detected country for your current request: %s, supplied by a custom wldelay_resolve_country_code filter.', 'wp-login-delay' ),
         );
-        $source_label = isset( $sources[ $detected['source'] ] ) ? $sources[ $detected['source'] ] : $detected['source'];
 
-        $status = '<p class="description wldelay-country-status">' . sprintf(
-            /* translators: 1: two-letter country code detected for the current visitor, 2: name of the source that reported it */
-            esc_html__( 'Detected country for your current request: %1$s, reported by %2$s.', 'wp-login-delay' ),
-            '<strong>' . esc_html( $detected['code'] ) . '</strong>',
-            esc_html( $source_label )
+        $status = '<p id="wldelay_country_blocking_status" class="description wldelay-country-status">' . sprintf(
+            esc_html( $messages[ $source ] ),
+            '<strong>' . esc_html( $code ) . '</strong>'
         ) . '</p>';
 
-        if ( wldelay_is_own_country_blocked() ) {
+        // Same check the login gate makes, so a whitelisted IP or safe mode —
+        // which really do bypass the block — does not raise a false alarm.
+        if ( wldelay_is_country_blocked() ) {
             // Deliberately NOT class="description": core's muted colour for that
             // class outranks ours and would wash the warning out.
-            $status .= '<p class="wldelay-country-warning"><strong>' . sprintf(
+            $status .= '<p id="wldelay_country_blocking_warning" class="wldelay-country-warning"><strong>' . sprintf(
                 /* translators: %s: two-letter country code detected for the current visitor */
-                esc_html__( 'Warning: %s is on your block list, which is the country you are browsing from. Saving this will block your own sign-ins. Add your IP to the whitelist first, or remove the code.', 'wp-login-delay' ),
-                esc_html( $detected['code'] )
+                esc_html__( 'Warning: %s is on your block list, which is the country you are browsing from, so sign-ins from your current connection are blocked. Add your IP to the whitelist, or remove the code.', 'wp-login-delay' ),
+                esc_html( $code )
             ) . '</strong></p>';
         }
 

@@ -64,6 +64,27 @@ class HelpLinksTest extends LDS_Unit_Test_Case {
     }
 
     /**
+     * Every slug in the real allowlist has a card that links to it, so a card
+     * cannot quietly drop its "Learn more" link. The slugs are read from
+     * wldelay_get_doc_url()'s own list rather than a copy kept here.
+     */
+    public function test_every_allowlisted_section_is_wired_to_a_settings_card() {
+        $source = file_get_contents( dirname( __DIR__, 2 ) . '/wldelay-settings-view.php' );
+
+        $this->assertSame( 1, preg_match( '/\$anchors = array\((.*?)\);/s', $source, $list ) );
+        preg_match_all( "/'([a-z0-9-]+)'/", $list[1], $slugs );
+        $this->assertNotEmpty( $slugs[1] );
+
+        foreach ( $slugs[1] as $slug ) {
+            $this->assertSame(
+                1,
+                preg_match( "/wldelay_get_doc_url\\(\\s*'" . preg_quote( $slug, '/' ) . "'\\s*\\)/", $source ),
+                "Section '{$slug}' is allowlisted but no settings card links to it."
+            );
+        }
+    }
+
+    /**
      * An unknown / mistyped key returns '' rather than a broken anchor.
      */
     public function test_unknown_section_returns_empty_string() {

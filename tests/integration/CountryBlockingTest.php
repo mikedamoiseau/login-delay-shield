@@ -17,6 +17,7 @@ class CountryBlockingTest extends WP_UnitTestCase {
         remove_all_filters( 'wldelay_resolve_country_code' );
         unset( $_SERVER['REMOTE_ADDR'], $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'], $_SERVER['REQUEST_URI'] );
         unset( $GLOBALS['wldelay_login_gate_rejection'] );
+        $_POST = array();
         delete_option( WLDELAY_OPTION_NAME );
         wldelay_clear_options_cache();
         parent::tearDown();
@@ -279,6 +280,7 @@ class CountryBlockingTest extends WP_UnitTestCase {
         wldelay_clear_options_cache();
         add_filter( 'wldelay_resolve_country_code', array( $this, 'resolve_ru' ) );
 
+        $_SERVER['REQUEST_URI']   = '/xmlrpc.php';
         $_SERVER['PHP_AUTH_USER'] = 'admin';
         $_SERVER['PHP_AUTH_PW']   = 'app-password';
 
@@ -453,6 +455,7 @@ class CountryBlockingTest extends WP_UnitTestCase {
 
         // Simulate a REST Application Password / Basic Auth attempt. This path
         // never runs the `authenticate` filter, so the REST guard must catch it.
+        $_SERVER['REQUEST_URI']   = '/wp-json/wp/v2/users/me';
         $_SERVER['PHP_AUTH_USER'] = 'admin';
         $_SERVER['PHP_AUTH_PW']   = 'app-password';
 
@@ -485,6 +488,104 @@ class CountryBlockingTest extends WP_UnitTestCase {
         $result = wldelay_country_block_rest_authentication( $prior );
 
         $this->assertSame( $prior, $result );
+    }
+
+    private function log_row_count() {
+        global $wpdb;
+        return (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . wldelay_get_log_table_name() );
+    }
+
+    private function block_ru( $extra = array() ) {
+        wldelay_create_log_table();
+        update_option(
+            WLDELAY_OPTION_NAME,
+            array_merge(
+                array(
+                    'wldelay_country_blocking_enabled'   => true,
+                    'wldelay_country_blocking_countries' => 'RU',
+                    'wldelay_delay'                      => 0,
+                ),
+                $extra
+            )
+        );
+        wldelay_clear_options_cache();
+        add_filter( 'wldelay_resolve_country_code', array( $this, 'resolve_ru' ) );
+    }
+
+    /**
+     * wp-login.php calls wp_signon() with no credentials on every page load. A
+     * visitor from a blocked country merely viewing the form is not a failed
+     * sign-in and must not write a log row (or feed fail2ban / botnet detection).
+     */
+    public function test_login_page_view_from_denied_country_is_not_logged_as_a_failure() {
+        $this->block_ru();
+        $before = $this->log_row_count();
+
+        $result = wp_signon( array() );
+
+        $this->assertWPError( $result );
+        $this->assertNotContains( 'wldelay_country_blocked', $result->get_error_codes() );
+        $this->assertSame( $before, $this->log_row_count() );
+    }
+
+    public function test_empty_credentials_pass_through_the_early_guard() {
+        $this->block_ru();
+
+        $this->assertNull( wldelay_country_block_authentication( null, '', '' ) );
+        $this->assertWPError( wldelay_country_block_authentication( null, 'admin', 'password' ) );
+    }
+
+    /**
+     * End to end through wp_authenticate(): an XML-RPC application password
+     * from a blocked country is rejected. Core's application-password
+     * authenticator (@20) returns the WP_User without firing
+     * wp_authenticate_user, so only the late backstop can hold this.
+     */
+    public function test_xmlrpc_application_password_from_denied_country_is_rejected() {
+        add_filter( 'application_password_is_api_request', '__return_true' );
+        add_filter( 'wp_is_application_passwords_available', '__return_true' );
+        $_SERVER['REQUEST_URI'] = '/xmlrpc.php';
+
+        $user_id               = self::factory()->user->create( array( 'user_login' => 'country_app_pw_user' ) );
+        list( $app_password ) = WP_Application_Passwords::create_new_application_password( $user_id, array( 'name' => 'test' ) );
+
+        // Control: from an allowed country the application password works, so
+        // the rejection below is the block, not a broken fixture.
+        $allowed = wp_authenticate( 'country_app_pw_user', $app_password );
+        $this->assertInstanceOf( 'WP_User', $allowed );
+
+        $this->block_ru();
+        $result = wp_authenticate( 'country_app_pw_user', $app_password );
+
+        $this->assertWPError( $result );
+        $this->assertSame( 'wldelay_country_blocked', $result->get_error_code() );
+    }
+
+    /**
+     * Site-wide HTTP Basic auth (an htpasswd-protected staging site) puts
+     * PHP_AUTH_* on every request. On the login form that is not an
+     * application-password attempt, so the block is logged once — by the
+     * wp_login_failed handler — not a second time by the application-password
+     * handler.
+     */
+    public function test_ambient_basic_auth_country_block_on_login_form_is_logged_once() {
+        $this->block_ru( array( 'wldelay_application_password_enabled' => true ) );
+        $_SERVER['PHP_AUTH_USER'] = 'htuser';
+        $_SERVER['PHP_AUTH_PW']   = 'htpass';
+        $_POST['wp-submit']       = 'Log In';
+        self::factory()->user->create(
+            array(
+                'user_login' => 'country_basic_user',
+                'user_pass'  => 'correct-password',
+            )
+        );
+        $before = $this->log_row_count();
+
+        $result = wp_authenticate( 'country_basic_user', 'correct-password' );
+
+        $this->assertWPError( $result );
+        $this->assertSame( 'wldelay_country_blocked', $result->get_error_code() );
+        $this->assertSame( $before + 1, $this->log_row_count() );
     }
 
     public function resolve_ru( $country = '', $ip = '', $source = '' ) {
