@@ -4074,9 +4074,14 @@ function wldelay_is_xmlrpc_request() {
         return true;
     }
 
-    // Fallback: check the request URI
-    if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( $_SERVER['REQUEST_URI'], 'xmlrpc.php' ) !== false ) {
-        return true;
+    // Fallback: the request is for the xmlrpc.php script itself. Match the URL
+    // path, not any substring: a login-form URL such as
+    // wp-login.php?redirect_to=/xmlrpc.php must not pass for XML-RPC.
+    if ( isset( $_SERVER['REQUEST_URI'] ) ) {
+        $path = wp_parse_url( (string) $_SERVER['REQUEST_URI'], PHP_URL_PATH );
+        if ( is_string( $path ) && 'xmlrpc.php' === basename( $path ) ) {
+            return true;
+        }
     }
 
     return false;
@@ -5167,11 +5172,6 @@ function wldelay_get_recent_failed_attempts( $limit = 20 ) {
 }
 
 /**
- * Handle wp_login_failed action - logs all failed attempts
- *
- * @param string $username Username attempted
- */
-/**
  * Mark the current request as a plugin-issued login gate rejection (an active
  * lockout, a required/unavailable challenge, or a country block). Read by
  * wldelay_on_login_failed so those rejections are logged but NOT counted as
@@ -5229,8 +5229,19 @@ function wldelay_is_gate_rejection_error( $error ) {
     return array() === array_diff( $codes, wldelay_get_gate_rejection_error_codes() );
 }
 
+/**
+ * Handle wp_login_failed: log every failed attempt, and count + delay the ones
+ * no other handler owns (the login form, and XML-RPC when protected).
+ *
+ * @param string        $username Username as submitted (core passes it un-normalized).
+ * @param WP_Error|null $error    Failure reason (WP 5.4+; absent on older cores).
+ */
 function wldelay_on_login_failed( $username, $error = null ) {
     $source = wldelay_get_login_source();
+
+    // Count under the same normalized key every check reads (lowercased), or a
+    // capitalised username would dodge the ip_username lockout and challenge.
+    $username = wldelay_normalize_username( $username );
 
     // Own tracking + delay only for a GENUINE interactive wp-login credential
     // failure. wldelay_auth_login runs on wp_authenticate_user, which core fires
@@ -5240,11 +5251,11 @@ function wldelay_on_login_failed( $username, $error = null ) {
     // the threshold features (lockout, email, progressive, challenge) trigger.
     //
     // But NOT for:
-    //   - Real XML-RPC / REST / application-password attempts: they have their
-    //     own handlers. Detected via the request constants + PHP-auth headers,
-    //     NOT wldelay_get_login_source()'s URI-substring check, which a crafted
-    //     wp-login URL (e.g. ?redirect_to=/xmlrpc.php) could otherwise use to
-    //     dodge tracking.
+    //   - Real XML-RPC / REST / application-password attempts: REST and
+    //     application passwords have their own handlers; XML-RPC is handled
+    //     below. Detected via the request constants and the xmlrpc.php script
+    //     path, never a URL substring, so a crafted wp-login URL (e.g.
+    //     ?redirect_to=/xmlrpc.php) cannot pass for XML-RPC.
     //   - The plugin's OWN gate rejections (an active lockout, a required/
     //     unavailable challenge, a country block). Counting those would let a
     //     merely-shown challenge push a legitimate user toward lockout, or let
@@ -5259,7 +5270,7 @@ function wldelay_on_login_failed( $username, $error = null ) {
     // form failures there. XML-RPC/REST carry neither the form fields nor a
     // login POST, so this also excludes them (reinforced by their constants).
     $is_form_submission = isset( $_POST['wp-submit'] ) || isset( $_POST['pwd'] );
-    $is_real_xmlrpc     = defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST;
+    $is_real_xmlrpc     = wldelay_is_xmlrpc_request(); // constant, or the xmlrpc.php script path (not a URL substring)
     $is_real_rest       = defined( 'REST_REQUEST' ) && REST_REQUEST;
 
     // Gate rejection detection is independent of the WP 5.4+ $error arg: the
@@ -5276,10 +5287,24 @@ function wldelay_on_login_failed( $username, $error = null ) {
         && ! $is_real_rest
         && ! $is_gate_rejection;
 
-    if ( $is_interactive_wp_login ) {
+    // XML-RPC has the same gap as the form: its failures reach nothing but this
+    // hook, so with XML-RPC protection on (delay mode) count and delay them here
+    // too. Not in block mode (every XML-RPC login is refused outright and the
+    // block handler logs it), and not when an application-password attempt is
+    // owned by wldelay_handle_application_password_auth(). Core refuses a second
+    // auth attempt within one system.multicall after the first failure, so this
+    // sleeps at most once per request.
+    $options             = wldelay_get_options();
+    $is_protected_xmlrpc = $is_real_xmlrpc
+        && ! $is_gate_rejection
+        && ! empty( $options['wldelay_xmlrpc_enabled'] )
+        && empty( $options['wldelay_xmlrpc_block'] )
+        && ! ( ! empty( $options['wldelay_application_password_enabled'] ) && wldelay_is_application_password_attempt() );
+
+    if ( $is_interactive_wp_login || $is_protected_xmlrpc ) {
         $result = wldelay_process_failed_attempt(
             $username,
-            'wp-login',
+            $is_interactive_wp_login ? 'wp-login' : 'xmlrpc',
             array( 'lockout' => false ) // track/log/delay default true; lockout state lookup unused here
         );
         if ( ! empty( $result['delay'] ) ) {

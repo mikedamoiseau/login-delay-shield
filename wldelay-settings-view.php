@@ -1888,7 +1888,7 @@ class LDS_Settings_View {
             );
         }
         echo '</select>';
-        echo $this->tooltip( __( 'Question/math needs no email or JavaScript; Email code sends a one-time code to the account owner; Proof of work runs a short in-browser computation (requires JavaScript).', 'wp-login-delay' ) );
+        echo $this->tooltip( __( 'Question/math needs no email or JavaScript; Email code sends a one-time code to the account owner; Proof of work runs a short in-browser computation (requires JavaScript and HTTPS; a plain-HTTP site shows the math question instead).', 'wp-login-delay' ) );
         echo '<p id="wldelay_challenge_mode_provider_desc" class="description">' . esc_html__( 'Applies to the interactive login form. Only one challenge type is active at a time.', 'wp-login-delay' ) . '</p>';
     }
 
