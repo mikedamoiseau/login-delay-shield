@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'WLDELAY_VERSION', '2.6.0' );
+define( 'WLDELAY_VERSION', '2.7.0' );
 define( 'WLDELAY_PLUGIN_FILE', __FILE__ );
 define( 'WLDELAY_OPTION_NAME', 'wldelay_options' );
 
@@ -39,7 +39,7 @@ define( 'WLDELAY_DASH_TRENDS_TTL', 5 * MINUTE_IN_SECONDS );
 Plugin Name: Login Delay Shield
 Plugin URI: https://damoiseau.me
 Description: Protects against brute-force attacks with login delays, progressive throttling, IP lockout, whitelist, XML-RPC/password-reset protection, custom login URL, and email alerts.
-Version: 2.6.0
+Version: 2.7.0
 Author: Mike
 Author URI: https://damoiseau.me
 License: GPL2
@@ -3361,6 +3361,11 @@ add_action( 'admin_notices', 'wldelay_show_whats_new_notice' );
  */
 function wldelay_get_version_highlights( $version ) {
     $highlights = array(
+        '2.7.0' => array(
+            __( 'New: Challenge mode — after repeated failed sign-ins, the login form asks for a self-hosted check (a math question, an emailed code, or an in-browser proof of work) before the password is checked. Off by default.', 'wp-login-delay' ),
+            __( 'Country blocking now works without code: it reads the visitor country your server or CDN already reports (Cloudflare, a GeoIP module, or a proxy header).', 'wp-login-delay' ),
+            __( 'The Country Blocking card shows which country is detected for your own request, so you can tell at a glance whether detection works on your host.', 'wp-login-delay' ),
+        ),
         '2.6.0' => array(
             __( 'New: Emergency Recovery URL — a secret, opt-in link to clear your own IP lockout if you are ever locked out with no admin or server access.', 'wp-login-delay' ),
             __( 'The recovery token is stored only as a hash, requires a confirm click, is rate-limited, and every use is fully audited.', 'wp-login-delay' ),
