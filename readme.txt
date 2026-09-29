@@ -246,6 +246,7 @@ Want to help translate the plugin into your language? Visit [translate.wordpress
 * Fix (security): country blocking could be bypassed by a sign-in with valid credentials, because WordPress re-checks the credentials after the block runs and overwrote the rejection. The block is now re-asserted after the username is resolved and before the password is verified, and again after every other authenticator has run, so it also holds for XML-RPC application passwords.
 * Fix: a blocked country (and any other plugin block, such as an active lockout) is no longer counted as a failed sign-in on the REST and application-password paths, so blocked requests can no longer drive a legitimate visitor into lockout.
 * Fix: HTTP Basic authentication on a normal page (for example an htpasswd-protected staging site) is no longer mistaken for an application-password sign-in, which counted every login-page view as a failed attempt and logged blocked sign-ins twice.
+* Fix: the lockout message on the login page no longer shows a frozen "You can try again in 59 seconds" next to the live countdown; once the countdown starts it is the only time shown (without JavaScript the static time remains).
 * The Country Blocking and Challenge Mode settings cards now have "Learn more" links to the user guide, like the other cards.
 
 = 2.6.0 =

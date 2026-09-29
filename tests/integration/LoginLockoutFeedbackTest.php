@@ -171,6 +171,31 @@ class LoginLockoutFeedbackTest extends WP_UnitTestCase {
         $this->assertEmpty( $result->get_error_messages( 'wldelay_attempts_remaining' ) );
     }
 
+    /**
+     * The "You can try again in 59 seconds" sentence is a snapshot taken when
+     * the page rendered, while the countdown line ticks. Showing both
+     * contradicts itself after a few seconds ("59 seconds" next to "0:23"), so
+     * the snapshot sits in its own element that the countdown script hides —
+     * and stays visible when JavaScript is off.
+     */
+    public function test_static_remaining_time_is_separate_so_the_countdown_can_hide_it() {
+        $this->lock_current_ip();
+
+        $out = wldelay_login_message_lockout( '' );
+
+        $this->assertStringContainsString( 'Too many failed login attempts.', $out );
+        $this->assertSame(
+            1,
+            preg_match( '#<span class="wldelay-login-status__static">\s*You can try again in [^<]+\.</span>#', $out ),
+            'the static remaining time must be its own element'
+        );
+
+        ob_start();
+        wldelay_login_feedback_script();
+        $script = ob_get_clean();
+        $this->assertStringContainsString( '.wldelay-login-status__static', $script, 'the countdown script hides the static time' );
+    }
+
     public function test_countdown_formatter() {
         $this->assertSame( '1:59', wldelay_format_countdown( 119 ) );
         $this->assertSame( '0:08', wldelay_format_countdown( 8 ) );
