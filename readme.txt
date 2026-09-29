@@ -5,8 +5,8 @@ Tags: security,login,brute-force,lockout,xmlrpc
 Requires PHP: 7.4
 Requires at least: 3.5.1
 Tested up to: 7.1
-Version: 2.6.0
-Stable tag: 2.6.0
+Version: 2.7.0
+Stable tag: 2.7.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -572,6 +572,9 @@ Major release with comprehensive security features and modern admin interface.
 * First version of the plugin
 
 == Upgrade Notice ==
+
+= 2.7.0 =
+Security fixes: country blocking could be bypassed by a sign-in with valid credentials, and failed sign-ins on the standard login form were not counted toward lockout or delayed. Also adds optional challenge mode and zero-config country detection. Recommended for all users.
 
 = 2.4.0 =
 Adds proxy/CDN-aware IP detection (Cloudflare, Sucuri, nginx), a WLDELAY_SAFE_MODE emergency constant, and a Custom Login URL self-check that prevents 404 lockouts. No behavior change unless you enable the features.
