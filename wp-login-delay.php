@@ -6529,14 +6529,21 @@ function wldelay_render_login_lockout_block() {
 
     $countdown_seed = wldelay_format_countdown( $remaining );
 
+    // The remaining time in the intro is a snapshot taken at render time, so it
+    // sits in its own element: the countdown script hides it once the live
+    // timer starts (otherwise "59 seconds" stands next to "0:23"), and with JS
+    // off it stays as the only time shown.
     if ( $remaining > 0 ) {
-        $intro = sprintf(
-            /* translators: %s: human-readable remaining lockout time, e.g. "2 minutes". */
-            __( 'Too many failed login attempts. You can try again in %s.', 'wp-login-delay' ),
-            $human_remaining
-        );
+        $intro_html = esc_html__( 'Too many failed login attempts.', 'wp-login-delay' )
+            . ' <span class="wldelay-login-status__static">' . esc_html(
+                sprintf(
+                    /* translators: %s: human-readable remaining lockout time, e.g. "2 minutes". */
+                    __( 'You can try again in %s.', 'wp-login-delay' ),
+                    $human_remaining
+                )
+            ) . '</span>';
     } else {
-        $intro = __( 'You can try again now.', 'wp-login-delay' );
+        $intro_html = esc_html__( 'You can try again now.', 'wp-login-delay' );
     }
 
     $help_url   = wldelay_login_help_url();
@@ -6545,7 +6552,7 @@ function wldelay_render_login_lockout_block() {
     $prefix     = __( 'Try again in', 'wp-login-delay' );
 
     $html  = '<div class="wldelay-login-status wldelay-login-status--locked" role="alert" aria-live="assertive">';
-    $html .= '<p class="wldelay-login-status__intro">' . esc_html( $intro ) . '</p>';
+    $html .= '<p class="wldelay-login-status__intro">' . $intro_html . '</p>'; // Escaped above.
     // The countdown line carries the seed seconds + ready text for the JS.
     $html .= '<p class="wldelay-login-status__countdown"'
         . ' data-wldelay-remaining="' . esc_attr( (string) max( 0, (int) $remaining ) ) . '"'
@@ -6672,6 +6679,9 @@ function wldelay_login_feedback_script() {
     var ready = el.getAttribute('data-wldelay-ready') || '';
     var timeEl = el.querySelector('.wldelay-login-status__time');
     var box = el.closest('.wldelay-login-status');
+    // The live countdown replaces the render-time snapshot in the intro.
+    var staticTime = box ? box.querySelector('.wldelay-login-status__static') : null;
+    if(staticTime){staticTime.hidden = true;}
     function fmt(s){var m=Math.floor(s/60);var r=s%60;return m + ':' + (r<10?'0':'') + r;}
     function finish(){
         el.textContent = ready;
